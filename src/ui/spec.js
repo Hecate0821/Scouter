@@ -27,7 +27,7 @@ function renderSpec(){
   else if(r.Breq>r.mem.Bmax) warn.push("B = "+r.Breq+" 超过开投机后显存能放下的 "+r.mem.Bmax+" 条（上下文 "+fInt(c.n)+"）");
   setWarn(warn);
   $("s-lede").innerHTML=(sn.on?"":"<b>左侧没开投机，这一页按 MTP、k = 3、α = 0.8 演示</b>（在左侧把 draft token 数调到 1 以上就跟着变）。")+
-    esc(m.short)+" · "+hw.name+" · "+ENGN[c.engine]+"，每个 DP rank "+r.Breq+" 个并发"+(r.Breq<c.B?"（左侧设的是 "+c.B+"，"+ENGN[c.engine]+" 开投机后上限 "+P.specCap+"）":"")+"、上下文 "+fInt(c.n)+"。"+nm+" 每步 draft "+k+" 个 token，α = "+V(a.toFixed(2))+"，平均每步产出 τ = "+V(tau.toFixed(2))+" 个 token。"+
+    esc(m.short)+" · "+hw.name+" · "+ENGN[c.engine]+"，每个 DP rank "+r.Breq+" 个并发"+(r.Breq<c.B?"（左侧设的是 "+c.B+"，"+ENGN[c.engine]+" 开投机后默认上限 "+P.specCap+"，可以调高）":"")+"、上下文 "+fInt(c.n)+"。"+nm+" 每步 draft "+k+" 个 token，α = "+V(a.toFixed(2))+"，平均每步产出 τ = "+V(tau.toFixed(2))+" 个 token。"+
     "一步 = 验证（目标模型宽度 "+(k+1)+" 的 forward）+ draft + 提交；同样配置不开投机一步 "+fT(base.stepT)+"，产出 1 个 token。";
   const su=base.tpot/r.tpot, st=r.tokPerGpu/base.tokPerGpu;
   kpis($("s-kpis"),[
@@ -69,7 +69,7 @@ function renderSpec(){
     : "并发越大，验证宽度乘到每个 GEMM 的行数上，decode 从 memory-bound 走向 compute-bound，收益变小"+(pts.length>1&&hi[1]<lo[1]?"（"+nm+" 从 "+at(lo)+" 降到 "+at(hi)+"）":"")+"。";
   $("s-cost-lede").innerHTML="四种方法用同一个 α = "+V(a.toFixed(2))+"，只比代价：draft 读多少权重、算多少行。左图在当前并发 B = "+r.Breq+" 下扫 k，右图每种方法取常见的 k（MTP 3、EAGLE-3 4、DFlash / DSpark 7）扫并发。"+
     "真实的 α 各不相同：同一个目标模型上，DFlash / DSpark 的接受长度通常明显高于 EAGLE-3 和 MTP（见下面的公开数字），这里把它们拉平，只为看代价的形状。"+trend+
-    (capped?ENGN[c.engine]+" 开投机后并发限到 "+P.specCap+"，右图到这里截止。":"右图扫到显存放不下为止。");
+    (capped?ENGN[c.engine]+" 开投机后并发默认设为 "+P.specCap+"（没有显式设 --max-running-requests 时），右图按默认值到这里截止。":"右图扫到显存放不下为止。");
   legendInto("s-vs-legend",SPEC_ORDER.map(mt=>({name:Infer.SPEC[mt].name,col:SPECC[mt],line:true})).concat([{name:"不开投机 = 1×",col:"muted",line:true}]));
   table($("s-ledger"),["方法（α = "+a.toFixed(2)+"，B = "+r.Breq+"）","k","验证宽度","draft","验证","提交","一步","τ","TPOT","单用户速度","tok/s/GPU","draft 权重 / 卡","显存放得下的 B"],
     SPEC_ORDER.map(mt=>{ const kk=SPEC_K[mt], x=specRun(mt,kk,a);
@@ -83,7 +83,7 @@ function renderSpec(){
   const tailNote=!lo?"":"（右图左端："+nm+" 在 "+at(lo)+(lo===best?"，是整条线最高的地方":dip?"，MoE 在这里多读 expert，不如中等并发"+(lo[1]>1.02?"，但仍然净赚":""):"")+"）";
   const Bf=Math.min(c.B,Math.floor(base.mem.Bmax)), full=Bf>r.Breq?specRun(method,0,a,{B:Bf}):null, rf=full?r.tokPerGpu/full.tokPerGpu:0;
   const batch=full
-    ? "批量阶段并发高："+ENGN[c.engine]+" 开投机后每个 DP rank 只能跑 "+r.Breq+" 个请求，不开投机能跑 "+Bf+" 个，单卡吞吐 "+fN(r.tokPerGpu)+" 对 "+fN(full.tokPerGpu)+" tok/s/GPU（"+fX(rf)+(rf<0.97?"，开了反而亏":rf<1.05?"，基本打平":"")+"）。"
+    ? "批量阶段并发高："+ENGN[c.engine]+" 开投机后每个 DP rank 默认只跑 "+r.Breq+" 个请求（可以调高，但并发越高投机越不划算，见上面右图），不开投机能跑 "+Bf+" 个，单卡吞吐 "+fN(r.tokPerGpu)+" 对 "+fN(full.tokPerGpu)+" tok/s/GPU（"+fX(rf)+(rf<0.97?"，开了反而亏":rf<1.05?"，基本打平":"")+"）。"
     : "批量阶段并发高，验证把 GEMM 推进 compute-bound 后收益变小甚至为负。";
   $("s-rl").innerHTML=ul([
     "<b>长尾是投机最该开的地方。</b>一批 rollout 到最后只剩少数长轨迹，并发掉到个位数，整批的完成时间卡在这几条的单用户速度上"+tailNote+"；"+relLink("lmsys","2026-10-22-miles-mi355x-agentic-rl","LMSYS 的 SWE agent RL")+" 测到 32% 的 rollout 时间发生在 90% 的轨迹完成之后。"+batch+relLink("lmsys","2026-08-11-nemotron-3-5-lightning","Nemotron 3.5 Lightning")+" 的部署建议是追求最大吞吐时不开。所以要按负载开关："+relLink("sglang","v0.5.12")+" 的自适应 Spec V2、"+relLink("vllm","v0.24.0")+" 的 Dynamic SD。",

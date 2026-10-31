@@ -48,7 +48,7 @@ function step(m, hw, topo, c, g){
   const warn=[];
   // 批大小与 CUDA graph 补齐
   let Breq = dec ? c.B : 1;
-  if(dec && specK>0 && Breq>P.specCap){ warn.push(P.name+" 开投机解码时 max_running_requests 被限制为 "+P.specCap); Breq=P.specCap; }
+  if(dec && specK>0 && Breq>P.specCap){ warn.push(P.name+" 开投机解码时 max_running_requests 默认设为 "+P.specCap+"（没有显式设 --max-running-requests 时；可以调高）"); Breq=P.specCap; }
   const ladder=P.ladder(hw,specK>0), maxG=P.maxGraph(hw,specK>0);
   let graph, rowsG, rowsR;
   if(dec){

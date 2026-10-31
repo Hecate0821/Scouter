@@ -474,7 +474,7 @@
       <div class="legend" id="i-roof-legend"></div></div>
   </div>
   <div class="block" data-phase="decode"><h2>同一个配置，换个引擎</h2>
-    <p class="lede">并发 B 从 1 拉到显存上限。锯齿来自 CUDA graph 的补齐阶梯：B 刚越过一个台阶，就要按下一个台阶的行数跑。曲线断崖处是 graph 上限，越过之后改走 eager（TokenSpeed 160、开投机 80；SGLang 512、开投机直接把并发限到 48；vLLM 按 token 计 512 或 1024）。TP1、不开投机时三家发出的 kernel 几乎一样，曲线会重合；差别主要来自 TP&gt;1 时的 AR 融合、MoE 默认并行方式、graph 上限、投机验证的状态流量和 lm_head / 采样是否在 graph 里。</p>
+    <p class="lede">并发 B 从 1 拉到显存上限。锯齿来自 CUDA graph 的补齐阶梯：B 刚越过一个台阶，就要按下一个台阶的行数跑。曲线断崖处是 graph 上限，越过之后改走 eager（TokenSpeed 160、开投机 80；SGLang 512、开投机后并发默认设为 48；vLLM 按 token 计 512 或 1024）。TP1、不开投机时三家发出的 kernel 几乎一样，曲线会重合；差别主要来自 TP&gt;1 时的 AR 融合、MoE 默认并行方式、graph 上限、投机验证的状态流量和 lm_head / 采样是否在 graph 里。</p>
     <div class="figs">
       <div class="fig"><svg id="i-sw-lat" viewBox="0 0 680 340" role="img" aria-label="TPOT 随并发"></svg></div>
       <div class="fig"><svg id="i-sw-thr" viewBox="0 0 680 340" role="img" aria-label="吞吐随并发"></svg></div>
@@ -582,18 +582,18 @@
     <div class="bar" id="s-bar"></div><div class="barlist" id="s-barlist"></div>
   </div>
   <div class="block"><h2>四种 draft 方法</h2>
-    <p class="lede">验证都一样：目标模型对 k 个 draft token 再加一个 bonus 位置做一次宽度 k+1 的 forward，按拒绝采样逐个接受，输出分布和不开投机完全相同。区别在 draft 从哪来、每步读多少权重、k 个 token 是一个一个出还是一次出。</p>
+    <p class="lede">验证都一样：目标模型对 k 个 draft token 再加一个 bonus 位置做一次宽度 k+1 的 forward，按拒绝采样逐个接受，输出分布和不开投机相同（只差数值误差；FLy、接受阈值调到 1 以下这类做法是有损的，不在此列）。区别在 draft 从哪来、每步读多少权重、k 个 token 是一个一个出还是一次出。</p>
     <div class="tbl"><table>
       <thead><tr><th>方法</th><th>draft 从哪来</th><th>出 k 个 token</th><th>本页怎么算 draft</th><th>常见 k / 接受长度</th></tr></thead>
       <tbody>
-        <tr><td>MTP</td><td>模型自带的 MTP 层（DeepSeek、Qwen3.5 / 3.8、GLM、Kimi K3 等），和主模型一起训练</td><td>自回归，k 步，每步一层 + lm_head</td><td>目标模型一层的平均代价：第一步按验证宽度，之后每步 1 行，加 k 次 lm_head</td><td>k = 1–3，接受长度 2–3.5</td></tr>
+        <tr><td>MTP</td><td>模型自带的 MTP 层（DeepSeek、Qwen3.5 / 3.8、GLM、Kimi K3 等），和主模型一起训练</td><td>自回归，k 步，每步一层 + lm_head</td><td>目标模型一层的平均代价：第一步按验证宽度，之后每步 1 行，加 k 次 lm_head</td><td>k = 1–5（GLM-5.3-Flash 的 cookbook 用 5），接受长度 2–3.5</td></tr>
         <tr><td>EAGLE-3</td><td>单独训练的 draft head：把目标模型低、中、高三层的特征拼起来（3D → D），再接一层 decoder</td><td>自回归，k 步；可以按树展开</td><td>一次 3D → D 投影 + 每步一层 dense + 裁剪到 32K 的词表</td><td>k = 3–7，接受长度约 3–4.5</td></tr>
-        <tr><td>DFlash / DFlash2</td><td>约 5 层的小 block-diffusion 模型，以目标模型的特征为条件；DFlash2 换了训练方法</td><td>一次 forward 出一整块（块大小 8–16）</td><td>目标特征投影出每层的上下文 K / V + 5 层 dense 对 B·(k+1) 行做一次 forward + 全词表 lm_head</td><td>块 8–16，接受长度 5–6.5</td></tr>
-        <tr><td>DSpark</td><td>同 DFlash 的块式 draft，加一个低秩 Markov 头修正相邻 token；按置信度逐请求裁剪验证长度</td><td>一次 forward 出一块，验证长度可变</td><td>同 DFlash（B·k 行），外加 k 次 [B, 256] × [256, V] 的 Markov 偏置</td><td>块 7，接受长度 5–6（DeepSeek-V4 上 γ ≤ 5）</td></tr>
+        <tr><td>DFlash / DFlash2</td><td>约 5 层的小 block-diffusion 模型，以目标模型的特征为条件；DFlash2 在此之上加块内因果卷积和 top-16 候选选择器，补回块内相邻 token 的依赖</td><td>一次 forward 出一整块（块大小 8–16）</td><td>目标特征投影出每层的上下文 K / V + 5 层 dense 对 B·(k+1) 行做一次 forward + 全词表 lm_head</td><td>块 8–16；接受长度 chat 约 3–4.2，数学 / 代码 5–8（Qwen3-8B greedy 平均 6.49，temperature 1 时 5.48）</td></tr>
+        <tr><td>DSpark</td><td>同 DFlash 的块式 draft，加一个低秩 Markov 头修正相邻 token；可以按置信度逐请求裁剪验证长度（SGLang 默认 static、vLLM 默认关，即默认全验证）</td><td>一次 forward 出一块，验证长度可变</td><td>同 DFlash（B·k 行），外加 k 次 [B, 256] × [256, V] 的 Markov 偏置</td><td>块 7–8（DeepSeek-V4 上 γ ≤ 5）；接受长度 chat 约 2.7–3.6，数学 5–6</td></tr>
       </tbody></table></div>
   </div>
   <div class="block"><h2>接受率 α 和 draft 长度 k</h2>
-    <p class="lede">每个位置以概率 α 被接受、第一次拒绝就停（i.i.d. 近似）时，一步平均产出 τ = (1 − α<sup>k+1</sup>) / (1 − α) 个 token（含 bonus）。左侧“每步平均多接受的 token”就是 τ − 1，这一页由它和 k 反解出 α。α 越高，长 draft 越值；α 低时 k 再大也只是白白加宽验证。块式 draft（DFlash / DSpark）的 α 不是常数，越往后越低，这里只看量级。</p>
+    <p class="lede">每个位置以概率 α 被接受、第一次拒绝就停（i.i.d. 近似）时，一步平均产出 τ = (1 − α<sup>k+1</sup>) / (1 − α) 个 token（含 bonus）。左侧“每步平均多接受的 token”就是 τ − 1，这一页由它和 k 反解出 α。α 越高，长 draft 越值；α 低时 k 再大也只是白白加宽验证。块式 draft 的 α 不是常数：DFlash 各位置独立出词，越往后越低（chat 上条件接受率从 0.72 掉到 0.63）；DSpark 的 Markov 头让它基本持平。这里只看量级。</p>
     <div class="fig"><svg id="s-tau" viewBox="0 0 680 320" role="img" aria-label="平均产出 token 数随 draft 长度变化"></svg><div class="legend" id="s-tau-legend"></div></div>
   </div>
   <div class="block"><h2>同一个 α，四种方法的代价</h2>

@@ -30,13 +30,13 @@ function infPresets(eng, mk, topoKey){
   if(eng==="sglang"){
     if(mk==="qwen35"){
       add("rec","TP1，每卡一个实例（"+G+" 个）","SGLang Qwen3.5 文档：H100 / H200 / B200 上 tp=1，多实例由 router 做 DP。",X({N:1,dpA:1,moePar:"tp",B:128}));
-      add("mtp","TP1 + MTP（3 个 draft）","--speculative-algorithm EAGLE --speculative-num-steps 3 --speculative-eagle-topk 1。开投机后 max_running_requests 被限到 48。",X({N:1,dpA:1,moePar:"tp",B:48,specK:3,accept:1.8}));
+      add("mtp","TP1 + MTP（3 个 draft）","--speculative-algorithm EAGLE --speculative-num-steps 3 --speculative-eagle-topk 1。开投机后，没有显式设 --max-running-requests 时 max_running_requests 默认设为 48（EAGLE / MTP / DFlash / DSpark 都一样，可以手动调高）。",X({N:1,dpA:1,moePar:"tp",B:48,specK:3,accept:1.8}));
       add("dep","DP-attention 8 + DeepEP 8","--enable-dp-attention --dp 8 --moe-a2a-backend deepep。这个模型没有官方 wide EP 配方，只作对照。",X({N:8,dpA:8,moePar:"deepep",B:64}));
     } else if(mk==="kimik3"){
       if(!big){
         add("rec","TP8（B300 单机）","SGLang Kimi-K3 cookbook：B300 单机 8 卡 TP8；H200 要两台 16 卡 TP16 / EP16。routed expert MXFP4，其余 BF16。",X({N:8,dpA:1,moePar:"tp",B:32}));
         add("dcp","TP8 + DCP8（Balanced）","cookbook 的 Balanced 档加 --dcp-size 8：latent KV 按 8 份切开，单卡能放更多请求。LMSYS day-0 的 decode 就是 TP8 + DCP8。",X({N:8,dpA:1,moePar:"tp",B:96,dcp:8}));
-        add("spec","TP8 + DSpark（验证 8 个位置）","LMSYS day-0：DSpark 把 bs=1 decode 从约 113 提到约 423 tok/s；验证 8 个位置时接受长度 chat 约 2.7、few-shot math 约 5.0，这里按 chat。SGLang 开投机后并发限 48。",X({N:8,dpA:1,moePar:"tp",B:32,specK:7,specMethod:"dspark",accept:1.7}));
+        add("spec","TP8 + DSpark（验证 8 个位置）","LMSYS day-0：DSpark 把 bs=1 decode 从约 113 提到约 423 tok/s；验证 8 个位置时接受长度 chat 约 2.7、few-shot math 约 5.0，这里按 chat。SGLang 开投机后 max_running_requests 默认 48（可以调高）。",X({N:8,dpA:1,moePar:"tp",B:32,specK:7,specMethod:"dspark",accept:1.7}));
       } else {
         add("rec","大规模预设：tp=ep=64，attn-dp 8，megamoe","cookbook 大规模预设：--tp-size N --ep-size N --attn-dp-size N/8 --enable-dp-lm-head --moe-a2a-backend megamoe --kv-cache-dtype fp8_e4m3 --mamba-ssm-dtype bfloat16。",X({N:64,dpA:8,moePar:"fused",B:64,kvDt:"fp8",stateDt:"bf16"}));
         add("dp64","attention 全 DP64 + megamoe","同一份 cookbook 的 fully data-parallel 64 卡扫描。",X({N:64,dpA:64,moePar:"fused",B:32,kvDt:"fp8",stateDt:"bf16"}));
@@ -45,7 +45,7 @@ function infPresets(eng, mk, topoKey){
     } else if(mk==="glm53f"){
       if(!big){
         add("rec","TP8，FP8 + FP8 KV","SGLang GLM-5.3-Flash：B200 上 FP8 权重 TP8，trtllm DSA，FP8 KV；H200 高吞吐档 TP8 / EP8 + BF16 KV。",X({N:8,dpA:1,moePar:"tp",B:64}));
-        add("mtp","TP8 + MTP","MTP 投机（EAGLE 3 / 1 / 4）。MTP 不支持 DP-attention。",X({N:8,dpA:1,moePar:"tp",B:48,specK:3,accept:1.6}));
+        add("mtp","TP8 + MTP（EAGLE 5 / 1 / 6）","cookbook 的 Low Latency 档：用 checkpoint 自带的 MTP 头，--speculative-algorithm EAGLE，5 步、top-k 1、6 个 draft token。cookbook 说 MTP 和 DFlash2 在这个模型上都不和 DP-Attention 一起用；高吞吐档建议关投机。接受长度按假设取。",X({N:8,dpA:1,moePar:"tp",B:48,specK:5,accept:1.6}));
         add("dep","DP-attention 8 + DeepEP 8","通用 DP-attention + DeepEP，官方配方里这种形态只出现在 Ascend 上。",X({N:8,dpA:8,moePar:"deepep",B:64}));
       } else {
         add("rec","TP4 × 16 个实例","SGLang / vLLM 的 GB200 配方都是 TP4。",X({N:4,dpA:1,moePar:"tp",B:64}));
@@ -61,7 +61,7 @@ function infPresets(eng, mk, topoKey){
       }
     } else {
       add("rec","TP1，每卡一个实例，FP8 KV","SGLang Qwen3.8-27B cookbook：所有支持的卡上都单卡跑，每个单元都钉死 --kv-cache-dtype fp8_e4m3；--mamba-full-memory-ratio 要按平均请求长度设，否则 GDN 状态池会限住并发。",X({N:1,dpA:1,moePar:"tp",B:96,kvDt:"fp8"}));
-      add("mtp","TP1 + MTP（EAGLE 3 / 1 / 4）","--speculative-algorithm EAGLE --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4（checkpoint 自带 MTP 头）。开投机后 max_running_requests 被限到 48。",X({N:1,dpA:1,moePar:"tp",B:48,kvDt:"fp8",specK:3,accept:1.8}));
+      add("mtp","TP1 + MTP（EAGLE 3 / 1 / 4）","--speculative-algorithm EAGLE --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4（checkpoint 自带 MTP 头）。开投机后，没有显式设 --max-running-requests 时 max_running_requests 默认设为 48（EAGLE / MTP / DFlash / DSpark 都一样，可以手动调高）。",X({N:1,dpA:1,moePar:"tp",B:48,kvDt:"fp8",specK:3,accept:1.8}));
       add("tp2","TP2","两卡一个实例，对照用。",X({N:2,dpA:1,moePar:"tp",B:128,kvDt:"fp8"}));
     }
   } else if(eng==="vllm"){

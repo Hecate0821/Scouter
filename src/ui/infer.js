@@ -11,7 +11,7 @@ function syncInfRack(){
   fillOpts($("i-moepar"),MOEPAR[c.engine],c.moePar);
   presetSel($("i-preset"),$("i-preset-src"),infPresets(c.engine,S.modelKey,S.topo),S.infPreset);
   $("i-engine-note").textContent={
-    sglang:"一步要么全是 prefill，要么全是 decode；decode graph 包含 lm_head；开投机后并发限 48；Qwen / Kimi 融合 AR + RMSNorm。",
+    sglang:"一步要么全是 prefill，要么全是 decode；decode graph 包含 lm_head；开投机后并发默认 48（可调高）；Qwen / Kimi 融合 AR + RMSNorm。",
     vllm:"V1 默认把 prefill chunk 和 decode 放在同一步（这里分开显示）；graph 按 token 计；lm_head 和采样在 graph 外；开 DP 时每步一次 CPU 同步。",
     tokenspeed:"decode graph 只到 160（投机 80），超过就 eager；sampler 在 graph 里；默认 replicated-input EP；除 GLM 外都融合 AR。",
     titan:"vLLM 跑 torchtitan 的模型定义：没有 AR 融合、MLA 不 absorb、没有 prefill graph；batch-invariant 模式下训推 log-prob 逐位一致。"}[c.engine];
@@ -134,7 +134,7 @@ function renderInfer(){
   if(dec&&!r.graph) A.push("这一步走 eager，"+r.nKern+" 个 kernel 每个 "+g.launchUs+" µs 的 CPU launch，合计 "+V(fT(r.nKern*g.launchUs*1e-6))+(r.cpuLaunch>r.gpu?"，比 GPU 时间还长，step 被 CPU 卡住。":"。"));
   if(r.tpA>1) A.push("attention TP="+fI(r.tpA)+"，层边界的 all-reduce "+(r.fused?"和残差 + RMSNorm 融合成一个 kernel":"没有融合，norm 单独一个 kernel")+"。"+(m.full.kind!=="gqa"?"MLA latent KV 每卡复制一份"+(c.dcp>1?"，DCP="+c.dcp+" 把它切成 "+c.dcp+" 份":"，TP 再大也不省 KV")+"。":m.full.Hkv<r.tpA?"KV 头只有 "+m.full.Hkv+" 个，TP="+fI(r.tpA)+" 时每卡复制。":""));
   if(c.engine==="tokenspeed" && dec && r.Breq>E.maxGraph(hw,r.specK>0)) A.push("TokenSpeed 的 graph 只到 "+E.maxGraph(hw,r.specK>0)+"，再加并发就是 eager，曲线在这里跳一下。");
-  if(c.engine==="sglang" && r.specK>0) A.push("SGLang 开投机后 max_running_requests 被限到 48，大并发吞吐上不去；它换来的是单请求延迟。");
+  if(c.engine==="sglang" && r.specK>0) A.push("SGLang 开投机后，没有显式设 --max-running-requests 时并发默认只有 48，大并发吞吐上不去；它换来的是单请求延迟。要跑大并发可以手动调高，但验证宽度乘到每个 GEMM 上，并发越大投机越不划算（见推理 · 投机解码的右图）。");
   if(c.engine==="vllm") A.push("vLLM 默认混批：真实服务里 decode 这一步常常带着一个 prefill chunk，单步时间会是两者之和。"+(r.dpA>1?"开 DP 后每步多一次 CPU 侧同步。":""));
   if(r.moePar==="replicated"&&r.N>1) A.push("TokenSpeed 的 replicated-input EP：每卡对全部 "+fInt(r.Tg)+" 行做 router，只算本地 expert，结果并进下一层的 all-reduce，不需要 a2a。");
   $("i-analysis").innerHTML=ul(A);
