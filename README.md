@@ -1,5 +1,18 @@
 # Scouter
 
+```text
+   .--.    ______________________________
+  |    |==|                              |
+  | () |  |  FLOP/s          __________  |
+  |    |  |                 /            |
+  |    |  |               /    ridge     |
+  |    |  |             /                |
+  |    |  |___________/__________________|
+  |    |==|                              |
+   '--'   |______________________________|
+                S C O U T E R
+```
+
 An interactive roofline lab for MoE training and inference. Pick a model and a GPU, and Scouter estimates a decode step, a chunked prefill or a post-training step kernel by kernel. It then shows where each attention and MLP module sits on the roofline, and how changing the architecture moves it.
 
 **Live:** https://hecate0821.github.io/Scouter/ · 中文说明：[README.zh.md](README.zh.md)
@@ -22,7 +35,7 @@ The layout follows a developer console:
 - **Parameter panel** on the right: the controls for the current page.
 - **CLI** and **JSON** buttons: show the `Scouter.*` call behind the current page, as a `tools/scouter.js` command and as its output.
 - **Copy link:** copies the URL. It keeps the context, for example `?model=kimik3&hw=B200&src=ideal#infer/step`.
-- **Light / Dark:** switches the theme. It shares its setting with [hecate0821.github.io](https://hecate0821.github.io/), and so do the fonts and colors.
+- **Light / Dark:** switches the theme. It shares its setting and colors with [hecate0821.github.io](https://hecate0821.github.io/). Text uses the system sans-serif font, with a sans-serif (hei) font for Chinese.
 
 | Tab | What it shows |
 |---|---|

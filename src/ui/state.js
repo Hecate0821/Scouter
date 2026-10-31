@@ -4,6 +4,8 @@ const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"H200", topo:"hgx8
   infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"", anchor:"",
   arch:Object.assign({ mod:"full" }, Arch.defaults(MODELS.qwen35)),
   q:{ hw:"B200", scheme:"nvfp4", fuse:"fused", shape:"up", N:1024, K:2048, M:64, T:512, ep:8, align:"auto", recipe:"mxfp8", Mt:8192, nMicro:4, tokFused:false, roll:0.7, deqRate:40, BM:128 } };
+/* 低精度几页只算 Blackwell：顶栏选的是 Blackwell 就用它，否则按 B200 算（q-hw-note 会说明） */
+Object.defineProperty(S.q, "hw", { enumerable:true, get(){ return HW[S.hw].sm>=100 ? S.hw : "B200"; } });
 function getP(path){ return path.split(".").reduce((o,k)=>o==null?o:o[k], S); }
 function setP(path,v){ const ks=path.split("."); let o=S; for(let i=0;i<ks.length-1;i++) o=o[ks[i]]; o[ks[ks.length-1]]=v; }
 

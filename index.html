@@ -4,9 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title data-i18n="shell.title"></title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap">
 <script src="src/ui/theme.js"></script>
 <link rel="stylesheet" href="css/roofline.css">
 </head>
@@ -202,12 +199,6 @@
 
   <!-- 低精度：按页面拆开 -->
   <div data-rack="infer/quant train/quant rl/lowprec rl/qat">
-    <h3 data-i18n="infer.rack.h3_3"></h3>
-    <select data-bind="q.hw" class="full" data-i18n-attr="aria-label=infer.rack.attr.q.hw.aria-label">
-      <option value="B200" data-i18n="infer.rack.opt.q.hw.B200"></option>
-      <option value="B300" data-i18n="infer.rack.opt.q.hw.B300"></option>
-      <option value="GB200" data-i18n="infer.rack.opt.q.hw.GB200"></option>
-      <option value="GB300" data-i18n="infer.rack.opt.q.hw.GB300"></option></select>
     <p class="hint" id="q-hw-note"></p>
   </div>
   <div data-rack="infer/quant">

@@ -1,11 +1,11 @@
 /* Layout：左边是侧栏导航（按页分组），右边一列是顶栏（模型 / GPU / 拓扑 / 口径 / 命令行）、页头，再往下是内容和右侧参数栏。
-   字体和配色跟 hecate0821.github.io 一致：Source Serif 4（中文 Noto Serif SC），暖色深 / 浅两套，蓝色强调，直角、细线、不用阴影。
+   字体用系统无衬线（和 Claude 桌面应用一样：英文系统 UI 字体，中文黑体），配色跟 hecate0821.github.io：暖色深 / 浅两套，蓝色强调，直角、细线、不用阴影。
    图表颜色只编码两件事：算子类别（attention / linear / MoE / 通信）和瓶颈（memory 青、compute 橙、通信 红）。 */
 :root,[data-theme="dark"]{
-  --bg:#161310; --panel:#1c1814; --side:#12100d; --ink:#f4efe5; --muted:#bdb3a4; --faint:#746a5f; --grid:#2a241f; --line:#3a332c; --soft:#221d18;
+  --bg:#0d0c0a; --panel:#151310; --side:#090807; --ink:#f4efe5; --muted:#b5ab9c; --faint:#6f665b; --grid:#221e1a; --line:#312b25; --soft:#1a1714;
   --accent:#6aa0ff; --accent-soft:#2b3a5c; --mem:#4fc1b8; --cmp:#e8a04c; --net:#ff7a6b; --ok:#8cc97a; --warn:#ff7a6b;
   --c-attn:#6aa0ff; --c-lin:#b39cf0; --c-moe:#e8a04c; --c-lm:#a39886; --c-ar:#4fc1b8; --c-dp:#8fd8cf; --c-a2a:#ff7a6b; --c-fsdp:#8cc97a; --c-cp:#e07fbf;
-  --c-w:#6aa0ff; --c-e:#e8a04c; --c-kv:#4fc1b8; --c-st:#b39cf0; --c-act:#e07fbf; --c-free:#2a241f; --c-sync:#bdb3a4; --c-oth:#6f655a;
+  --c-w:#6aa0ff; --c-e:#e8a04c; --c-kv:#4fc1b8; --c-st:#b39cf0; --c-act:#e07fbf; --c-free:#221e1a; --c-sync:#bdb3a4; --c-oth:#6f655a;
   --s1:#6aa0ff; --s2:#ff8a5c; --s3:#4fc1a0; --s4:#e8b04c; --s5:#e88bb0; --s6:#8cc97a; color-scheme:dark;
 }
 [data-theme="light"]{
@@ -16,14 +16,14 @@
   --s1:#2a62d0; --s2:#d0562a; --s3:#1a8f6a; --s4:#b88400; --s5:#c4457a; --s6:#4f8a1f; color-scheme:light;
 }
 :root{
-  --f-display:"Source Serif 4","Noto Serif SC","Songti SC",Georgia,serif;
-  --f-body:"Source Serif 4","Noto Serif SC","Songti SC",Georgia,serif;
-  --f-mono:ui-monospace,"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace,"Noto Serif SC";
+  --f-sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC","Source Han Sans SC",sans-serif;
+  --f-display:var(--f-sans); --f-body:var(--f-sans);
+  --f-mono:ui-monospace,"SFMono-Regular","Cascadia Mono",Consolas,"Liberation Mono",Menlo,monospace,"PingFang SC","Microsoft YaHei",sans-serif;
   --side-w:236px; --rack-w:300px; --ctx-h:52px;
 }
 *{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15.5px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 h1{font-family:var(--f-display);font-weight:600;font-size:clamp(26px,3.2vw,34px);line-height:1.12;letter-spacing:-.02em;margin:0;text-wrap:balance}
 
 /* ---------- 外壳 ---------- */

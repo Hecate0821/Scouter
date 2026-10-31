@@ -1,5 +1,18 @@
 # Scouter：MoE 训推 Roofline 实验台
 
+```text
+   .--.    ______________________________
+  |    |==|                              |
+  | () |  |  FLOP/s          __________  |
+  |    |  |                 /            |
+  |    |  |               /    ridge     |
+  |    |  |             /                |
+  |    |  |___________/__________________|
+  |    |==|                              |
+   '--'   |______________________________|
+                S C O U T E R
+```
+
 选一个模型和一种 GPU，Scouter 按 kernel 推算一步 decode、一次 chunked prefill 或一个后训练 step，再把每个 attention 模块、MLP 模块放到 roofline 上，看改架构会把它推到哪里。
 
 **在线：** https://hecate0821.github.io/Scouter/ · English: [README.md](README.md)
@@ -22,7 +35,7 @@
 - **右侧参数栏**：这一页的控件。
 - **命令行 / JSON 按钮**：显示这一页背后的 `Scouter.*` 调用，分别是 `tools/scouter.js` 命令和它的输出。
 - **复制链接**：复制地址，地址里带着上下文，比如 `?model=kimik3&hw=B200&src=ideal#infer/step`。
-- **浅色 / 深色**：切换主题。主题设置和 [hecate0821.github.io](https://hecate0821.github.io/) 共用，字体和配色也和它一致。
+- **浅色 / 深色**：切换主题。主题设置和配色跟 [hecate0821.github.io](https://hecate0821.github.io/) 一致；字体用系统无衬线字体，中文用黑体。
 
 | 页面 | 内容 |
 |---|---|

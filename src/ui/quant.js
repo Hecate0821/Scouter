@@ -48,8 +48,8 @@ function qHead(){
   fillOpts($("q-scheme"), Q.ORDER.map(k=>[k,t("quant.head.schemeOpt", {short:SC[k].short, name:SC[k].name})]), q.scheme);
   if(!Q.RORDER.includes(q.recipe)) q.recipe="mxfp8";
   fillOpts($("q-recipe"), Q.RORDER.map(k=>[k,Q.RECIPES[k].name]), q.recipe);
-  $("q-hw-note").textContent = t("quant.head.hwNote", {name:hw.name, bf16:hw.bf16/1000, fp8:hw.fp8/1000, fp4:hw.fp4/1000, hbm:hw.hbm/1000, mem:hw.mem,
-    e2e:/^GB/.test(q.hw) ? t("quant.head.e2eNvl72") : t("quant.head.e2eHgx")});
+  const fb=q.hw!==S.hw; $("q-hw-note").hidden=!fb;
+  if(fb) $("q-hw-note").textContent = t("quant.head.hwFallback", {cur:HW[S.hw].name, name:hw.name});
   return { q, hw, g:S.glob, Q, SC };
 }
 const qMs = (hw,g,N,K,o) => { const Ms={}; Quant.ORDER.forEach(k=>Ms[k]=Quant.crossover(hw,g,k,N,K,o)); return Ms; };
