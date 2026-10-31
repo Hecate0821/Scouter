@@ -85,7 +85,7 @@ function planeCall(){
   if(JSON.stringify(S.model) !== JSON.stringify(MODELS[S.modelKey])) q.model = S.model;       // 改过的模型整个带上
   const basis = S.src === "ideal" ? "ideal" : "modeled", g = diffOf(S.glob, Common.BASIS[basis]);
   const calc = o => Object.assign(q, basis === "ideal" ? { basis } : {}, Object.keys(g).length ? { g } : {}, o);
-  if(key === "train/calib") return ["calib", Object.assign({ set: calibSel }, basis === "ideal" ? { basis } : {}, Object.keys(g).length ? { g } : {})];
+  if(key === "train/calib" || key === "infer/calib") return ["calib", Object.assign({ set: CV[S.tab].sel }, basis === "ideal" ? { basis } : {}, Object.keys(g).length ? { g } : {})];
   if(S.src === "measured" || key === "appendix/data") return ["sets", {}];
   if(key.startsWith("arch/")){ const a = Object.assign({}, S.arch); delete a.mod; return ["module", calc(diffOf(a, Arch.defaults(S.model)))]; }
   if(key.startsWith("train/")) return ["train", calc(diffOf(S.trn, Object.assign({}, Train.BASE, { N: TOPO[S.topo].gpus })))];

@@ -112,7 +112,7 @@ const DBJ = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "db.json"), "utf8
 const where = (p, f) => Object.keys(f).every(k => Array.isArray(f[k]) ? f[k].includes(p[k]) : p[k] === f[k]);
 const calib = [];
 for (const [id, K] of Object.entries(E.Calib.SETS)) {
-  const pts = DBJ.points.filter(p => p.set === id && (!K.where || where(p, K.where)));
+  const pts = DBJ.points.filter(p => p.set === (K.set || id) && (!K.where || where(p, K.where)));
   if (!pts.length) bad(`Calib.SETS.${id}`, "matches no data point");
   const ratios = [];
   for (const p of pts) run(`calib ${p.id}`, () => {

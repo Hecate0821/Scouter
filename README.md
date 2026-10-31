@@ -29,9 +29,9 @@ The layout follows a developer console:
 | Overview | One decode step and one post-training step of the same model, side by side. |
 | Model architecture | **Model overview:** the layer stack (full, sliding-window and linear attention; MoE and dense MLP), one card per module, parameter counts, and KV/state cache versus context. **One module:** a diagram of the mechanism; sliders for its architecture knobs; the module's roofline as batch, context or sequence length changes, with the unedited preset as a ghost; throughput curves; the kernel list; and links to the code each assumption follows. **Compare:** every model's modules on one roofline, attention and MLP curves, and the per-layer time split. |
 | Post-training | One step (fwd, dgrad, wgrad, recompute, communication, optimizer, memory). Parallelism: every collective in a one- or two-layer sample, with FSDP, CP and EP shown one dimension at a time. Low-precision recipes: Megatron, Transformer Engine and torchtitan defaults only. A comparison with anonymized measurements. |
-| Inference | One decode or prefill step. Deployment and parallelism: TP, DP-attention, EP and PD disaggregation. Low-precision inference. Speculative decoding: MTP, EAGLE-3, DFlash and DSpark. |
+| Inference | One decode or prefill step. Deployment and parallelism: TP, DP-attention, EP and PD disaggregation. Low-precision inference. Speculative decoding: MTP, EAGLE-3, DFlash and DSpark. **Against measurements:** the SGLang cookbook's published benchmark rows replayed as closed-loop runs (TPOT and TTFT), and a profiler trace you load, compared with the step kernel category by kernel category. |
 | RL | Train/inference mismatch. Deterministic rollout: batch invariance, reproducibility and bitwise train/inference match. Low-precision rollout and weight sync. Low-precision training and QAT. |
-| Appendix | Measured H200 kernels against the ideal and modeled rooflines, public data points and the past year's releases, quantization basics, and the modeling method with the open-source code it follows. |
+| Appendix | Measured H200 kernels against the ideal and modeled rooflines, with Nsight-Compute-style SOL efficiency; the per-kernel-class efficiency table and the public number behind each cell; public data points with their confidence, and the past year's releases; quantization basics; and the modeling method with the open-source code it follows. |
 
 Addresses look like `#tab/subtab/anchor`, for example `#arch/module/lin`, `#infer/spec` or `#train/par/cp`. Old addresses such as `#par`, `#quant`, `#public` and `#appendix/models` redirect to their new place.
 
@@ -72,6 +72,9 @@ The roofline model:
 - **Time per kernel:** max(FLOPs / (peak × 0.7), bytes / (HBM bandwidth × 0.8), kernel floor).
 - **Ridge point:** peak × 0.7 / (HBM × 0.8).
 - **Peaks used:** attention cores run at the BF16 peak. GEMMs run at the peak for their weight precision, with FP8 and MXFP4 / NVFP4 mapped to the FP8 and FP4 peaks.
+- **Per kernel class:** in inference, GEMMs and attention cores take their efficiency from a small table by class, precision and GPU generation (Hopper, Blackwell SM100, Blackwell Ultra SM103). Each cell names the public or measured number it comes from, for example cuBLAS BF16 on B200, FlashAttention-3 / 4, FlashMLA, DeepGEMM and CUTLASS SM103 NVFP4. Setting `kEff` to 0 goes back to the flat 0.7 / 0.8.
+- **Kernel-level overheads:** 0.45 µs of idle time between kernels inside a CUDA graph, removed by programmatic dependent launch (`pdl`), following [vLLM #64846](https://github.com/vllm-project/vllm/pull/64846) and [FlashInfer #8135](https://github.com/flashinfer-ai/flashinfer/pull/8135); NVFP4 / MXFP4 MoE pads the expert hidden size to a multiple of 256 on Blackwell, following [vLLM #39510](https://github.com/vllm-project/vllm/pull/39510).
+- **Serving benchmark:** `serve` runs `conc` requests with `isl` input and `osl` output tokens in a closed loop. TPOT is the decode step plus the other requests' prefills spread over the output. Against the 18 calibratable SGLang cookbook rows (GLM-5.3-Flash on GB300, Kimi K3 on B300), the median predicted / measured TPOT is 0.96 and 12 rows are within ±25%. MTP at concurrency 1 is about 2.3× too fast, because per-step scheduling and draft overheads are not modeled. Measured TTFT is 55–185 ms above the model, which covers only GPU time.
 
 The mechanism diagrams reimplement the visual ideas of [Attention Lab](https://divagr.com/attention-lab/), credited under each diagram.
 
@@ -83,6 +86,9 @@ All numbers come from one data plane: the models in `src/engine/`, the data poin
 node tools/scouter.js infer --model kimik3 --hw B200 --basis ideal --B 128 --pick stepT,tComp
 node tools/scouter.js sweep --run train --model qwen35 --over.ep 4,8 --pick stepT,mfu
 node tools/scouter.js points --set inference_public --where.engine SGLang
+node tools/scouter.js serve --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024 --pick tpot,ttft0,tokPerGpu
+node tools/scouter.js calib --set cookbook_tpot --pick median,n
+node tools/scouter.js trace --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json
 ```
 
 [AGENTS.md](AGENTS.md) lists every call, its options and the fields it returns.
@@ -105,6 +111,7 @@ src/engine/             the models: tables and pure functions; no DOM, no text, 
   arch.js               architecture explorer: step kernels grouped into attention / MLP modules per layer, and the
                         mechanism quantities each diagram draws
   calib.js              calibration: which measured points each data set reproduces, and the prediction for each
+  trace.js              a profiler trace's kernels grouped by category and compared with one step
   node.js               loads the engine in Node (one vm context), for tests
 src/data/
   db.js                 generated: the data-point store (const DB_RAW)
@@ -124,9 +131,11 @@ data/
   db.json               generated: canonical form, one point per line
 tools/build_db.py       builds data/db.json and src/data/db.js
 tools/scouter.js        the data plane from the command line, printing JSON
+tools/import_cookbook.py   regenerates data/public/sglang_cookbook.json from the SGLang cookbook at a pinned commit
+tools/import_ncu.py     turns an Nsight Compute raw CSV into an anonymized kernel data set
 sim/                    separate Python project: the training layouts on CPU gloo processes with PyTorch FSDP2 / TP / EP,
                         recording every collective as a JSON trace (sim/README.md)
-tests/                  Node checks: engine, data plane, sim, i18n, shell, regression and snapshot (jsdom), timing
+tests/                  Node checks: engine, data plane, FLOPs parity, sim, i18n, shell, regression and snapshot (jsdom), timing
 AGENTS.md               the data plane for agents: calls, options, returned fields
 docs/engine.md          the engine's interface and rules
 docs/i18n.md            how UI text and languages work
@@ -142,6 +151,7 @@ docs/i18n.md            how UI text and languages work
 
 - **Anonymized points** (`origin: "anon"`) are measured numbers. They keep only the measurement conditions and the numbers, with no source. All points in a set share the same dims and metrics. The `id` is built from the dims.
 - **Public points** (`origin: "public"`) come from public PRs, blogs, papers, release notes and docs, and carry `src` / `url`. The build computes the weight `w` of each quantization evidence point from recency × hardware match × source type. The reference date is `sets.quant_evidence.as_of`.
+- **Confidence:** every set is `measured` (our anonymized sets), `reported` (a number stated upstream) or `derived` (computed from published numbers, or measured under a simulated condition). A row can override its set's. Public sets carry `as_of`, the date they were curated or the upstream commit was read.
 - **Releases** are LMSYS blog posts and SGLang / vLLM / slime / Miles / AReaL GitHub releases from 2025-11 to 2026-10. Each is keyed `releases:<project>:<version>`. Pages look up release links by project and version, and a missing entry is an error.
 
 The build fails if:
@@ -157,7 +167,11 @@ To add a public number, add a row (`id`, `date`, `src`, `url`, numbers) to the m
 uv run tools/build_db.py                     # regenerate data/db.json and src/data/db.js
 uv run tools/build_db.py --check             # only check that the generated files are current
 uv run tools/build_db.py --sqlite x.sqlite   # also export SQLite (one view per set) for ad-hoc queries
+uv run --no-project tools/import_cookbook.py --ref <sha>        # re-import the SGLang cookbook benchmark rows
+uv run --no-project tools/import_ncu.py report.csv --name b200_moe --hw B200 --dtype fp4 --conditions "..."
 ```
+
+`tools/import_ncu.py` documents the `ncu --csv --page raw` command to run first. Each kernel becomes a point with its duration and DRAM bytes; with `--flops` it also gets analytic FLOPs. `Scouter.kernels --set <name>` then gives each kernel's SOL efficiency, and the profile (tool version, clocks, replay mode, metrics) is kept with the set.
 
 Pages read points with queries like `DB.where("cp_full_model", {model: "qwen35", cp: 8})`. Data text is written in the data files; translations of it go in `locales/<lang>/data.js` (see [docs/i18n.md](docs/i18n.md)).
 
@@ -165,12 +179,13 @@ Pages read points with queries like `DB.where("cp_full_model", {model: "qwen35",
 
 ```
 cd tests && npm install
-npm test               # engine + plane + sim + i18n + shell + regression
+npm test               # engine + plane + flops + sim + i18n + shell + regression
 npm run engine         # the engine alone in Node: every model × GPU × topology × engine / framework / precision / module;
                        # no throw, no NaN, text only as messages; prints the calibration medians
 npm run plane          # the data plane alone in Node: every call under both bases, ideal never slower than modeled,
                        # tools/scouter.js prints what the API returns
 npm run shell          # the console: every page under every source, and page = data plane = printed CLI command
+npm run flops          # every model's matmul FLOPs, written out again from the config with textbook formulas, against the engine
 npm run sim            # the engine's training collectives against the PyTorch traces in sim/traces (no Python needed)
 npm run i18n           # no UI text in code (checked with a pseudo-localized render of every page); every key used exists
 npm run regression     # every model × framework × preset, then every page: reports NaN / undefined and script errors

@@ -29,9 +29,9 @@
 | 总览 | 同一个模型的推理一步 decode 和后训练一个 step 并排对比。 |
 | 模型架构 | **模型总览**：层的排布（全注意力 / 滑窗 / 线性注意力，MoE / dense MLP）、每个模块一张卡片、参数量、KV 与状态缓存随上下文的变化。**一个模块**：机制示意图，架构旋钮（滑块），这个模块随 batch、上下文或序列长度变化在 roofline 上的轨迹（改过参数时原预设作为虚影），吞吐曲线，算子表，以及每条假设对应的开源代码。**跨模型对比**：所有模型的模块画在同一张 roofline 上，attention 和 MLP 的曲线，每层时间拆分。 |
 | 后训练 | 一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）；并行（一两层样例里每次通信的顺序和字节，FSDP、CP、EP 一维一维拆开）；低精度训练（只列 Megatron / TE / torchtitan 的默认配方）；和匿名实测对照。 |
-| 推理 | 一步 decode / prefill；部署与并行（TP、DP-attention、EP、PD 分离的取舍）；低精度推理；投机解码（MTP、EAGLE-3、DFlash、DSpark）。 |
+| 推理 | 一步 decode / prefill；部署与并行（TP、DP-attention、EP、PD 分离的取舍）；低精度推理；投机解码（MTP、EAGLE-3、DFlash、DSpark）。**和实测对照**：SGLang cookbook 公开的压测行按闭环压测复现（TPOT、TTFT）；也可以载入一份 profiler trace，按 kernel 类别和一步的估计逐类对比。 |
 | RL | 训推不一致；确定性 rollout（batch invariance、可复现、训推逐位一致）；低精度 rollout 和权重同步；低精度训练与 QAT。 |
-| 附录 | 实测 H200 kernel 和理想 / 建模屋顶的对照，公开数据与过去一年的发布；量化基础；建模口径和参考的开源实现。 |
+| 附录 | 实测 H200 kernel 和理想 / 建模屋顶的对照（按 Nsight Compute 的 SOL 口径给效率）；按 kernel 类别的效率表和每一格背后的公开数字；公开数据（带可信度）与过去一年的发布；量化基础；建模口径和参考的开源实现。 |
 
 地址是 `#页/子页/锚点`，比如 `#arch/module/lin`、`#infer/spec`、`#train/par/cp`；旧地址（`#par`、`#quant`、`#public`、`#appendix/models` 等）会跳到新位置。
 
@@ -72,6 +72,9 @@ roofline 模型：
 - **每个 kernel 的时间：** max(FLOPs / (峰值 × 0.7), 字节 / (HBM 带宽 × 0.8), kernel 下限)。
 - **ridge 点：** 峰值 × 0.7 / (HBM × 0.8)。
 - **用哪个峰值：** 注意力核心按 BF16 峰值；GEMM 按权重精度的峰值，FP8、MXFP4 / NVFP4 分别对应 FP8、FP4 峰值。
+- **按 kernel 类别：** 推理里的 GEMM 和注意力核心按类别、精度和 GPU 代际（Hopper、Blackwell SM100、Blackwell Ultra SM103）查一张小表取效率，每一格写明来自哪个公开或实测数字（比如 B200 上的 cuBLAS BF16、FlashAttention-3 / 4、FlashMLA、DeepGEMM、CUTLASS SM103 NVFP4）。`kEff` 设成 0 就回到统一的 0.7 / 0.8。
+- **kernel 级开销：** CUDA graph 里相邻 kernel 之间空 0.45 µs，开 PDL（`pdl`）就没有（依据 [vLLM #64846](https://github.com/vllm-project/vllm/pull/64846)、[FlashInfer #8135](https://github.com/flashinfer-ai/flashinfer/pull/8135)）；Blackwell 上 NVFP4 / MXFP4 的 MoE 把 expert 隐藏维补齐到 256 的倍数（依据 [vLLM #39510](https://github.com/vllm-project/vllm/pull/39510)）。
+- **压测估计：** `serve` 按闭环压测算：`conc` 条请求并发，每条 `isl` 输入、`osl` 输出；TPOT = decode 一步 + 其他请求的 prefill 摊到输出上。和 SGLang cookbook 里能校准的 18 行（GB300 上的 GLM-5.3-Flash、B300 上的 Kimi K3）比，TPOT 预测 / 实测的中位数 0.96，12 行在 ±25% 以内；并发 1 开 MTP 时快了约 2.3 倍，因为每步的调度和 draft 开销没算。TTFT 实测比本页多 55–185 ms，本页只算 GPU 时间。
 
 机制示意图借鉴并重新实现了 [Attention Lab](https://divagr.com/attention-lab/) 的画法，每张图下方注明出处。
 
@@ -83,6 +86,9 @@ roofline 模型：
 node tools/scouter.js infer --model kimik3 --hw B200 --basis ideal --B 128 --pick stepT,tComp
 node tools/scouter.js sweep --run train --model qwen35 --over.ep 4,8 --pick stepT,mfu
 node tools/scouter.js points --set inference_public --where.engine SGLang
+node tools/scouter.js serve --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024 --pick tpot,ttft0,tokPerGpu
+node tools/scouter.js calib --set cookbook_tpot --pick median,n
+node tools/scouter.js trace --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json
 ```
 
 每个调用、选项和返回字段见 [AGENTS.md](AGENTS.md)。
@@ -104,6 +110,7 @@ src/engine/             计算模型：数据表加纯函数，不碰 DOM、不�
   quant.js              低精度 GEMM、一层 MoE、训练三遍 GEMM
   arch.js               架构页：把一步里的 kernel 按层归到 attention / MLP 模块，以及示意图用的机制量
   calib.js              和实测对照：每个数据集复现哪些实测点、预测怎么算
+  trace.js              把 profiler trace 里的 kernel 按类别归并，和一步的估计对比
   node.js               在 Node 里加载计算核心（一个 vm 上下文），给测试用
 src/data/
   db.js                 生成文件：数据点库（const DB_RAW）
@@ -123,9 +130,11 @@ data/
   db.json               生成文件：规范版本，每个点一行
 tools/build_db.py       生成 data/db.json 和 src/data/db.js
 tools/scouter.js        命令行调用数据平面，输出 JSON
+tools/import_cookbook.py   从固定 commit 的 SGLang cookbook 重新生成 data/public/sglang_cookbook.json
+tools/import_ncu.py     把 Nsight Compute 的原始 CSV 导成一个匿名 kernel 数据集
 sim/                    独立的 Python 项目：在 CPU gloo 进程上用 PyTorch FSDP2 / TP / EP 跑训练布局，
                         把每一次集合通信记成 JSON trace（sim/README.md）
-tests/                  Node 检查：计算核心、数据平面、sim、i18n、外壳、回归和快照（jsdom）、渲染时间
+tests/                  Node 检查：计算核心、数据平面、FLOPs 对照、sim、i18n、外壳、回归和快照（jsdom）、渲染时间
 AGENTS.md               给 agent 的数据平面说明：调用、选项、返回字段
 docs/engine.md          计算核心的接口和规则
 docs/i18n.md            界面文字与多语言
@@ -141,6 +150,7 @@ docs/i18n.md            界面文字与多语言
 
 - **匿名数据点**（`origin: "anon"`）：自己测的数字。只保留测量条件（`conditions`）和数字，不带出处。每个数据集的点有同一组维度和指标，`id` 由维度拼成。
 - **公开数据点**（`origin: "public"`）：公开的 PR、博客、论文、发布说明和文档里的数字，点上带 `src` / `url`。量化证据的权重 `w` 在构建时按“时效 × 硬件匹配 × 来源类型”算出，参照日期记在 `sets.quant_evidence.as_of`。
+- **可信度**：每个数据集是 `measured`（自己测的匿名数据）、`reported`（上游原文写的数字）或 `derived`（从公开数字算出来的，或在模拟条件下测的）之一，单行可以另标。公开数据集带 `as_of`：整理日期，或读上游 commit 的日期。
 - **发布**（`releases`）：2025-11 到 2026-10 的 LMSYS 博客和 SGLang / vLLM / slime / Miles / AReaL 的 GitHub release，每条是 `releases:<项目>:<版本>`。页面里按项目和版本取链接，库里没有的条目会直接报错。
 
 构建时会检查：
@@ -156,7 +166,11 @@ docs/i18n.md            界面文字与多语言
 uv run tools/build_db.py                     # 重新生成 data/db.json 和 src/data/db.js
 uv run tools/build_db.py --check             # 只检查生成结果是否最新
 uv run tools/build_db.py --sqlite x.sqlite   # 另导出 SQLite（每个数据集一个视图），方便临时查询
+uv run --no-project tools/import_cookbook.py --ref <sha>        # 重新导入 SGLang cookbook 的压测行
+uv run --no-project tools/import_ncu.py report.csv --name b200_moe --hw B200 --dtype fp4 --conditions "..."
 ```
+
+先跑哪条 `ncu --csv --page raw` 命令写在 `tools/import_ncu.py` 开头。每个 kernel 成为一个点，带时长和 DRAM 字节；给了 `--flops` 还有解析 FLOPs。之后 `Scouter.kernels --set <名字>` 给出每个 kernel 的 SOL 效率，测量条件（工具版本、时钟、replay 方式、指标）和数据集存在一起。
 
 页面里用 `DB.where("cp_full_model", {model: "qwen35", cp: 8})` 这样的查询取点。数据的文字写在数据文件里，译文放在 `locales/<语言>/data.js`（见 [docs/i18n.md](docs/i18n.md)）。
 
@@ -164,11 +178,12 @@ uv run tools/build_db.py --sqlite x.sqlite   # 另导出 SQLite（每个数据�
 
 ```
 cd tests && npm install
-npm test               # engine + plane + sim + i18n + shell + regression
+npm test               # engine + plane + flops + sim + i18n + shell + regression
 npm run engine         # 在 Node 里单独跑计算核心：每个模型 × GPU × 拓扑 × 引擎 / 框架 / 精度 / 模块；
                        # 不抛错、没有 NaN、文字都是消息；打印和实测对照的中位数
 npm run plane          # 在 Node 里单独跑数据平面：两种口径下的每个调用，理想屋顶不比建模慢，命令行输出和接口一致
 npm run shell          # 界面外壳：每页在三种口径下都能显示，页面 = 数据平面 = 打印出来的命令
+npm run flops          # 每个模型的矩阵乘 FLOPs 按配置用教科书公式重写一遍，和计算核心对照
 npm run sim            # 训练通信和 sim/traces 里 PyTorch 实际发出的集合通信对照（不需要 Python）
 npm run i18n           # 代码里没有界面文字（每一页做一遍伪本地化渲染来查）；用到的 key 都存在
 npm run regression     # 所有模型 × 框架 × 预设跑一遍，再把每一页渲染一遍：报 NaN / undefined 和脚本错误

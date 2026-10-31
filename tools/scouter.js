@@ -8,12 +8,16 @@
 //   node tools/scouter.js sweep    --run infer --model qwen35 --over.B 1,8,64,256 --pick stepT
 //   node tools/scouter.js sets                                      measured data sets (origin, stage, hardware, size)
 //   node tools/scouter.js points   --set inference_public --where.engine SGLang
-//   node tools/scouter.js kernels                                   measured GEMM / copy points against the ideal and modeled rooflines
-//   node tools/scouter.js calib    --set h200_kernels --basis ideal  model against measured points
+//   node tools/scouter.js kernels                                   measured GEMM / copy points against the ideal and modeled rooflines, SOL η
+//   node tools/scouter.js eff                                       per-kernel-class efficiency table and the data point behind each cell
+//   node tools/scouter.js calib    --set h200_kernels --basis ideal  model against measured points (also cookbook_tpot, cookbook_ttft)
+//   node tools/scouter.js serve    --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   closed-loop benchmark estimate
+//   node tools/scouter.js trace    --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   measured kernels by category
 // Options: --model --hw --topo pick the tables; --basis ideal|modeled (default modeled); --g.<key> overrides one efficiency
 // parameter; --pick a,b.c keeps only those fields; --over.<key> v1,v2 and --where.<key> v are lists and filters. Every other
 // --key value overrides the run's default config. Values are parsed as JSON when they can be, otherwise kept as strings.
 //   --json '{...}'   the whole query as one JSON object (or "-" to read it from stdin); flags given after it still apply
+//   --file.<key> p   read the JSON file p into <key> (for example --file.trace for a torch profiler export)
 //   --lang zh        render messages as text with locales/zh (default: messages stay { key, p })
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm");
@@ -33,6 +37,7 @@ for(let i = 0; i < args.length; i += 2){
   if(k === "json") q = Object.assign(q, JSON.parse(raw === "-" ? fs.readFileSync(0, "utf8") : raw));
   else if(k === "lang") lang = raw;
   else if(k === "pick") q.pick = raw.split(",");
+  else if(k.startsWith("file.")) set(q, k.slice(5), JSON.parse(fs.readFileSync(raw, "utf8")));
   else if(k.startsWith("over.")) set(q, k, String(raw).split(",").map(parse));
   else set(q, k, parse(raw));
 }

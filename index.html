@@ -29,6 +29,7 @@
     <a href="#infer/deploy" data-route="infer/deploy" data-i18n="shell.nav.infer.deploy"></a>
     <a href="#infer/quant" data-route="infer/quant" data-i18n="shell.nav.infer.quant"></a>
     <a href="#infer/spec" data-route="infer/spec" data-i18n="shell.nav.infer.spec"></a>
+    <a href="#infer/calib" data-route="infer/calib" data-i18n="shell.nav.infer.calib"></a>
   </div>
   <div class="grp" data-grp="rl"><h4>RL</h4>
     <a href="#rl/mismatch" data-route="rl/mismatch" data-i18n="shell.nav.rl.mismatch"></a>
@@ -99,7 +100,7 @@
   </div>
 
   <!-- 推理 -->
-  <div data-rack="infer/step infer/deploy infer/spec">
+  <div data-rack="infer/step infer/deploy infer/spec infer/calib">
     <h3 data-i18n="infer.rack.h3"></h3>
     <select data-bind="inf.engine" class="full" data-i18n-attr="aria-label=infer.rack.attr.inf.engine.aria-label">
       <option value="sglang">SGLang</option>
@@ -244,6 +245,7 @@
 
   <div data-rack="overview"><p class="hint" data-i18n="overview.rack.hint"></p></div>
   <div data-rack="train/calib"><p class="hint" data-i18n="train.rack.hint_3"></p></div>
+  <div data-rack="infer/calib"><p class="hint" data-i18n="calib.inf.rack"></p></div>
   <div data-rack="rl/mismatch"><p class="hint" data-i18n="rl.rack.hint"></p></div>
   <div data-rack="appendix/data"><p class="hint" data-i18n="appendix.rack.hint"></p></div>
   <div data-rack="appendix/quant"><p class="hint" data-i18n="appendix.rack.hint_2"></p></div>
@@ -251,12 +253,14 @@
   <details class="adv" id="g-adv"><summary data-i18n="shell.summary"></summary>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaC"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaC"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaM"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaM"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.kEff"></span><input type="number" step="1" min="0" max="1" data-bind="glob.kEff"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaN"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaN"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.alphaNv"></span><input type="number" step="1" min="0" data-bind="glob.alphaNv"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.kernelUs"></span><input type="number" step="0.5" min="0" data-bind="glob.kernelUs"></label>
     <h3 data-i18n="shell.h3_2"></h3>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.launchUs"></span><input type="number" step="0.5" min="0" data-bind="glob.launchUs"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.graphLaunchUs"></span><input type="number" step="1" min="0" data-bind="glob.graphLaunchUs"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.gapUs"></span><input type="number" step="0.05" min="0" data-bind="glob.gapUs"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.dpSyncUs"></span><input type="number" step="10" min="0" data-bind="glob.dpSyncUs"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.a2aLLus"></span><input type="number" step="1" min="0" data-bind="glob.a2aLLus"></label>
     <label class="ctl"><span data-i18n="shell.ctl.glob.etaAg"></span><input type="number" step="0.02" min="0.1" max="1" data-bind="glob.etaAg"></label>
@@ -743,6 +747,25 @@
   <div class="block"><h2 data-i18n="spec.b7.h2"></h2><div id="s-rl"></div></div>
 </section>
 
+<!-- ============ 推理 · 和实测对照 ============ -->
+<section class="pane" data-pane="infer/calib" hidden>
+  <div class="block" id="i-calib-main" data-src="both"><h2 data-i18n="calib.inf.h2"></h2>
+    <p class="lede" data-i18n-html="calib.inf.lede"></p>
+    <div class="fig"><svg id="i-calib-plot" viewBox="0 0 680 380" role="img" data-i18n-attr="aria-label=calib.attr.p-calib-plot.aria-label"></svg><div class="legend" id="i-calib-legend"></div></div>
+    <div class="tbl"><table id="i-calib-sum"></table></div>
+    <p class="lede" id="i-calib-cond"></p>
+    <div class="tbl" style="max-height:420px;overflow:auto"><table id="i-calib-pts"></table></div>
+    <p class="hint" data-i18n-html="calib.inf.read"></p>
+  </div>
+  <div class="block" id="i-trace" data-src="both"><h2 data-i18n="calib.trace.h2"></h2>
+    <p class="lede" data-i18n-html="calib.trace.lede"></p>
+    <div class="legend"><label><span data-i18n="calib.trace.file"></span> <input type="file" id="i-trace-file" accept=".json,application/json"></label>
+      <label><span data-i18n="calib.trace.steps"></span> <input type="number" id="i-trace-steps" min="1" step="1" value="1" style="width:80px"></label></div>
+    <p class="hint" id="i-trace-msg"></p>
+    <div class="tbl"><table id="i-trace-tbl"></table></div>
+  </div>
+</section>
+
 <!-- ============ RL · 训推不一致 ============ -->
 <section class="pane" data-pane="rl/mismatch" hidden>
   <div class="block"><h2 data-i18n="rl.mismatch.b1.h2"></h2>
@@ -863,6 +886,15 @@
   <div class="block" data-src="measured" id="data-kernels"><h2 data-i18n="appendix.data.kern.h2"></h2>
     <p class="lede" id="d-kern-lede"></p>
     <div class="fig"><svg id="d-kern"></svg><div class="legend" id="d-kern-legend"></div></div>
+    <p class="hint" data-i18n-html="appendix.data.kern.sol"></p>
+    <div class="tbl" style="max-height:320px;overflow:auto"><table id="d-kern-tbl"></table></div>
+  </div>
+  <div class="block" data-src="both" id="data-keff"><h2 data-i18n="appendix.data.keff.h2"></h2>
+    <p class="lede" data-i18n-html="appendix.data.keff.lede"></p>
+    <div class="tbl"><table id="d-keff"></table></div>
+    <h3 data-i18n="appendix.data.keff.ev.h3"></h3>
+    <p class="hint" data-i18n-html="appendix.data.keff.ev.hint"></p>
+    <div class="tbl" style="max-height:420px;overflow:auto"><table id="d-kev"></table></div>
   </div>
   <div class="block" data-src="measured" id="data-infer"><h2 data-i18n="appendix.data.b2.h2"></h2>
     <div class="tbl"><table id="pub-infer"></table></div>
@@ -1057,6 +1089,7 @@
 <script src="src/engine/quant.js"></script>
 <script src="src/engine/arch.js"></script>
 <script src="src/engine/calib.js"></script>
+<script src="src/engine/trace.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
 <script src="src/plane/scouter.js"></script>

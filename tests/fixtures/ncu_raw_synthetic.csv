@@ -1,0 +1,4 @@
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","gpu__time_duration.sum","dram__bytes_read.sum","dram__bytes_write.sum","sm__throughput.avg.pct_of_peak_sustained_elapsed","gpu__compute_memory_throughput.avg.pct_of_peak_sustained_elapsed"
+"","","","","","","","","","","","nsecond","byte","byte","%","%"
+"0","1","python3","h","synthetic_gemm_kernel","1","7","(256, 1, 1)","(132, 1, 1)","0","9.0","200000","60000000","40000000","78.5","20.1"
+"1","1","python3","h","synthetic_copy_kernel","1","7","(256, 1, 1)","(1024, 1, 1)","0","9.0","500000","1000000000","1000000000","10.2","88.0"

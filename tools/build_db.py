@@ -19,7 +19,7 @@ from datetime import date
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
-ANON_KEYS = ["title", "stage", "hw", "gpus", "topo", "model", "conditions", "dims", "metrics"]
+ANON_KEYS = ["title", "stage", "hw", "gpus", "topo", "model", "conditions", "profile", "dims", "metrics"]
 
 PUBLIC = {
  "quant_evidence": dict(file="quant_evidence.json", stage="quant", title="量化：公开的 PR、博客与文档",
@@ -29,9 +29,21 @@ PUBLIC = {
  "spec_public": dict(file="spec.json", stage="infer", title="投机解码：公开数字", conditions="模型、温度、数据集和并发各不相同，只看量级和方向。"),
  "determinism_public": dict(file="determinism.json", stage="rl", title="确定性推理与训推逐位一致：公开数字",
    conditions="模型、硬件和测法各不相同；开销是各家相对自己基线的数字，只看量级。"),
+ "kernel_public": dict(file="kernels.json", stage="kernel", title="Kernel 与端到端：公开数字（效率表的出处）",
+   conditions="上游 PR、README、论文和博客里的单个 kernel 达到的算力 / 带宽，以及几条端到端的对照。peak 是同一精度的规格峰值（dense），"
+   "keff = true 的行进计算核心的效率表（Common.KEFF）。H800 的算力和 HBM 按 H100 SXM 算。"),
+ "sglang_cookbook": dict(file="sglang_cookbook.json", stage="infer", title="推理：SGLang cookbook 的公开测速",
+   conditions="sgl-project/sglang 文档里各模型的 benchmarks 文件（tools/import_cookbook.py 钉在一个 commit 上导入）：随机 token 输入、ignore_eos、"
+   "并发固定的闭环压测；TTFT / TPOT 是均值，tok/s/GPU 含输入 token。接受长度由 SGLANG_SIMULATE_ACC_LEN 定死的行只说明吞吐机制。"),
  "releases": dict(file="releases.json", stage="meta", title="过去一年的发布与博客",
    conditions="LMSYS 博客，SGLang / vLLM / slime / Miles / AReaL 的 GitHub release；只摘和推理、训练、低精度、投机解码、RL 相关的要点。"),
 }
+
+# 可信度：measured = 我们自己测的（匿名数据集）；reported = 上游 PR / 文档 / 博客公布的数字；derived = 由公开数字换算出来的，
+# 或者在模拟条件下测的（例如接受长度定死的投机解码）。数据集给默认值，点上可以单独写 confidence 覆盖。
+CONFIDENCE = ("measured", "reported", "derived")
+# 手工整理的公开数据集最后一次核对的日期（导入工具生成的数据集用导入时写的 retrieved）
+CURATED = "2026-10-30"
 
 ARCH_PERF = {"bw": 1.0, "bw120": 0.7, "hopper": 0.5, "amd": 0.5, "any": 0.9}
 KIND = {"PR": 1.0, "blog": 0.9, "doc": 0.9}
@@ -47,13 +59,19 @@ def build(today):
     sets, points = {}, []
     for f in sorted((DATA / "anon").glob("*.json")):
         s = json.loads(f.read_text(encoding="utf-8")); sid = f.stem
-        sets[sid] = dict({"title": s["title"], "origin": "anon"}, **{k: s.get(k) for k in ANON_KEYS[1:]})
+        sets[sid] = dict({"title": s["title"], "origin": "anon", "confidence": "measured"}, **{k: s.get(k) for k in ANON_KEYS[1:]})
         for p in s["points"]:
             points.append(dict({"set": sid}, **p, id=sid + ":" + "/".join(str(p.get(k)) for k in s["dims"])))
     for sid, s in PUBLIC.items():
-        sets[sid] = {"title": s["title"], "origin": "public", "stage": s["stage"], "conditions": s["conditions"]}
+        sets[sid] = {"title": s["title"], "origin": "public", "stage": s["stage"], "conditions": s["conditions"],
+                     "confidence": s.get("confidence", "reported"), "as_of": CURATED}
         if sid == "quant_evidence": sets[sid]["as_of"] = today.isoformat()
-        for p in json.load(open(DATA / "public" / s["file"], encoding="utf-8")):
+        pts = json.load(open(DATA / "public" / s["file"], encoding="utf-8"))
+        # 导入工具写在每一行上的来源 commit 和读取日期，提到数据集上
+        for k, to in (("ref", "ref"), ("retrieved", "as_of")):
+            vs = {p.get(k) for p in pts}
+            if len(vs) == 1 and None not in vs: sets[sid][to] = vs.pop(); pts = [{a: b for a, b in p.items() if a != k} for p in pts]
+        for p in pts:
             p = dict(p, set=sid)
             if sid == "quant_evidence":
                 p["w"] = evidence_weight(p, today); p.setdefault("id", sid + ":" + p["src"] + ":" + p["claim"][:40])
@@ -75,6 +93,7 @@ def validate(db):
             for k in s["dims"]:
                 if k not in p: errs.append("缺维度 %s：%s" % (k, p["id"]))
         elif not p.get("src") and not p.get("url"): errs.append("公开点缺 src / url " + p["id"])
+        if p.get("confidence", s.get("confidence")) not in CONFIDENCE: errs.append("可信度只能是 %s：%s" % ("/".join(CONFIDENCE), p["id"]))
     for sid, s in db["sets"].items():
         if s["origin"] == "anon" and SANITIZE.search(json.dumps(s, ensure_ascii=False)): errs.append("匿名数据集的描述里有不该出现的词：" + sid)
         if not any(p["set"] == sid for p in db["points"]): errs.append("空数据集 " + sid)

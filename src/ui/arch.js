@@ -245,9 +245,25 @@ const SRC = {
   dense:[["mcoreMlp",GH+"NVIDIA/Megatron-LM/blob/main/megatron/core/transformer/mlp.py"],["vllmLinear",GH+"vllm-project/vllm/blob/main/vllm/model_executor/layers/linear.py"]] };
 const SRC_PHASE = { decode:[], prefill:[["sglChunk",GH+"sgl-project/sglang/blob/main/python/sglang/srt/arg_groups/memory_hook.py"],["vllmChunk",GH+"vllm-project/vllm/blob/main/vllm/engine/arg_utils.py"]],
   train:[["te",GH+"NVIDIA/TransformerEngine"],["mcore",GH+"NVIDIA/Megatron-LM"]] };
+/* 每种机制在上游 PR / README / 论文里的实测数字（数据点库 kernel_public 的 id）：放在来源下面，和本页的估计对照着看 */
+const EVID_KIND = {
+  gqa:["fa3-h100-fp16","fa4-b200-bf16","flashinfer-b300-fmha-hd128","flashinfer-b300-fmha-hd64"],
+  swa:["fa3-h100-fp16","fa4-b200-bf16","flashinfer-b300-fmha-hd64"],
+  mla:["flashmla-h800-decode-mem","flashmla-h800-decode-comp","sglang-5432-bmm","flashmla-b200-prefill","cutlass-2466-fmha-bwd-mla"],
+  dsa:["flashmla-b200-sparse-prefill","vllm-35891-sparse-mla","deepgemm-h800-fp8"],
+  gdn:["sglang-17094-gdn-share"], kda:["sglang-17094-gdn-share"],
+  moe:["flashinfer-2268-fp4-vs-fp8","nvfp4-moe-b200-hf","vllm-39510-pad256","deepgemm-h800-fp8"],
+  dense:["cublas-b200-bf16-4096","cutlass-sm103-bf16-8192","cutlass-sm103-nvfp4-8192","deepgemm-h800-fp8"] };
+function evidList(kind){
+  const ps=(EVID_KIND[kind]||[]).map(id=>DB.one("kernel_public",{id:"kernel_public:"+id})).filter(Boolean);
+  if(!ps.length) return "";
+  return '<h3>'+t("arch.src.evid.h3")+'</h3><p class="hint">'+t("arch.src.evid.hint."+(kind==="gdn"||kind==="kda"?"lin":"kernel"))+'</p><ul class="tight src">'+ps.map(p=>'<li>'+
+    t("arch.src.evid.item",{u:esc(p.url),src:esc(p.src),gpu:esc(p.gpu||"—"),what:esc(p.what),v:esc(String(p.value))+" "+esc(p.unit),
+      eta:p.peak?t("arch.src.evid.eta",{e:(p.value/p.peak).toFixed(2)}):""})+(p.note?' <span class="tag">'+esc(p.note)+'</span>':'')+'</li>').join("")+'</ul>';
+}
 function srcList(kind, phase){
   const a=(SRC[kind]||[]).concat(SRC_PHASE[phase]||[]);
-  return '<p class="lede">'+t("arch.src.assume."+kind)+'</p><ul class="tight src">'+a.map(([k,u])=>'<li>'+t("arch.src.item",{u,name:esc(t("arch.src.name."+k)),what:t("arch.src.what."+k)})+'</li>').join("")+'</ul>';
+  return '<p class="lede">'+t("arch.src.assume."+kind)+'</p><ul class="tight src">'+a.map(([k,u])=>'<li>'+t("arch.src.item",{u,name:esc(t("arch.src.name."+k)),what:t("arch.src.what."+k)})+'</li>').join("")+'</ul>'+evidList(kind);
 }
 
 /* ---------- 跨模型对比 ---------- */

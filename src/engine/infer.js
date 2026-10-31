@@ -1,7 +1,7 @@
 /* 推理核心：只描述 serving 引擎真正发出的 kernel 序列（paged KV、状态缓存、CUDA graph 补齐、采样、MTP 验证、DP-attention / EP 通信）。
    与训练核心不共享算子表。每条口径对应的仓库路径见 UI 的“口径与来源”。 */
 const Infer = (function(){
-const { dtB, peakOf, derive, qoW, link, agT, arT, a2aT, roof } = Common;
+const { dtB, peakOf, derive, qoW, link, agT, arT, a2aT, roof, gK } = Common;
 
 function range(a,b,s){ const r=[]; for(let x=a;x<=b;x+=s) r.push(x); return r; }
 /* 引擎画像：来自三个引擎的默认值（research/inference_engines.md Part IV） */
@@ -45,6 +45,10 @@ const ENGINES = {
 };
 
 const padTo = (ladder, x) => { for(const v of ladder) if(v>=x) return v; return x; };
+/* 每个算子查效率表用的 kernel 类别（Common.KEFF）：带权重的线性层是 gemm，attention 核心是 attn，MoE 是 grouped GEMM；
+   elementwise、norm、线性注意力的扫描没有公开的单独效率，不查表 */
+const KCLS = { moe:"moe", acore:"attn", aidx:"gemm" };
+for(const k of ["aproj","aout","aqa","aqb","agp","akvb","auk","auv","aidxp","lproj","lout","shared","dense","lm","latd","latu","router"]) KCLS[k]="gemm";
 const cover = (k,E,T) => 1-Math.pow(1-k/E, Math.max(0,T));
 /* 开投机时并发被引擎默认上限截住的警告；投机页按这句原文把它从警告栏里去掉（正文里交代） */
 const specCapWarn = P => Msg.of("engine_infer.warn.specCap", { engine:P.name, cap:P.specCap });
@@ -75,9 +79,11 @@ function step(m, hw, topo, c, g){
   }
   const Bp = dec ? rowsG/w : 1;   // 补齐后的请求数（只影响随行数缩放的算子）
   const ops=[], comm=[];
+  const pkName = pk => pk===pkA ? "bf16" : pk===peakOf(hw,"fp8") ? "fp8" : pk===peakOf(hw,"fp4") ? "fp4" : "bf16";
   const op=(key,name,group,layers,flops,bytes,peak,kern,extra)=>{ if(layers<=0) return;
-    const r=roof(flops,bytes,peak,hw,g,kern); r.t*=slow; r.tc*=slow; r.tm*=slow;
-    ops.push(Object.assign({key,name,group,layers,flops:flops*layers,bytes:bytes*layers,t:r.t*layers,tc:r.tc*layers,tm:r.tm*layers,tf:r.tf*layers,bound:r.bound,I:r.I,kernels:(kern||0)*layers},extra||{})); };
+    const gk=gK(g,KCLS[key],pkName(peak),hw), r=roof(flops,bytes,peak,hw,gk,kern); r.t*=slow; r.tc*=slow; r.tm*=slow;
+    ops.push(Object.assign({key,name,group,layers,flops:flops*layers,bytes:bytes*layers,t:r.t*layers,tc:r.tc*layers,tm:r.tm*layers,tf:r.tf*layers,bound:r.bound,I:r.I,kernels:(kern||0)*layers,
+      cls:KCLS[key]||null,etaC:gk.etaC,etaM:gk.etaM},extra||{})); };
   const cm=(key,name,layers,t,bytes,extra)=>{ if(layers<=0||t<=0) return; comm.push(Object.assign({key,name,layers,t:t*layers,bytes:bytes*layers},extra||{})); };
   const lkA=link(hw,topo,tpA,1), lkN=link(hw,topo,N,1);
   const ctx = dec ? c.n : c.p;              // decode：已有上下文；prefill：本 chunk 之前的前缀
@@ -182,7 +188,9 @@ function step(m, hw, topo, c, g){
   const rowsExp = Tg*e.k/N*(c.imb||1);
   const eA = c.eAct || (c.wDt==="bf16"?"bf16":c.wDt);
   if(c.qSep && eA!=="bf16") op("moeq",Msg.of("engine_infer.op.moeq"),"moe",nMoe,4*Tloc*De, Tloc*De*(2+dtB(eA)), pkA,1);
-  op("moe",Msg.of("engine_infer.op.moe",{kernel:P.kernels.moe}),"moe",nMoe, 2*rowsExp*3*De*e.F/(moePar==="tp"?1:1), touched*wSlice*wbE + rowsExp*(De*2+3*e.F*2/(moePar==="tp"?N:1)), pkE, 3,{touched,cover:cv});
+  // Blackwell 上 FP4 MoE（TRT-LLM-gen）的 hidden 维按 256 补零（vLLM PR 39510）：补出来的部分照样算、照样读
+  const dPad = (c.wDt==="nvfp4"||c.wDt==="mxfp4") && hw.sm>=100 ? Math.ceil(De/256)*256/De : 1;
+  op("moe",Msg.of("engine_infer.op.moe",{kernel:P.kernels.moe}),"moe",nMoe, 2*rowsExp*3*De*e.F*dPad, touched*wSlice*wbE*dPad + rowsExp*(De*2+3*e.F*2/(moePar==="tp"?N:1)), pkE, 3,{touched,cover:cv,dPad});
   if(e.Fs>0){ const Fl=e.Fs/tpA;
     op("shared",e.sharedGate?Msg.of("engine_infer.op.sharedGate"):Msg.of("engine_infer.op.shared"),"moe",nMoe,6*Tloc*D*Fl, 3*D*Fl*wbD + Tloc*(D+3*Fl)*2, pkD,2,
       {overlap: (P.sharedOverlap==="graph"&&graph&&dec) || (P.sharedOverlap==="small"&&Tloc<=256) ? "moe" : false}); }
@@ -229,10 +237,13 @@ function step(m, hw, topo, c, g){
   const tComp = tOps;
   let gpu = tComp + tComm + exposedOverlap + (c.tbo ? Math.max(0,tboComm - tComp*0.5) : tboComm);
   const nKern = ops.reduce((s,o)=>s+o.kernels,0) + comm.length*1;
+  // graph 里 kernel 之间的间隔：开 PDL（programmatic dependent launch）时下一个 kernel 的开头和上一个的结尾重叠，按全部去掉算（上限）
+  const gapT = graph && !c.pdl ? nKern*g.gapUs*1e-6 : 0;
+  gpu += gapT;
   const cpuLaunch = graph ? g.graphLaunchUs*1e-6 : nKern*g.launchUs*1e-6;
   const dpSync = (c.engine==="vllm"||c.engine==="titan") && dpA>1 ? g.dpSyncUs*1e-6 : 0;
   const stepT = Math.max(gpu + (graph?g.graphLaunchUs*1e-6:0), cpuLaunch, g.schedUs*1e-6) + dpSync;
-  return { ops, comm, tComp, tComm, exposedOverlap, gpu, stepT, graph, rowsG, rowsR, Breq, Bp, w, specK, tpA, dpA, N, Tg, kvTokRank, idxTok, Sl, Cl, nKern, cpuLaunch, fused, warn, moePar, P };
+  return { ops, comm, tComp, tComm, exposedOverlap, gpu, gapT, stepT, graph, rowsG, rowsR, Breq, Bp, w, specK, tpA, dpA, N, Tg, kvTokRank, idxTok, Sl, Cl, nKern, cpuLaunch, fused, warn, moePar, P };
 }
 
 /* 投机解码的 draft 一项，按方法分开算。MTP：目标模型一层的平均代价（第一步按验证宽度，之后每步 1 行）+ 每步一次 lm_head。
@@ -285,6 +296,19 @@ function prefill(m, hw, topo, c, g){
   return r;
 }
 
+/* 闭环压测（SGLang bench_serving 那种：并发 conc 固定，每条 isl 输入、osl 输出）的稳态估计。
+   decode：conc 条请求一起 decode，上下文取 isl + osl/2。每条请求从开始到结束的这段时间里，其余 conc − 1 个槽位各换进一条新请求，
+   它们的 prefill 插在 decode 之间，所以平均 TPOT = decode 的 TPOT + (conc − 1) × 单条 prefill 时间 / osl。
+   ttft0 是空载时单条 prompt 的 prefill（不含排队、HTTP、分词这些引擎外的时间）；tokPerGpu 按 cookbook 的口径：(输入 + 输出) / 时间 / 卡数。 */
+function serve(m, hw, topo, c, g){
+  const isl=c.isl, osl=c.osl, B=Math.max(1,c.conc);
+  const d = decode(m,hw,topo,Object.assign({},c,{phase:"decode",B,n:isl+osl/2}),g);
+  const pf = prefill(m,hw,topo,Object.assign({},c,{P:isl,C:Math.min(c.C,isl),p:0,reqPerChunk:1}),g);
+  const interf = (B-1)*pf.ttft/osl, tpot = d.tpot + interf;
+  return { tpot, tpotDecode:d.tpot, interf, ttft0:pf.ttft, stepT:d.stepT, draftT:d.draftT, tokPerStep:d.tokPerStep, N:d.N,
+    tokPerGpu: B*(isl+osl)/(pf.ttft+osl*tpot)/d.N, outTokPerS: B/tpot, Breq:d.Breq, graph:d.graph, mem:d.mem, warn:d.warn.concat(pf.warn) };
+}
+
 /* 显存：权重 + KV 池 + 线性注意力状态槽 + 预留 */
 function memory(m, hw, c, r){
   const d=derive(m), f=m.full, l=m.lin, e=m.moe, N=c.N, tpA=N/Math.max(1,c.dpA);
@@ -313,11 +337,11 @@ function memory(m, hw, c, r){
 
 /* 默认的推理配置（界面的初始值；预设和架构页都在它上面改） */
 const BASE = Common.freeze({ engine:"sglang", phase:"decode", N:1, dpA:1, B:64, n:8192, C:8192, P:32768, p:0, wDt:"bf16", eAct:"", dDt:"bf16", kvDt:"bf16", stateDt:"fp32",
-  specK:0, specMethod:"mtp", accept:0, graph:true, imb:1.15, redundant:0, dcp:1, prefixCache:true, moePar:"tp", dispFp8:true, tbo:false, hostSyncUs:20,
+  specK:0, specMethod:"mtp", accept:0, graph:true, pdl:false, isl:1024, osl:1024, conc:16, imb:1.15, redundant:0, dcp:1, prefixCache:true, moePar:"tp", dispFp8:true, tbo:false, hostSyncUs:20,
   memFrac:0.85, reserveGB:6, bi:false, biFactor:2.5, implEff:1, reqPerChunk:1 });
 
 /* 最少切几份放得下权重：每卡权重不超过显存的 60%，取 2 的幂（2–64） */
 function fitShards(m, hw){ const w=derive(m).total*dtB(m.wDefault); let p=2; while(w/p>0.6*hw.mem*1e9 && p<64) p*=2; return p; }
 
-return { ENGINES, SPEC, BASE, fitShards, step, decode, prefill, memory, cover, specCapWarn };
+return { ENGINES, SPEC, BASE, fitShards, step, decode, prefill, serve, memory, cover, specCapWarn };
 })();

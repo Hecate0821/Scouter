@@ -1,6 +1,6 @@
 /* 和实测对照：每个数据集怎样用计算核心复现——筛哪些点、实测是哪个字段、预测怎么算。
    数据点由调用方传进来（界面从数据点库取，测试直接读 data/db.json）；这里不读数据库、不出文字。
-   所有实测都是单台 H200 HGX 上的 Qwen3.5-35B-A3B。 */
+   训练的几组是单台 H200 HGX 上 Qwen3.5-35B-A3B 的匿名实测；推理的两组是 SGLang cookbook 的公开测速（set 指向同一个数据集）。 */
 const Calib = (function(){
 const { MODELS, HW, TOPO, derive, compT, memT, peakOf } = Common;
 
@@ -26,7 +26,18 @@ const SETS = {
       const o=Par.epLayer("deepep",{n,K:8,Z:256,E:p.ep,De,hw,topo:TOPO.hgx8,g,ac:false,prec:"bf16",imb:1,syncUs:30});
       return o.tw+o.tAlpha+o.tSync+memT(4*n*8*De*2, hw, g); } },
   h200_kernels: { where:null, meas:p=>p.ms/1e3,
-    predict:(p,g)=>{ const hw=HW.H200; return p.op==="bf16_gemm" ? compT(2*p.m*p.n*p.k, peakOf(hw,"bf16"), g) : memT(p.rw_bytes, hw, g); } } };
+    predict:(p,g)=>{ const hw=HW.H200; return p.op==="bf16_gemm" ? compT(2*p.m*p.n*p.k, peakOf(hw,"bf16"), g) : memT(p.rw_bytes, hw, g); } },
+  /* cookbook 的闭环压测：Infer.serve 按每行的部署形状算。TPOT 用全部能对上的行；TTFT 只用并发 1 的行（压测下的排队不算） */
+  cookbook_tpot: { set:"sglang_cookbook", where:{ calib:true }, meas:p=>p.tpot_ms/1e3, predict:(p,g)=>serveOf(p,g).tpot },
+  cookbook_ttft: { set:"sglang_cookbook", where:{ calib:true, conc:1 }, meas:p=>p.ttft_ms/1e3, predict:(p,g)=>serveOf(p,g).ttft0 } };
+
+/* cookbook 一行 → SGLang 的推理配置（MTP 的接受长度含 bonus token，Infer 的 accept 是接受的草稿数） */
+function serveCfg(p){
+  const mtp = p.spec==="mtp";
+  return Object.assign({}, Infer.BASE, { engine:"sglang", N:p.N, dpA:1, moePar:p.moePar, wDt:p.wDt, dDt:p.dDt, kvDt:p.kvDt, dcp:p.dcp||1,
+    specK:mtp?p.specK:0, specMethod:"mtp", accept:mtp?p.acc_len-1:0, isl:p.isl, osl:p.osl, conc:p.conc });
+}
+const serveOf = (p, g) => Infer.serve(MODELS[p.model], HW[p.hw], TOPO[p.topo], serveCfg(p), g);
 
 /* 公开数据的 replay：同一层 MoE 分别用 DeepEP 和 MoK 算一遍，返回 DeepEP / MoK 的时间比 */
 function mokRatio(R, g){
@@ -35,5 +46,5 @@ function mokRatio(R, g){
   return mk("deepep")/mk("mok");
 }
 
-return { BASE, BACKEND, SETS, mokRatio };
+return { BASE, BACKEND, SETS, serveCfg, mokRatio };
 })();

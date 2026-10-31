@@ -301,6 +301,11 @@ I18N.add("zh", "arch", {
   // ---- 来源 ----
   "src.h2": "按什么算的",
   "src.item": "<a href=\"{u}\" target=\"_blank\" rel=\"noopener\">{name}</a>：{what}",
+  "src.evid.h3": "上游的实测数字",
+  "src.evid.hint.kernel": "单个 kernel 在上游 PR、README 或论文里报的最好成绩，按同精度的规格峰值换算成 η；进了效率表的那几条会直接影响本页的建模口径（附录 · 数据与发布 · 按 kernel 类别的效率表）。",
+  "src.evid.hint.lin": "线性注意力没有单个 kernel 的效率数字，这里是它在整步 decode 里占多少：和上面“占所有模块”的指标对着看（同为 decode、并发几十到几百时；Qwen3.5-35B 在 B200、NVFP4、TP4 下本页算出 batch 64 约 20%，256 约 28%）。",
+  "src.evid.item": "<a href=\"{u}\" target=\"_blank\" rel=\"noopener\">{src}</a> · {gpu}：{what} — <b>{v}</b>{eta}",
+  "src.evid.eta": "（η ≈ {e}）",
   "src.assume.gqa": "全注意力按 FlashAttention 算：prefill / 训练不写出 n×n 的分数矩阵，decode 读一遍 paged KV。",
   "src.assume.swa": "滑窗按 FlashAttention 的 window 参数算：只读窗口内的 KV。",
   "src.assume.mla": "MLA 按 DeepSeek 开源的做法：decode absorb（FlashMLA，在 latent 上做 MQA），prefill 把前缀 latent 展开后做 MHA（vLLM / SGLang 的默认路径）。",

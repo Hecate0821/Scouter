@@ -64,11 +64,41 @@ const linkRidge = (peak, gbs, g) => peak*g.etaC/(gbs*1e9*g.etaAg);             /
 
 /* 默认的效率系数与固定开销（每页共用，界面上可以改）：η 是可达峰值的比例，α 是集合通信延迟（µs），其余是 kernel / launch / 同步开销（µs） */
 const freeze = o => { for(const v of Object.values(o)) if(v && typeof v==="object") freeze(v); return Object.freeze(o); };
-const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5 });
+/* gapUs：CUDA graph 里前一个 kernel 结束到下一个开始的间隔（vLLM PR 64846、flashinfer PR 8135 在 H200 上量到约 0.45 µs；推理配置 pdl = true 时去掉）。 */
+const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, gapUs:0.45, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5,
+  kEff:1 });
 /* 理想 roofline：只看硬件峰值，可达比例都是 1、固定开销和延迟都是 0；kernel 序列、重叠规则还是所选引擎 / 框架自己的。
    BASIS 是界面和命令行的“口径”开关：ideal = 硬件屋顶，modeled = 上面的默认效率（实测走数据点库，不在计算核心里） */
 const IDEAL = freeze(Object.fromEntries(Object.keys(G0).map(k => [k, k.startsWith("eta") ? 1 : 0])));
 const BASIS = freeze({ ideal: IDEAL, modeled: G0 });
+
+/* 按 kernel 类别和 GPU 架构的效率表（g.kEff = 1 时生效；ideal 口径 kEff = 0）。每一格是一个公开或匿名实测点：达到的 TFLOP/s（或 GB/s）÷ 规格峰值，
+   出处在数据点库 kernel_public（ref = 点的 id，tests/plane.js 核对数值）。η_c 是 Hopper BF16 大 GEMM 的参考值：表里的格子按 η / G0 的比例乘在 g 上，
+   所以改 η_c / η_m 时整张表按比例跟着动；查不到的类别、精度或架构就用 g 本身。
+   cls：gemm = 带权重的稠密线性层，attn = attention 核心；kind：c = 算力（乘 etaC），m = 带宽（乘 etaM）；dt 是 peakKey；sm 是 hw.sm，103 查不到时退到 100。 */
+const KEFF = freeze([
+  { cls:"gemm", kind:"c", dt:"bf16", sm:90,  eta:0.69, ref:"h200_kernels:bf16_gemm/8192/8192/8192/None/None" },   // 匿名实测 678 / 989
+  { cls:"gemm", kind:"c", dt:"fp8",  sm:90,  eta:0.78, ref:"kernel_public:deepgemm-h800-fp8" },                   // DeepGEMM 1550 / 1979
+  { cls:"attn", kind:"c", dt:"bf16", sm:90,  eta:0.75, ref:"kernel_public:fa3-h100-fp16" },                       // FA3 740 / 989
+  { cls:"attn", kind:"m", dt:"bf16", sm:90,  eta:0.90, ref:"kernel_public:flashmla-h800-decode-mem" },            // FlashMLA decode 3000 / 3350 GB/s
+  { cls:"gemm", kind:"c", dt:"bf16", sm:100, eta:0.67, ref:"kernel_public:cublas-b200-bf16-4096" },               // cuBLAS 1507 / 2250
+  { cls:"attn", kind:"c", dt:"bf16", sm:100, eta:0.71, ref:"kernel_public:fa4-b200-bf16" },                       // FA4 1605 / 2250
+  { cls:"gemm", kind:"c", dt:"bf16", sm:103, eta:0.72, ref:"kernel_public:cutlass-sm103-bf16-8192" },             // CUTLASS 1618 / 2250
+  { cls:"gemm", kind:"c", dt:"fp4",  sm:103, eta:0.52, ref:"kernel_public:cutlass-sm103-nvfp4-8192" },            // CUTLASS NVFP4 7011 / 13500
+  { cls:"attn", kind:"c", dt:"bf16", sm:103, eta:0.74, ref:"kernel_public:flashinfer-b300-fmha-hd128" }]);        // FMHA hd128 1658 / 2250
+/* moe（grouped GEMM）没有自己的格子时用 gemm 的：每个 expert 的行数够多时，grouped GEMM 和稠密 GEMM 是同一类 kernel */
+function etaK(cls, kind, dt, hw){
+  const at = (c, sm) => KEFF.find(r => r.cls===c && r.kind===kind && r.dt===dt && r.sm===sm);
+  for(const c of cls==="moe" ? ["moe", "gemm"] : [cls]){ const r = at(c, hw.sm) || (hw.sm===103 ? at(c, 100) : null); if(r) return r.eta; }
+  return null;
+}
+/* 一个 kernel 实际用的效率：g 按表里这一格缩放（上限 1） */
+function gK(g, cls, dt, hw){
+  if(!g.kEff || !cls) return g;
+  const c = etaK(cls, "c", dt, hw), m = etaK(cls, "m", dt, hw);
+  if(c==null && m==null) return g;
+  return Object.assign({}, g, c==null ? {} : { etaC: Math.min(1, g.etaC*c/G0.etaC) }, m==null ? {} : { etaM: Math.min(1, g.etaM*m/G0.etaM) });
+}
 
 /* GQA 的 q + 输出门宽度：门按元素（Qwen）是 Hq·dh，按头（Muse Spark）是 Hq */
 const qoW = f => f.Hq*f.dh + (f.gate ? (f.gateHead ? f.Hq : f.Hq*f.dh) : 0);
@@ -152,5 +182,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
 })();

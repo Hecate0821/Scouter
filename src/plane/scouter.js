@@ -3,7 +3,7 @@
    不碰 DOM、不调 t()、不读界面状态；浏览器里和 Node 里（src/plane/node.js）跑的是同一份代码。
    口径 basis：ideal = 硬件屋顶（Common.IDEAL），modeled = 默认效率与固定开销（Common.G0）。实测不是算出来的，走 points / calib。 */
 const Scouter = (function(){
-const { MODELS, HW, TOPO, BASIS } = Common;
+const { MODELS, HW, TOPO, BASIS, G0, KEFF } = Common;
 const VERSION = 1;
 const SOURCES = ["ideal", "modeled", "measured"];
 const KEYS = ["model", "hw", "topo", "basis", "g", "pick"];
@@ -53,7 +53,12 @@ function module(q){
   q = q || {}; const c = ctxOf(q), wl = Object.assign(Arch.defaults(c.m), rest(q));
   return select({ query: Object.assign(echo(q, c), { workload: wl }), modules: Arch.present(c.m), measure: Arch.measure(c.m, c.hw, c.g, wl), facts: Arch.facts(c.m, wl) }, q.pick);
 }
-const RUN = { roofline, infer, train, module };
+/* 闭环压测（Infer.serve）：conc 条请求并发，每条 isl 输入、osl 输出；给平均 TPOT、空载 TTFT 和 cookbook 口径的 tok/s/GPU */
+function serve(q){
+  q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Infer.BASE, rest(q));
+  return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, Infer.serve(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
+}
+const RUN = { roofline, infer, train, module, serve };
 /* 扫参：run 是上面的一个函数名，over 的每个字段给一组值（多个字段取笛卡儿积），pick 选出每一行要的字段 */
 function sweep(q){
   q = q || {}; const f = pick(RUN, q.run || "infer", "run"), over = q.over || {}, keys = Object.keys(over);
@@ -68,9 +73,11 @@ function sweep(q){
 /* ---- 实测：数据点库 ---- */
 function sets(){
   return Object.fromEntries(Object.keys(DB.sets).map(id => { const s = DB.sets[id];
-    return [id, { origin: s.origin, stage: s.stage, hw: s.hw || null, gpus: s.gpus || null, model: s.model || null, n: DB.count(id), dims: s.dims || null,
-      metrics: s.metrics ? Object.keys(s.metrics) : null, calib: id in Calib.SETS }]; }));
+    return [id, { origin: s.origin, stage: s.stage, confidence: s.confidence, asOf: s.as_of || null, hw: s.hw || null, gpus: s.gpus || null, model: s.model || null, n: DB.count(id), dims: s.dims || null,
+      metrics: s.metrics ? Object.keys(s.metrics) : null, calib: calibOf(id) }]; }));
 }
+/* 哪些校准视图用这个数据集（Calib.SETS 的键；set 字段指向别的数据集时算那个数据集的） */
+const calibOf = id => Object.keys(Calib.SETS).filter(k => (Calib.SETS[k].set || k) === id);
 /* 一个数据集里的点；where 是等值筛选（数组 = 其中之一） */
 function points(q){
   q = q || {}; if(!q.set) throw new Error("points needs a set; one of: " + Object.keys(DB.sets).join(", "));
@@ -80,24 +87,46 @@ function points(q){
 /* 和实测对照：用计算核心复现一个匿名数据集，每个点给实测、预测和预测 / 实测 */
 function calib(q){
   q = q || {}; const id = q.set || "cp_attention", K = pick(Calib.SETS, id, "calib set"), g = gOf(q);
-  const rows = (K.where ? DB.where(id, K.where) : DB.set(id)).map(p => { let pred = null; try { pred = K.predict(p, g); } catch(e) {}
+  const sid = K.set || id, rows = (K.where ? DB.where(sid, K.where) : DB.set(sid)).map(p => { let pred = null; try { pred = K.predict(p, g); } catch(e) {}
     const meas = K.meas(p); return { p, meas, pred, ratio: isFinite(pred) && pred > 0 && meas > 0 ? pred / meas : null }; }).filter(r => r.ratio != null);
   const rs = rows.map(r => r.ratio).sort((a, b) => a - b), mid = (rs.length - 1) / 2;
-  return select({ set: id, basis: q.basis || "modeled", n: rows.length, median: rs.length ? (rs[Math.floor(mid)] + rs[Math.ceil(mid)]) / 2 : null, rows }, q.pick);
+  return select({ set: id, data: sid, basis: q.basis || "modeled", n: rows.length, median: rs.length ? (rs[Math.floor(mid)] + rs[Math.ceil(mid)]) / 2 : null, rows }, q.pick);
 }
 
-/* 实测 kernel 放到屋顶上：单卡 GEMM 和 HBM 拷贝的实测点（数据点库里 stage = "kernel"、带 op 的数据集），
-   和同一块 GPU 的理想屋顶、建模屋顶放在一起；measured 是实测里最好的 GEMM 算力和拷贝带宽 */
+/* 实测 kernel 放到屋顶上，并按 Nsight Compute 的 SOL（speed of light）口径给每个点的实测效率：
+   ηc = 解析 FLOPs ÷ 时长 ÷ 规格峰值，ηm = 字节 ÷ 时长 ÷ HBM 峰值。点有两种：
+   - 单卡 GEMM / HBM 拷贝（h200_kernels 那种，op = bf16_gemm / hbm_copy）：FLOPs 和字节按形状算；
+   - tools/import_ncu.py 导入的 ncu 点（kernel、us、dram_bytes，可选 flops）：字节是 ncu 量到的 DRAM 读 + 写，
+     另带 ncu 自己报的 sm_pct / dram_pct（占峰值的百分比）作对照。
+   q.points 可以直接传一组这样的点（不进数据点库），这时要给 q.hw 和 q.dtype；measured 是实测里最好的算力和带宽 */
 function kernels(q){
-  q = q || {}; const id = q.set || "h200_kernels", meta = pick(DB.sets, id, "set"), hw = pick(HW, meta.hw, "hw");
-  const pts = DB.set(id).filter(p => p.op === "bf16_gemm" || p.op === "hbm_copy").map(p => {
-    const k = p.op === "bf16_gemm" ? { shape: [p.m, p.n, p.k], flops: 2 * p.m * p.n * p.k, bytes: 2 * (p.m * p.k + p.k * p.n + p.m * p.n) } : { flops: 0, bytes: p.rw_bytes };
-    const s = p.ms / 1e3;
-    return Object.assign({ id: p.id, op: p.op, s }, k, { I: k.bytes > 0 ? k.flops / k.bytes : null, TFLOPs: k.flops / s / 1e12, GBs: k.bytes / s / 1e9 }); });
-  if(!pts.length) throw new Error("set " + id + " has no kernel points");
-  const gemm = pts.filter(p => p.flops > 0), copy = pts.filter(p => !p.flops);
-  const measured = { TFLOPs: gemm.length ? Math.max(...gemm.map(p => p.TFLOPs)) : null, GBs: copy.length ? Math.max(...copy.map(p => p.GBs)) : null };
-  return select({ set: id, hw: hw.name, ideal: roofline({ hw: meta.hw, basis: "ideal" }), modeled: roofline({ hw: meta.hw, basis: "modeled" }), measured, points: pts }, q.pick);
+  q = q || {}; const id = q.points ? null : q.set || "h200_kernels", meta = id ? pick(DB.sets, id, "set") : { hw: q.hw };
+  const hwKey = q.hw || meta.hw, hw = pick(HW, hwKey, "hw"), dt = q.dtype || (meta.profile && meta.profile.dtype) || "bf16", peak = Common.peakOf(hw, dt);
+  const sol = k => Object.assign(k, { I: k.bytes > 0 && k.flops > 0 ? k.flops / k.bytes : null, TFLOPs: k.flops > 0 ? k.flops / k.s / 1e12 : null, GBs: k.bytes > 0 ? k.bytes / k.s / 1e9 : null,
+    etaC: k.flops > 0 ? k.flops / k.s / peak : null, etaM: k.bytes > 0 ? k.bytes / k.s / (hw.hbm * 1e9) : null });
+  const pts = (q.points || DB.set(id)).map(p => {
+    if(p.op === "bf16_gemm") return sol({ id: p.id, op: p.op, s: p.ms / 1e3, shape: [p.m, p.n, p.k], flops: 2 * p.m * p.n * p.k, bytes: 2 * (p.m * p.k + p.k * p.n + p.m * p.n) });
+    if(p.op === "hbm_copy") return sol({ id: p.id, op: p.op, s: p.ms / 1e3, flops: 0, bytes: p.rw_bytes });
+    if(p.us > 0) return sol({ id: p.id || p.kernel, op: "ncu", kernel: p.kernel, s: p.us / 1e6, flops: +p.flops || 0, bytes: +p.dram_bytes || 0, sm_pct: p.sm_pct ?? null, dram_pct: p.dram_pct ?? null });
+    return null; }).filter(Boolean);
+  if(!pts.length) throw new Error((id ? "set " + id : "points") + " has no kernel points");
+  const best = k => { const v = pts.map(p => p[k]).filter(x => x > 0); return v.length ? Math.max(...v) : null; };
+  return select({ set: id, hw: hw.name, dtype: dt, profile: meta.profile || null, ideal: roofline({ hw: hwKey, basis: "ideal" }), modeled: roofline({ hw: hwKey, basis: "modeled" }),
+    measured: { TFLOPs: best("TFLOPs"), GBs: best("GBs"), etaC: best("etaC"), etaM: best("etaM") }, points: pts }, q.pick);
+}
+/* 按 kernel 类别的效率表（Common.KEFF）：每一格带出处的数据点和它相对 η_c / η_m 的倍数 */
+function eff(){
+  return { reference: { etaC: G0.etaC, etaM: G0.etaM }, table: KEFF.map(r => { const sid = r.ref.split(":")[0], p = DB.one(sid, { id: r.ref }) || null;
+    return Object.assign({}, r, { ratio: r.eta / (r.kind === "m" ? G0.etaM : G0.etaC), evidence: p }); }) };
+}
+
+/* 实测 trace 对照（Trace.compare）：trace 是 Chrome trace 或 [{name, us, calls}]，steps 是覆盖的步数；其余字段和 infer 一样，
+   按同样的设置跑一步 Infer.step，逐类别（gemm / attn / lin / moe / comm / samp / elem）比每步时间 */
+function trace(q){
+  q = q || {}; if(q.trace == null) throw new Error("trace needs a trace: a Chrome trace {traceEvents} or a list of {name, us, calls}");
+  const c = ctxOf(q), o = rest(q); delete o.trace; delete o.steps;
+  const cfg = Object.assign({}, Infer.BASE, o), r = Infer.step(c.m, c.hw, c.topo, cfg, c.g);
+  return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, Trace.compare(q.trace, q.steps, r)), q.pick);
 }
 
 /* 目录：有哪些模型、GPU、拓扑、口径、引擎、配方和数据集；默认配置原样给出，agent 照着改 */
@@ -106,8 +135,8 @@ function catalog(){
     models: Object.fromEntries(Object.keys(MODELS).map(k => [k, { name: MODELS[k].name, family: MODELS[k].family }])),
     hw: HW, topo: TOPO, engines: Object.keys(Infer.ENGINES), spec: Object.keys(Infer.SPEC), prec: Object.keys(Train.PREC), epBackends: Object.keys(Par.EP),
     quant: Quant.ORDER, defaults: { infer: Infer.BASE, train: Train.BASE, module: Arch.defaults(MODELS.qwen35) },
-    runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "calib", "sets", "catalog"]), sets: sets() };
+    runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
 }
 
-return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, sweep, sets, points, kernels, calib });
+return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, sweep, sets, points, kernels, eff, calib, trace });
 })();

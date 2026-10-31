@@ -19,8 +19,30 @@ function renderKernels(){
     points:gemm.map(p=>({x:p.I,y:p.TFLOPs*1e12,color:css("s1"),r:4.5}))});
   $("d-kern-legend").innerHTML='<span><i></i>'+t("appendix.data.kern.ideal")+'</span><span><i class="d"></i>'+t("appendix.data.kern.modeled")+'</span><span style="color:var(--ok)"><i class="d"></i>'+t("appendix.data.kern.measured")+'</span>'+
     '<span><span class="sw" style="background:'+css("s1")+'"></span>'+t("appendix.data.kern.gemm")+'</span>';
+  renderKernelTable(k);
   $("d-kern-lede").innerHTML=t("appendix.data.kern.lede",{hw:hw.name,tf:V(fInt(k.measured.TFLOPs)),tfp:pct(k.measured.TFLOPs,k.ideal.peaks.bf16.peakTFLOPs),
     gb:V(fInt(k.measured.GBs)),gbp:pct(k.measured.GBs,k.ideal.hbmGBs),etaC:Common.G0.etaC,etaM:Common.G0.etaM});
+}
+/* 每个实测 kernel 的 SOL 效率（Scouter.kernels），以及按 kernel 类别的效率表和它的出处（Scouter.eff） */
+const pctOr = x => x==null ? "—" : (x*100).toFixed(0)+"%";
+function renderKernelTable(k){
+  table($("d-kern-tbl"),[t("appendix.data.kern.tbl.what"),t("appendix.data.kern.tbl.t"),"TFLOP/s","η<sub>c</sub>","GB/s","η<sub>m</sub>"],
+    k.points.map(p=>[p.op==="bf16_gemm"?"GEMM "+p.shape.join(" × "):p.op==="hbm_copy"?t("calib.label.copy",{bytes:fB(p.bytes)}):esc(p.kernel||p.id),fT(p.s),
+      p.TFLOPs?fInt(p.TFLOPs):"—",pctOr(p.etaC),p.GBs?fInt(p.GBs):"—",pctOr(p.etaM)]));
+}
+const KCLS_NAME = { gemm:t("appendix.data.keff.cls.gemm"), attn:t("appendix.data.keff.cls.attn"), moe:t("appendix.data.keff.cls.moe") };
+const ARCH_NAME = { 90:t("appendix.data.keff.arch.90"), 100:t("appendix.data.keff.arch.100"), 103:t("appendix.data.keff.arch.103") };
+function renderEff(){
+  const e=Scouter.eff(), conf={ measured:t("appendix.db.conf.measured"), reported:t("appendix.db.conf.reported"), derived:t("appendix.db.conf.derived") };
+  table($("d-keff"),[t("appendix.data.keff.head.arch"),t("appendix.data.keff.head.cls"),t("appendix.data.keff.head.dt"),"η",t("appendix.data.keff.head.ratio"),t("appendix.data.keff.head.src")],
+    e.table.map(r=>{ const p=r.evidence||{}, pub=p.set==="kernel_public";
+      return [ARCH_NAME[r.sm]||("SM"+r.sm),KCLS_NAME[r.cls]+(r.kind==="m"?t("appendix.data.keff.mem"):""),r.dt.toUpperCase(),r.eta.toFixed(2),"× "+r.ratio.toFixed(2),
+        pub ? '<a href="'+esc(p.url)+'" target="_blank" rel="noopener">'+esc(p.src)+'</a><br><span class="tag">'+esc(p.what)+'</span>'
+            : t("appendix.data.keff.anon",{tf:fInt(p.tflops||0)})]; }));
+  const ev=DB.set("kernel_public");
+  table($("d-kev"),[t("appendix.data.keff.ev.what"),t("appendix.data.keff.ev.gpu"),t("appendix.data.keff.ev.value"),"η",t("appendix.data.keff.ev.use"),t("appendix.data.keff.ev.src")],
+    ev.map(p=>[esc(p.what)+(p.note?'<br><span class="tag">'+esc(p.note)+'</span>':""),esc(p.gpu||"—"),esc(String(p.value))+" "+esc(p.unit),p.peak?(p.value/p.peak).toFixed(2):"—",
+      p.keff?t("appendix.data.keff.ev.inTable"):esc(conf[p.confidence||DB.meta("kernel_public").confidence]),pubSrc(p)]));
 }
 function renderPublic(){
   const g=S.glob, hw=HW[S.q.hw], inf=DB.set("inference_public");

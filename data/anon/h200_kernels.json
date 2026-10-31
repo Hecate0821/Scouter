@@ -6,6 +6,11 @@
  "topo": "hgx8",
  "model": null,
  "conditions": "单卡 BF16 GEMM（M × N × K）和 HBM 拷贝，不锁频。",
+ "profile": {
+  "timing": "median",
+  "clocks": "unlocked",
+  "dtype": "bf16"
+ },
  "dims": [
   "op",
   "m",
