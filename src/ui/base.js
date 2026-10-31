@@ -16,7 +16,7 @@ const css = n => "var(--"+n+")";
 /* ---------- 画图 ---------- */
 function niceStep(span,n){ const raw=span/n, p=Math.pow(10,Math.floor(Math.log10(raw))), e=raw/p; return (e>=7.5?10:e>=3.5?5:e>=1.5?2:1)*p; }
 function plot(svg,c){
-  try{ plotInner(svg,c); }catch(e){ svg.innerHTML='<text x="20" y="40" style="fill:var(--warn)">画图出错：'+esc(e.message)+'</text>'; console.error(e); }
+  try{ plotInner(svg,c); }catch(e){ svg.innerHTML='<text x="20" y="40" style="fill:var(--warn)">'+esc(t("common.chart.error",{m:e.message}))+'</text>'; console.error(e); }
 }
 function plotInner(svg,c){
   const W=680,H=c.h||340,m={l:68,r:18,t:16,b:46},iw=W-m.l-m.r,ih=H-m.t-m.b, L10=Math.log10;

@@ -28,12 +28,12 @@ function axis(lo, hi, a, b, log){ if(log){ const L0=Math.log(lo), L1=Math.log(hi
 function niceTicks(lo, hi, n){ const span=hi-lo, s0=span/(n||5), p=Math.pow(10,Math.floor(Math.log10(s0))), s=[1,2,2.5,5,10].map(k=>k*p).find(k=>k>=s0)||p*10; const out=[]; for(let v=Math.ceil(lo/s)*s; v<=hi+1e-9*s; v+=s) out.push(+v.toPrecision(12)); return out; }
 function logTicks(lo, hi, base){ const out=[], b=base||10; for(let v=Math.pow(b, Math.floor(Math.log(lo)/Math.log(b))); v<=hi*1.0001; v*=b) if(v>=lo*0.9999) out.push(v); return out; }
 
-/* 折线图：series [{name, short, col, pts:[[x,y,{hollow,note}]]}]。默认十字准线吸附最近的 x；nearest 时吸附屏幕上最近的点（各线 x 不对齐的 Pareto） */
+/* 折线图：series [{name, short, col, dash, pts:[[x,y,{hollow,note}]]}]。默认十字准线吸附最近的 x；nearest 时吸附屏幕上最近的点（各线 x 不对齐的 Pareto） */
 function lineChart(svgId, o){
   const svg=$(svgId), W=680, H=+svg.getAttribute("viewBox").split(" ")[3], m={l:64,r:18,t:16,b:44};
   const ok = p => p[1]!=null && isFinite(p[1]) && (!o.yLog || p[1]>0);
   const all = o.series.flatMap(s=>s.pts).filter(ok);
-  if(!all.length){ svg.innerHTML='<text x="'+W/2+'" y="'+H/2+'" text-anchor="middle" class="lbl">'+esc(o.empty||"没有可画的点")+'</text>'; svg.onpointermove=null; return; }
+  if(!all.length){ svg.innerHTML='<text x="'+W/2+'" y="'+H/2+'" text-anchor="middle" class="lbl">'+esc(o.empty||t("common.chart.empty"))+'</text>'; svg.onpointermove=null; return; }
   let x0=o.xMin ?? Math.min(...all.map(p=>p[0])), x1=o.xMax ?? Math.max(...all.map(p=>p[0]));
   let y0=o.yMin ?? (o.yLog ? Math.min(...all.map(p=>p[1]))/1.3 : 0), y1=o.yMax ?? Math.max(...all.map(p=>p[1]))*1.08;
   if(x0===x1){ x0*=0.5; x1*=2; } if(y0===y1) y1=y0*2||1;
@@ -49,7 +49,7 @@ function lineChart(svgId, o){
     s+='<line x1="'+xv+'" x2="'+xv+'" y1="'+m.t+'" y2="'+(H-m.b)+'" style="stroke:var(--muted)" stroke-dasharray="4 4"/><text x="'+(rt?xv-4:xv+4)+'" y="'+(rt?H-m.b-6:m.t+10)+'"'+(rt?' text-anchor="end"':'')+'>'+esc(v.label)+'</text>'; }
   const direct = o.series.length<=5 && o.labelEnds!==false, ends=[];
   for(const se of o.series){ const pts=se.pts.filter(ok); if(!pts.length) continue;
-    s+='<path d="'+pts.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+","+Y(p[1]).toFixed(1)).join("")+'" fill="none" style="stroke:'+css(se.col)+'" stroke-width="2" stroke-linejoin="round"/>';
+    s+='<path d="'+pts.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+","+Y(p[1]).toFixed(1)).join("")+'" fill="none" style="stroke:'+css(se.col)+'" stroke-width="2"'+(se.dash?' stroke-dasharray="'+se.dash+'"':'')+' stroke-linejoin="round"/>';
     for(const p of pts){ const h=p[2]&&p[2].hollow; s+='<circle cx="'+X(p[0])+'" cy="'+Y(p[1])+'" r="'+(h?3.5:3)+'" style="fill:'+(h?"var(--panel)":css(se.col))+';stroke:'+css(se.col)+'" stroke-width="1.5"/>'; }
     if(direct){ const p=pts[pts.length-1]; ends.push({x:X(p[0]),y:Y(p[1])-7,t:se.short||se.name}); } }
   // 线尾标注：按线尾高低排好再往下错开 13，碰到下边再往上推，上下顺序和线一致
@@ -70,7 +70,7 @@ function lineChart(svgId, o){
     let best=xs[0], bd=Infinity; for(const v of xs){ const dd=Math.abs(X(v)-loc.x); if(dd<bd){ bd=dd; best=v; } }
     hair.setAttribute("x1",X(best)); hair.setAttribute("x2",X(best)); hair.removeAttribute("hidden");
     const rows=o.series.map(se=>{ const p=se.pts.find(q=>q[0]===best); return p&&ok(p) ? {v:(o.tipFmt||fy)(p[1]), l:se.name+(p[2]&&p[2].note?"  "+p[2].note:""), c:se.col, y:p[1]} : null; }).filter(Boolean).sort((a,b)=>b.y-a.y);
-    showTip(ev, (o.xLab||"x")+" = "+fx(best), rows.length?rows:[{v:"—",l:"这个位置没有点"}]);
+    showTip(ev, (o.xLab||"x")+" = "+fx(best), rows.length?rows:[{v:"—",l:t("common.chart.noPoint")}]);
   };
   svg.onpointerleave = () => { hair.setAttribute("hidden",""); hideTip(); };
 }
@@ -78,7 +78,7 @@ function legendInto(id, items){ const el=$(id); if(!el) return;
   el.innerHTML=items.map(it=>it.line ? '<span><i style="border-color:'+css(it.col)+'"></i>'+esc(it.name)+'</span>' : '<span><span class="sw" style="background:'+css(it.col)+'"></span>'+esc(it.name)+'</span>').join(""); }
 
 /* 甘特图：groups [{label, lanes, segs:[{lane,t0,t1,cat,label}]}] */
-const LANE_NAME = { cpu:"CPU", sm:"SM（计算）", nvl:"NVLink", ib:"IB" };
+const LANE_NAME = { cpu:"CPU", sm:t("common.gantt.sm"), nvl:"NVLink", ib:"IB" };
 function gantt(svgId, groups){
   const svg=$(svgId), W=680, laneH=20, gapG=16, m={l:92,r:12,t:10,b:28};
   let H=m.t+m.b; groups.forEach(gr=>{ H+=(gr.label?16:0)+gr.lanes.length*(laneH+3)+gapG; });
@@ -105,4 +105,4 @@ function layout(seq, t0){
     segs.push({lane,label,t0:t,t1:t+dur,cat}); lastStart=t; t+=dur; }
   return { segs, end:t };
 }
-const GANTT_LEGEND = [["attention","attn"],["投影 / FFN","proj"],["线性注意力","lin"],["MoE GEMM","moe"],["EP 通信","ep"],["CP 通信","cp"],["TP 通信","tp"],["FSDP","fsdp"],["同步","sync"],["重算 / 其他","oth"]];
+const GANTT_LEGEND = [["attention","attn"],[t("common.gantt.proj"),"proj"],[t("common.gantt.lin"),"lin"],["MoE GEMM","moe"],[t("common.gantt.ep"),"ep"],[t("common.gantt.cp"),"cp"],[t("common.gantt.tp"),"tp"],["FSDP","fsdp"],[t("common.gantt.sync"),"sync"],[t("common.gantt.oth"),"oth"]];

@@ -12,17 +12,22 @@
 <body>
 <div class="wrap">
 <header class="top">
-  <span class="eyebrow">MoE · post-training × inference × RL · roofline</span>
+  <span class="eyebrow">Scouter · MoE · post-training × inference × RL · roofline</span>
+  <label class="lang" id="g-lang-wrap" hidden><span data-i18n="shell.lang"></span><select id="g-lang"></select></label>
   <h1 data-i18n="shell.h1"></h1>
   <p data-i18n="shell.lede"></p>
   <p class="disc" data-i18n="shell.disc"></p>
 </header>
 <nav class="tabs" data-i18n-attr="aria-label=shell.attr.nav.aria-label">
   <a href="#overview" data-tab="overview" data-i18n="shell.nav.overview"></a>
+  <a href="#arch/overview" data-tab="arch" data-i18n="shell.nav.arch"></a>
   <a href="#train/step" data-tab="train" data-i18n="shell.nav.train"></a>
   <a href="#infer/step" data-tab="infer" data-i18n="shell.nav.infer"></a>
   <a href="#rl/mismatch" data-tab="rl">RL</a>
   <a href="#appendix/data" data-tab="appendix" data-i18n="shell.nav.appendix"></a>
+</nav>
+<nav class="subtabs" data-page="arch" hidden data-i18n-attr="aria-label=shell.attr.nav.arch.aria-label">
+  <a href="#arch/overview" data-sub="overview" data-i18n="shell.nav.arch.overview"></a><a href="#arch/module" data-sub="module" data-i18n="shell.nav.arch.module"></a><a href="#arch/compare" data-sub="compare" data-i18n="shell.nav.arch.compare"></a>
 </nav>
 <nav class="subtabs" data-page="train" hidden data-i18n-attr="aria-label=shell.attr.nav.train.aria-label">
   <a href="#train/step" data-sub="step" data-i18n="shell.nav.train.step"></a><a href="#train/par" data-sub="par" data-i18n="shell.nav.train.par"></a><a href="#train/quant" data-sub="quant" data-i18n="shell.nav.train.quant"></a><a href="#train/calib" data-sub="calib" data-i18n="shell.nav.train.calib"></a>
@@ -34,7 +39,7 @@
   <a href="#rl/mismatch" data-sub="mismatch" data-i18n="shell.nav.rl.mismatch"></a><a href="#rl/determinism" data-sub="determinism" data-i18n="shell.nav.rl.determinism"></a><a href="#rl/lowprec" data-sub="lowprec" data-i18n="shell.nav.rl.lowprec"></a><a href="#rl/qat" data-sub="qat" data-i18n="shell.nav.rl.qat"></a>
 </nav>
 <nav class="subtabs" data-page="appendix" hidden data-i18n-attr="aria-label=shell.attr.nav.appendix.aria-label">
-  <a href="#appendix/data" data-sub="data" data-i18n="shell.nav.appendix.data"></a><a href="#appendix/quant" data-sub="quant" data-i18n="shell.nav.appendix.quant"></a><a href="#appendix/models" data-sub="models" data-i18n="shell.nav.appendix.models"></a><a href="#appendix/method" data-sub="method" data-i18n="shell.nav.appendix.method"></a>
+  <a href="#appendix/data" data-sub="data" data-i18n="shell.nav.appendix.data"></a><a href="#appendix/quant" data-sub="quant" data-i18n="shell.nav.appendix.quant"></a><a href="#appendix/method" data-sub="method" data-i18n="shell.nav.appendix.method"></a>
 </nav>
 
 <div class="layout">
@@ -63,11 +68,28 @@
     <p class="hint" data-i18n-html="shell.hint"></p>
   </details>
 
-  <!-- 模型 -->
-  <div data-rack="appendix/models">
-    <h3 data-i18n="appendix.rack.h3"></h3>
+  <!-- 架构 -->
+  <div data-rack="arch/overview arch/module arch/compare">
+    <h3 data-i18n="arch.rack.h3"></h3>
+    <label class="ctl"><span data-i18n="arch.rack.phase"></span><select data-bind="arch.phase" data-i18n-attr="aria-label=arch.rack.phase"><option value="decode">decode</option><option value="prefill">prefill</option><option value="train" data-i18n="arch.rack.train"></option></select></label>
+    <label class="ctl" id="ar-B"><span data-i18n="arch.rack.B"></span><input type="number" min="1" max="4096" step="1" data-bind="arch.B"></label>
+    <label class="ctl" id="ar-n"><span data-i18n="arch.rack.n"></span><input type="number" min="1" max="1048576" step="1024" data-bind="arch.n"></label>
+    <label class="ctl" id="ar-C"><span data-i18n="arch.rack.C"></span><input type="number" min="0" max="65536" step="1024" data-bind="arch.C"></label>
+    <label class="ctl" id="ar-S"><span data-i18n="arch.rack.S"></span><input type="number" min="256" max="1048576" step="1024" data-bind="arch.S"></label>
+    <div id="ar-inf">
+      <label class="ctl"><span data-i18n="arch.rack.wDt"></span><select data-bind="arch.wDt" data-i18n-attr="aria-label=arch.rack.wDt"><option value="bf16">BF16</option><option value="fp8">FP8 block</option></select></label>
+      <label class="ctl"><span data-i18n="arch.rack.eDt"></span><select data-bind="arch.eDt" data-i18n-attr="aria-label=arch.rack.eDt"><option value="bf16">BF16</option><option value="fp8">FP8 block</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
+      <label class="ctl"><span>KV cache</span><select data-bind="arch.kvDt" aria-label="KV cache"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
+      <label class="ctl"><span data-i18n="arch.rack.stateDt"></span><select data-bind="arch.stateDt" data-i18n-attr="aria-label=arch.rack.stateDt"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
+    </div>
+    <label class="ctl" id="ar-prec"><span data-i18n="arch.rack.prec"></span><select data-bind="arch.prec" data-i18n-attr="aria-label=arch.rack.prec"><option value="bf16">BF16</option><option value="fp8">block FP8</option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
+    <button type="button" id="ar-reset" data-i18n="arch.rack.reset"></button>
+    <p class="hint" data-i18n-html="arch.rack.hint"></p>
+  </div>
+  <div data-rack="arch/overview arch/module">
+    <h3 data-i18n="arch.rack.modelH3"></h3>
     <div id="model-editor"></div>
-    <button type="button" id="model-reset"><span data-i18n="appendix.rack.model-reset.text"></span></button>
+    <button type="button" id="model-reset"><span data-i18n="arch.rack.modelReset"></span></button>
   </div>
 
   <!-- 推理 -->
@@ -253,6 +275,98 @@
     <div class="bar" id="o-tbar"></div><div class="barlist" id="o-tbarlist"></div>
   </div>
   <div class="block"><h2 data-i18n="overview.b4.h2"></h2><div id="o-notes"></div></div>
+</section>
+
+<!-- ============ 架构 · 模型总览 ============ -->
+<section class="pane" data-pane="arch/overview" hidden>
+  <div class="block"><h2 id="m-title"></h2>
+    <p class="lede" id="m-note"></p>
+    <p class="hint" data-i18n="arch.ov.stackHint"></p>
+    <div class="stack" id="m-stack" data-i18n-attr="aria-label=arch.ov.stackAria"></div>
+    <div class="legend" id="m-stack-legend"></div>
+    <h3 data-i18n="arch.ov.modsH3"></h3>
+    <p class="lede" id="ao-mods-lede"></p>
+    <div class="cards" id="ao-mods"></div>
+    <div class="tbl"><table id="m-params"></table></div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.ov.h2"></h2>
+    <p class="lede" data-i18n="arch.ov.lede"></p>
+    <div class="tbl"><table id="m-compare"></table></div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.ov.cacheH2"></h2>
+    <p class="lede" data-i18n="arch.ov.cacheLede"></p>
+    <div class="fig"><svg id="m-cache" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=arch.ov.cacheAria"></svg><div class="legend" id="m-cache-legend"></div></div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.ov.twoH2"></h2>
+    <div class="tbl"><table>
+      <thead><tr><th data-i18n="arch.ov.two.head.c1"></th><th data-i18n="arch.ov.two.head.c2"></th><th data-i18n="arch.ov.two.head.c3"></th></tr></thead>
+      <tbody>
+        <tr><td>GQA</td><td data-i18n-html="arch.ov.two.row1.c2"></td><td data-i18n="arch.ov.two.row1.c3"></td></tr>
+        <tr><td>MLA</td><td data-i18n-html="arch.ov.two.row2.c2"></td><td data-i18n="arch.ov.two.row2.c3"></td></tr>
+        <tr><td>DSA</td><td data-i18n="arch.ov.two.row3.c2"></td><td data-i18n="arch.ov.two.row3.c3"></td></tr>
+        <tr><td>GDN / KDA</td><td data-i18n-html="arch.ov.two.row4.c2"></td><td data-i18n="arch.ov.two.row4.c3"></td></tr>
+        <tr><td data-i18n="arch.ov.two.row5.c1"></td><td data-i18n-html="arch.ov.two.row5.c2"></td><td data-i18n="arch.ov.two.row5.c3"></td></tr>
+        <tr><td data-i18n="arch.ov.two.row6.c1"></td><td data-i18n="arch.ov.two.row6.c2"></td><td data-i18n="arch.ov.two.row6.c3"></td></tr>
+      </tbody></table></div>
+  </div>
+</section>
+
+<!-- ============ 架构 · 一个模块 ============ -->
+<section class="pane" data-pane="arch/module" hidden>
+  <div class="block">
+    <div class="seg" id="am-mods" role="group" data-i18n-attr="aria-label=arch.mod.modsAria"></div>
+    <h2 id="am-title"></h2>
+    <p class="lede" id="am-lede"></p>
+    <div class="seg" id="am-phase" role="group" data-i18n-attr="aria-label=arch.mod.phaseAria"></div>
+    <div class="kpis" id="am-kpis"></div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.mod.mechH2"></h2>
+    <p class="lede" data-i18n="arch.mod.mechLede"></p>
+    <div class="mech">
+      <div class="mech-figs">
+        <div class="fig"><svg id="am-diagram" class="viz" viewBox="0 0 680 240" role="img" data-i18n-attr="aria-label=arch.mod.diagramAria"></svg></div>
+        <div class="fig" id="am-diagram2-fig" hidden><svg id="am-diagram2" class="viz" viewBox="0 0 680 240" role="img" data-i18n-attr="aria-label=arch.mod.diagram2Aria"></svg></div>
+        <p class="hint" id="am-diagram-cap"></p>
+      </div>
+      <div class="knobs"><h3 data-i18n="arch.mod.knobsH3"></h3><div id="am-knobs"></div></div>
+    </div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.mod.roofH2"></h2>
+    <p class="lede" id="am-roof-lede"></p>
+    <div class="fig"><svg id="am-roof" viewBox="0 0 680 380" role="img" data-i18n-attr="aria-label=arch.mod.roofAria"></svg><div class="legend" id="am-roof-legend"></div></div>
+    <div class="read" id="am-read"></div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.mod.curvesH2"></h2>
+    <div class="figs">
+      <div class="fig"><svg id="am-c1" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=arch.mod.c1Aria"></svg><p class="hint" id="am-c1-cap"></p></div>
+      <div class="fig"><svg id="am-c2" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=arch.mod.c2Aria"></svg><p class="hint" id="am-c2-cap"></p></div>
+    </div>
+  </div>
+  <div class="block"><details class="ops"><summary data-i18n="arch.ops.sum"></summary>
+    <p class="lede" id="am-ops-lede"></p>
+    <div class="tbl"><table id="am-ops"></table></div>
+  </details></div>
+  <div class="block"><h2 data-i18n="arch.src.h2"></h2><div id="am-src"></div></div>
+</section>
+
+<!-- ============ 架构 · 跨模型对比 ============ -->
+<section class="pane" data-pane="arch/compare" hidden>
+  <div class="block"><h2 data-i18n="arch.cmp.h2"></h2>
+    <p class="lede" id="ac-lede"></p>
+    <div class="fig"><svg id="ac-roof" viewBox="0 0 680 400" role="img" data-i18n-attr="aria-label=arch.cmp.roofAria"></svg><div class="legend" id="ac-roof-legend"></div></div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.cmp.curvesH2"></h2>
+    <p class="lede" data-i18n="arch.cmp.curvesLede"></p>
+    <div class="figs">
+      <div class="fig"><svg id="ac-attn" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=arch.cmp.attnAria"></svg><div class="legend" id="ac-attn-legend"></div></div>
+      <div class="fig" id="ac-mlp-fig"><svg id="ac-mlp" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=arch.cmp.mlpAria"></svg><div class="legend" id="ac-mlp-legend"></div></div>
+    </div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.cmp.splitH2"></h2>
+    <p class="lede" data-i18n="arch.cmp.splitLede"></p>
+    <div class="ac-split" id="ac-split"></div><div class="legend" id="ac-split-legend"></div>
+    <div class="tbl"><table id="ac-tbl"></table></div>
+  </div>
 </section>
 
 <!-- ============ 后训练 · 一个 step ============ -->
@@ -789,36 +903,6 @@
   </div>
 </section>
 
-<!-- ============ 附录 · 模型结构 ============ -->
-<section class="pane" data-pane="appendix/models" hidden>
-  <div class="block"><h2 data-i18n="appendix.models.b1.h2"></h2>
-    <p class="lede" data-i18n="appendix.models.b1.lede"></p>
-    <div class="tbl"><table id="m-compare"></table></div>
-  </div>
-  <div class="block"><h2 id="m-title"></h2>
-    <p class="lede" id="m-note"></p>
-    <div class="stack" id="m-stack" data-i18n-attr="aria-label=appendix.models.attr.m-stack.aria-label"></div>
-    <div class="legend" id="m-stack-legend"></div>
-    <div class="tbl"><table id="m-params"></table></div>
-  </div>
-  <div class="block"><h2 data-i18n="appendix.models.b3.h2"></h2>
-    <p class="lede" data-i18n="appendix.models.b3.lede"></p>
-    <div class="fig"><svg id="m-cache" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=appendix.models.attr.m-cache.aria-label"></svg><div class="legend" id="m-cache-legend"></div></div>
-  </div>
-  <div class="block"><h2 data-i18n="appendix.models.b4.h2"></h2>
-    <div class="tbl"><table>
-      <thead><tr><th data-i18n="appendix.models.b4.tbl.head.c1"></th><th data-i18n="appendix.models.b4.tbl.head.c2"></th><th data-i18n="appendix.models.b4.tbl.head.c3"></th></tr></thead>
-      <tbody>
-        <tr><td>GQA</td><td data-i18n-html="appendix.models.b4.tbl.row1.c2"></td><td data-i18n="appendix.models.b4.tbl.row1.c3"></td></tr>
-        <tr><td>MLA</td><td data-i18n-html="appendix.models.b4.tbl.row2.c2"></td><td data-i18n="appendix.models.b4.tbl.row2.c3"></td></tr>
-        <tr><td>DSA</td><td data-i18n="appendix.models.b4.tbl.row3.c2"></td><td data-i18n="appendix.models.b4.tbl.row3.c3"></td></tr>
-        <tr><td>GDN / KDA</td><td data-i18n-html="appendix.models.b4.tbl.row4.c2"></td><td data-i18n="appendix.models.b4.tbl.row4.c3"></td></tr>
-        <tr><td data-i18n="appendix.models.b4.tbl.row5.c1"></td><td data-i18n-html="appendix.models.b4.tbl.row5.c2"></td><td data-i18n="appendix.models.b4.tbl.row5.c3"></td></tr>
-        <tr><td data-i18n="appendix.models.b4.tbl.row6.c1"></td><td data-i18n="appendix.models.b4.tbl.row6.c2"></td><td data-i18n="appendix.models.b4.tbl.row6.c3"></td></tr>
-      </tbody></table></div>
-  </div>
-</section>
-
 <!-- ============ 附录 · 口径与参考 ============ -->
 <section class="pane" data-pane="appendix/method" hidden>
   <div class="block"><h2 data-i18n="appendix.method.b1.h2"></h2>
@@ -940,16 +1024,18 @@
 <script src="src/engine/infer.js"></script>
 <script src="src/engine/train.js"></script>
 <script src="src/engine/quant.js"></script>
+<script src="src/engine/arch.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
 <script src="src/ui/base.js"></script>
 <script src="src/ui/config.js"></script>
 <script src="src/ui/state.js"></script>
-<script src="src/ui/models.js"></script>
 <script src="src/ui/infer.js"></script>
 <script src="src/ui/train.js"></script>
 <script src="src/ui/quant.js"></script>
 <script src="src/ui/charts.js"></script>
+<script src="src/ui/archviz.js"></script>
+<script src="src/ui/arch.js"></script>
 <script src="src/ui/par.js"></script>
 <script src="src/ui/comm.js"></script>
 <script src="src/ui/calib.js"></script>

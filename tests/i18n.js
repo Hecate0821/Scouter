@@ -22,8 +22,10 @@ function scanJs(file) {
     toks.forEach((tok, i) => {
       const isStr = tok.type === acorn.tokTypes.string || tok.type === acorn.tokTypes.template;
       if (isStr && CJK.test(String(tok.value))) problems.push(`${rel}:${tok.loc.start.line}  ${String(tok.value).slice(0, 70)}`);
-      // t("literal") / I18N.t("literal")：key 必须存在（拼出来的 key 查不了，只能靠渲染时的 missing）
+      // t("literal") / I18N.t("literal")：key 必须存在（t("prefix." + x) 这种拼出来的 key 查不了，只能靠渲染时的 missing）
+      const nx = toks[i + 3];
       if (tok.type === acorn.tokTypes.name && tok.value === "t" && toks[i + 1] && toks[i + 1].type === acorn.tokTypes.parenL && toks[i + 2] && toks[i + 2].type === acorn.tokTypes.string
+          && nx && (nx.type === acorn.tokTypes.parenR || nx.type === acorn.tokTypes.comma)
           && !(toks[i - 1] && toks[i - 1].type === acorn.tokTypes.dot && !(toks[i - 2] && toks[i - 2].value === "I18N"))
           && !KEYS.has(toks[i + 2].value)) problems.push(`${rel}:${tok.loc.start.line}  missing key ${toks[i + 2].value}`);
     });
@@ -59,7 +61,7 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
       for (const fw of ["megatron", "torchtitan"]) { go("train/step"); setSel("[data-bind='trn.fw']", fw); go("train/par"); }
       setSel("[data-bind='inf.engine']", "sglang"); setSel("[data-bind='inf.phase']", "decode");
     }
-    const miss = Array.from(w.I18N.missing);
+    const miss = Array.from(w.eval("I18N").missing);
     if (miss.length) problems.push("missing keys: " + miss.slice(0, 40).join(", ") + (miss.length > 40 ? " …" : ""));
     if (errs.length) problems.push("script errors: " + errs.slice(0, 3).join("\n"));
   }

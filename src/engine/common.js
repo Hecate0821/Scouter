@@ -13,32 +13,32 @@ const MODELS = {
     full:{ n:10, kind:"gqa", Hq:16, Hkv:2, dh:256, gate:true },
     lin:{ n:30, kind:"GDN", Hk:16, Hv:32, dk:128, dv:128, conv:4 },
     moe:{ E:256, k:8, F:512, Fs:512, sharedGate:true, Dlat:0 }, dense:{ n:0, F:0 },
-    wDefault:"bf16", official:"35B 总 / 3B 激活",
-    note:"40 层 = 10 ×（3 × Gated DeltaNet + 1 × 带输出门的 GQA）。每层都是 MoE：256 个 routed expert 选 8，外加 1 个带 sigmoid 门的 shared expert。" },
+    wDefault:"bf16", official:t("engine_common.model.qwen35.official"),
+    note:t("engine_common.model.qwen35.note") },
   kimik3: { name:"Kimi K3", short:"Kimi K3", family:"kimi", D:7168, L:93, V:163840, mtp:0,
     full:{ n:24, kind:"mla", H:96, qLora:1536, kvLora:512, nope:128, rope:64, vh:128, gate:true, nope_only:true },
     lin:{ n:69, kind:"KDA", Hk:96, Hv:96, dk:128, dv:128, conv:4 },
     moe:{ E:896, k:16, F:3072, Fs:6144, sharedGate:false, Dlat:3584 }, dense:{ n:1, F:33792 },
-    attnRes:8, wDefault:"mxfp4", official:"2.8T 总 / 104B 激活",
-    note:"69 层 KDA + 24 层带 sigmoid 输出门的 MLA（NoPE，但 KV 仍存 512+64 维）。routed expert 在 3584 维 latent 空间里算（router、latent 下投影、shared gate_up 是同一个 bf16 GEMM）；2 个 shared expert 合并成 F=6144，在 7168 维上算（vLLM 每卡常数 SI=768@TP8）。第 0 层是 dense FFN。另有 AttnRes 块残差（最多 8 个快照）。官方 checkpoint 只有 routed expert 是 MXFP4，其余 BF16。按这些字段算出的激活参数比官方的 104B 多几 B，差别来自 shared expert 的口径。" },
+    attnRes:8, wDefault:"mxfp4", official:t("engine_common.model.kimik3.official"),
+    note:t("engine_common.model.kimik3.note") },
   glm53f: { name:"GLM-5.3-Flash", short:"GLM-5.3-Flash", family:"glm", D:4096, L:45, V:154880, mtp:1,
     full:{ n:11, kind:"dsa", H:64, qLora:1536, kvLora:512, nope:256, rope:0, vh:256, gate:false, topk:2048, idxH:32, idxD:128, kpool:4 },
     lin:{ n:34, kind:"KDA", Hk:64, Hv:64, dk:128, dv:128, conv:4 },
     moe:{ E:288, k:8, F:2048, Fs:2048, sharedGate:false, Dlat:0 }, dense:{ n:3, F:12288 },
-    mhc:4, wDefault:"fp8", official:"320B 总 / 18B 激活",
-    note:"34 层 KDA + 11 层 DSA（i%4==3）。DSA = NoPE MLA（qk_nope = v = 256，KV 512 维）+ KPool lightning indexer：每 4 个 token 池化成一个 key，选 top-512 个池（约 2048 个 token）。前 3 层 dense FFN。4 路 mHC 残差流。主仓库发 FP8 block 权重。" },
-  musespark: { name:"Muse Spark Open（816B-A42B）", short:"Muse Spark", family:"muse", D:8192, L:62, V:202048, mtp:0,
+    mhc:4, wDefault:"fp8", official:t("engine_common.model.glm53f.official"),
+    note:t("engine_common.model.glm53f.note") },
+  musespark: { name:t("engine_common.model.musespark.name"), short:"Muse Spark", family:"muse", D:8192, L:62, V:202048, mtp:0,
     full:{ n:62, kind:"gqa", Hq:128, Hkv:16, dh:64, gate:true, gateHead:true, swa:46, W:2048, gEvery:4, gOff:1 },
     lin:{ n:0, kind:"GDN", Hk:0, Hv:0, dk:128, dv:128, conv:4 },
     moe:{ E:256, k:8, F:4096, Fs:0, sharedGate:false, Dlat:4096 }, dense:{ n:0, F:0 },
-    wDefault:"nvfp4", official:"816B 总 / 42B 激活",
-    note:"62 层全是 softmax GQA（128 个 q 头、16 个 KV 头、head dim 64，每头一个 sigmoid 门）：46 层滑窗 2048 + RoPE，16 层（i%4==1）看全上下文、不加位置编码，只有这 16 层的 KV 随上下文增长。每层都是 MoE：256 选 8，没有 shared expert；router 在 8192 维上读 fp32，expert 在 4096 维 latent 里算（pre / post_expert_proj 保持 BF16）。官方 NVFP4 checkpoint 只量化 expert（533 GB），BF16 版 1.64 TB。按这些字段算出的激活参数约 40B，官方口径 42B。" },
-  qwen38_27b: { name:"Qwen3.8-27B（dense）", short:"Qwen3.8-27B", family:"qwen", D:5120, L:64, V:248320, mtp:1,
+    wDefault:"nvfp4", official:t("engine_common.model.musespark.official"),
+    note:t("engine_common.model.musespark.note") },
+  qwen38_27b: { name:t("engine_common.model.qwen38_27b.name"), short:"Qwen3.8-27B", family:"qwen", D:5120, L:64, V:248320, mtp:1,
     full:{ n:16, kind:"gqa", Hq:24, Hkv:4, dh:256, gate:true },
     lin:{ n:48, kind:"GDN", Hk:16, Hv:48, dk:128, dv:128, conv:4 },
     moe:{ E:0, k:0, F:0, Fs:0, sharedGate:false, Dlat:0 }, dense:{ n:64, F:17408 },
     wDefault:"bf16", official:"27B dense",
-    note:"唯一的 dense 对照：64 层 = 16 ×（3 × Gated DeltaNet + 1 × 带输出门的 GQA），和 Qwen3.5-35B-A3B 同一套注意力结构，FFN 换成每层一个 17408 宽的 SwiGLU。config 与 Qwen3.5 / 3.6-27B 完全相同。没有 expert，所以没有 a2a、没有 expert 负载不均，decode 每步要读全部 27B 权重。" }
+    note:t("engine_common.model.qwen38_27b.note") }
 };
 
 /* 规格表 dense 数值（TFLOP/s、GB/s、GB）；nvl / ib / host 为单 GPU 单向带宽 */
@@ -46,13 +46,13 @@ const HW = {
   H100:{ name:"H100 SXM", sm:90, bf16:989, fp8:1979, fp4:1979, hbm:3350, mem:80, nvl:450, ib:50, host:25 },
   H200:{ name:"H200", sm:90, bf16:989, fp8:1979, fp4:1979, hbm:4800, mem:141, nvl:450, ib:50, host:25 },
   B200:{ name:"B200", sm:100, bf16:2250, fp8:4500, fp4:9000, hbm:8000, mem:180, nvl:900, ib:50, host:25 },
-  B300:{ name:"B300（HGX）", sm:103, bf16:2250, fp8:4500, fp4:13500, hbm:8000, mem:288, nvl:900, ib:100, host:25 },
+  B300:{ name:t("engine_common.hw.B300"), sm:103, bf16:2250, fp8:4500, fp4:13500, hbm:8000, mem:288, nvl:900, ib:100, host:25 },
   GB200:{ name:"GB200", sm:100, bf16:2500, fp8:5000, fp4:10000, hbm:8000, mem:186, nvl:900, ib:50, host:200 },
   GB300:{ name:"GB300", sm:103, bf16:2500, fp8:5000, fp4:15000, hbm:8000, mem:288, nvl:900, ib:100, host:200 }
 };
 const TOPO = {
-  hgx8:{ name:"8 卡：单台 HGX（NVLink 域 8）", gpus:8, domain:8 },
-  nvl64:{ name:"64 卡：同一 NVL72 机柜（NVLink 域 72）", gpus:64, domain:72 }
+  hgx8:{ name:t("engine_common.topo.hgx8"), gpus:8, domain:8 },
+  nvl64:{ name:t("engine_common.topo.nvl64"), gpus:64, domain:72 }
 };   // 只算这两种：所有并行组都在一个 NVLink 域内。跨机走 IB 的公式（link、Par.epLayer）还在，但没有拓扑会用到
 const peakOf = (hw,d) => hw[peakKey(d)]*1e12;
 

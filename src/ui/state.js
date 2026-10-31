@@ -1,7 +1,8 @@
 /* ---------- 状态 ---------- */
 const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"H200", topo:"hgx8", glob:clone(GLOB),
   inf:clone(BASE_INF), trn:clone(BASE_TRN),
-  infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"",
+  infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"", anchor:"",
+  arch:Object.assign({ mod:"full" }, Arch.defaults(MODELS.qwen35)),
   q:{ hw:"B200", scheme:"nvfp4", fuse:"fused", shape:"up", N:1024, K:2048, M:64, T:512, ep:8, align:"auto", recipe:"mxfp8", Mt:8192, nMicro:4, tokFused:false, roll:0.7, deqRate:40, BM:128 } };
 function getP(path){ return path.split(".").reduce((o,k)=>o==null?o:o[k], S); }
 function setP(path,v){ const ks=path.split("."); let o=S; for(let i=0;i<ks.length-1;i++) o=o[ks[i]]; o[ks[ks.length-1]]=v; }
@@ -28,7 +29,9 @@ function applyAll(){ applyInf("rec"); applyTrn(firstOK(trnPresets(S.trn.fw,S.mod
 function fillSel(sel, obj, val, label){ sel.innerHTML=Object.keys(obj).map(k=>'<option value="'+k+'">'+esc(label?label(obj[k]):obj[k].name)+'</option>').join(""); sel.value=val; }
 function fillOpts(sel, list, val){ sel.innerHTML=list.map(x=>'<option value="'+x[0]+'">'+esc(x[1])+'</option>').join(""); sel.value=val; }
 fillSel($("g-model"),MODELS,S.modelKey); fillSel($("g-hw"),HW,S.hw,h=>h.name+" · "+h.mem+" GB"); fillSel($("g-topo"),TOPO,S.topo);
-$("g-model").addEventListener("change",e=>{ S.modelKey=e.target.value; S.model=clone(MODELS[S.modelKey]); setTopo(S.topo, prefHW(S.modelKey,S.topo)); applyAll(); qShape(); buildEditor(); syncInputs(); render(); });
+$("g-model").addEventListener("change",e=>{ S.modelKey=e.target.value; S.model=clone(MODELS[S.modelKey]);
+  const ad=Arch.defaults(S.model); S.arch.wDt=ad.wDt; S.arch.eDt=ad.eDt;      // 架构页的权重精度跟着新模型的官方 checkpoint
+  setTopo(S.topo, prefHW(S.modelKey,S.topo)); applyAll(); qShape(); buildEditor(); syncInputs(); render(); });
 $("g-hw").addEventListener("change",e=>{ if(!hwOK(e.target.value,S.topo)){ setTopo(e.target.value.startsWith("GB")?"nvl64":"hgx8", e.target.value); } else S.hw=e.target.value;
   if(S.inf.engine==="titan" && S.infPreset!=="custom") applyInf(S.infPreset); syncInputs(); render(); });
 $("g-topo").addEventListener("change",e=>{ setTopo(e.target.value);
@@ -70,18 +73,19 @@ function buildEditor(){
   if(k!=="gqa"){ for(const [a,b] of [["H",64],["qLora",1536],["kvLora",512],["nope",128],["rope",64],["vh",128]]) if(fk[a]==null) fk[a]=b; }
   else { for(const [a,b] of [["Hq",32],["Hkv",4],["dh",128]]) if(fk[a]==null) fk[a]=b; }
   if(k==="dsa"){ for(const [a,b] of [["topk",2048],["idxH",32],["idxD",128],["kpool",4]]) if(fk[a]==null) fk[a]=b; }
-  const F=[["基本"],["D","hidden D"],["L","层数 L"],["V","词表 V"],
-    ["全注意力层"],["full.n","层数"],["full.kind","类型","selA"],
-    ...(k==="gqa"?[["full.Hq","Q 头数"],["full.Hkv","KV 头数"],["full.dh","head_dim"]]
-       :[["full.H","头数"],["full.qLora","q_lora_rank"],["full.kvLora","kv_lora_rank"],["full.nope","qk_nope_dim"],["full.rope","qk_rope_dim"],["full.vh","v_head_dim"]]),
-    ...(k==="dsa"?[["full.topk","DSA top-k"],["full.idxH","indexer 头数"],["full.idxD","indexer 维度"],["full.kpool","KPool 池大小"]]:[]),
-    ["线性注意力层"],["lin.n","层数"],["lin.kind","类型","selL"],["lin.Hk","QK 头数"],["lin.Hv","V 头数"],["lin.dk","key 维度"],["lin.dv","value 维度"],
-    ["MoE"],["moe.E","routed expert 数 E"],["moe.k","top-k"],["moe.F","moe_intermediate F"],["moe.Fs","shared expert 合计 intermediate"],["moe.Dlat","latent 维度（0 = 不用）"],
-    ["dense.n","前几层 dense FFN"],["dense.F","dense intermediate"]];
+  const L=k=>t("arch.editor."+k);
+  const F=[[L("basic")],["D","hidden D"],["L",L("L")],["V",L("V")],
+    [L("full")],["full.n",L("n")],["full.kind",L("kind"),"selA"],
+    ...(k==="gqa"?[["full.Hq",L("Hq")],["full.Hkv",L("Hkv")],["full.dh","head_dim"]]
+       :[["full.H",L("H")],["full.qLora","q_lora_rank"],["full.kvLora","kv_lora_rank"],["full.nope","qk_nope_dim"],["full.rope","qk_rope_dim"],["full.vh","v_head_dim"]]),
+    ...(k==="dsa"?[["full.topk","DSA top-k"],["full.idxH",L("idxH")],["full.idxD",L("idxD")],["full.kpool",L("kpool")]]:[]),
+    [L("lin")],["lin.n",L("n")],["lin.kind",L("kind"),"selL"],["lin.Hk",L("Hk")],["lin.Hv",L("Hv")],["lin.dk",L("dk")],["lin.dv",L("dv")],
+    ["MoE"],["moe.E",L("E")],["moe.k","top-k"],["moe.F","moe_intermediate F"],["moe.Fs",L("Fs")],["moe.Dlat",L("Dlat")],
+    ["dense.n",L("denseN")],["dense.F","dense intermediate"]];
   let h="";
   for(const f of F){
     if(f.length===1){ h+='<h3>'+esc(f[0])+'</h3>'; continue; }
-    if(f[2]==="selA") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">DSA（MLA + 稀疏）</option></select></label>';
+    if(f[2]==="selA") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(L("dsaOpt"))+'</option></select></label>';
     else if(f[2]==="selL") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="GDN">Gated DeltaNet</option><option value="KDA">KDA</option></select></label>';
     else h+='<label class="ctl"><span>'+esc(f[1])+'</span><input type="number" min="0" step="1" data-bind="model.'+f[0]+'"></label>';
   }
@@ -91,7 +95,7 @@ function buildEditor(){
 /* ---------- 共用 ---------- */
 const ctx = () => ({ m:S.model, d:derive(S.model), hw:HW[S.hw], topo:TOPO[S.topo], g:S.glob });
 function kpis(el, list){ el.innerHTML=list.map(k=>'<div class="kpi'+(k[3]?' bad':'')+'"><span class="k">'+k[0]+'</span><span class="n">'+k[1]+'</span><span class="f">'+esc(k[2]||"")+'</span></div>').join(""); }
-function presetSel(sel, srcEl, P, cur){ sel.innerHTML=P.map(p=>'<option value="'+p.id+'">'+esc(p.label+(needOK(p)?"":"（需 "+TOPO[p.need.topo].gpus+" 卡"+(p.need.hw?" "+p.need.hw:"")+"，选中会切换拓扑）"))+'</option>').join(""); sel.value=cur; const p=P.find(x=>x.id===cur); srcEl.textContent=p?p.src:""; }
+function presetSel(sel, srcEl, P, cur){ sel.innerHTML=P.map(p=>'<option value="'+p.id+'">'+esc(p.label+(needOK(p)?"":t("common.preset.need",{n:TOPO[p.need.topo].gpus,hw:p.need.hw?" "+p.need.hw:""})))+'</option>').join(""); sel.value=cur; const p=P.find(x=>x.id===cur); srcEl.textContent=p?p.src:""; }
 function setWarn(list){ const gw=$("g-warn"); gw.hidden=!list.length; gw.innerHTML=list.map(esc).join("<br>"); }
 const ul = items => '<ul class="tight">'+items.filter(Boolean).map(x=>'<li>'+x+'</li>').join("")+'</ul>';
 const V = s => '<span class="v">'+s+'</span>';
