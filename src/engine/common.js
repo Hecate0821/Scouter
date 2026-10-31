@@ -100,6 +100,19 @@ function derive(m){
   return r;
 }
 
+/* 每层的类型：attn = full（全注意力）/ swa（滑窗）/ lin（线性注意力），mlp = moe / dense。
+   全注意力层均匀插在线性层之间（第 every−1、2·every−1… 层，尾部不够时补齐）；滑窗层按 i % gEvery ≠ gOff 判断；前 dense.n 层是 dense FFN。 */
+function layerPlan(m){
+  const f=m.full, every = m.lin.n>0 ? Math.round(m.L/Math.max(1,f.n)) : 1, sw=f.swa||0;
+  let left=f.n; const out=[];
+  for(let i=0;i<m.L;i++){
+    const full = m.lin.n===0 || ((i+1)%every===0 && left>0) || (m.L-i<=left); if(full) left--;
+    const swa = full && sw>0 && i%(f.gEvery||4)!==(f.gOff||0);
+    out.push({ attn: !full ? "lin" : swa ? "swa" : "full", mlp: i>=m.dense.n ? "moe" : "dense" });
+  }
+  return out;
+}
+
 /* 链路：组内 peer 在同一个 NVLink 域就走 NVLink，否则走 IB（取最慢的那条） */
 function link(hw, topo, n, stride){
   if(n<=1) return { bw:Infinity, intra:true, alpha:0 };
@@ -125,5 +138,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, MODELS, HW, TOPO, derive, qoW, swaKeys, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
 })();

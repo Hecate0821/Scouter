@@ -1,4 +1,5 @@
 /* ---------- 页面与渲染：hash = 页 / 子页 / 锚点 ---------- */
+I18N.apply(document);
 const NAV = { overview:[], train:["step","par","quant","calib"], infer:["step","deploy","quant","spec"], rl:["mismatch","determinism","lowprec","qat"], appendix:["data","quant","models","method"] };
 const OLD = { models:"appendix/models", par:"train/par", "par/calib":"train/calib", quant:"infer/quant", public:"appendix/data", method:"appendix/method" };   // 旧的七个 tab
 const VIEW = {

@@ -25,8 +25,18 @@ const ENGINES = {
     maxGraph:(hw,spec)=> spec?80:160,
     arFusion:(m,c,T)=> m.family!=="glm" && c.dpA===1 && T<=2048,
     stateDecode:m=> m.lin.kind==="KDA"?3:2, stateVerify:()=>3, prefillGraph:m=>m.full.kind!=="dsa", prefillPad:0.125,
-    hMat:()=>false, mlaReexpand:true, sharedOverlap:"graph",
+    hMat:()=>false, mlaReexpand:true, dsaAbsorbPrefill:true, sharedOverlap:"graph",
     kernels:{ gqa:"triton_gqa_prologue + trtllm-gen / fa3", mla:"tokenspeed_mla（split-KV + reduce）", dsa:"trtllm-gen NoPE 稀疏 MLA（prefill 也走 absorbed）", gdn:"triton_causal_conv1d_update + flashinfer_gdn_decode_step", kda:"verify + 批量 replay commit（单 token 也走）", moe:"flashinfer_trtllm（Blackwell）/ DeepGEMM masked（DeepEP）", ar:"TRT-LLM Lamport allreduce_residual_rmsnorm，MoE 的 AR 推迟到下一层" } },
+  /* 架构页用的参考画像：只取各引擎都默认开的优化。全注意力 FlashAttention 类 kernel（FA3 / FA4 / FlashInfer / TRT-LLM FMHA）；
+     MLA decode absorbed（FlashMLA 类），prefill 走 MHA 并把前缀 latent 重新展开（SGLang MHA_CHUNKED_KV、vLLM _compute_prefill_context）；
+     DSA 按 DeepSeek 开源做法：DeepGEMM fp8 MQA logits 做 indexer，FlashMLA sparse 在 latent 上做 MQA，prefill 也 absorbed；
+     线性注意力 FLA：decode fused_recurrent（读写一遍状态），prefill chunk（C=64，h 每个 chunk 写回 HBM）；MoE fused grouped GEMM。
+     不补齐 CUDA graph（调用方关掉 graph），没有 AR 融合，shared expert 不藏。 */
+  ref: { name:"Reference", mixed:false, lmInGraph:false, samplerInGraph:false, specCap:Infinity, defaultMoe:"tp",
+    ladder:()=>[1,2,4,...range(8,1024,8)], maxGraph:()=>1024,
+    arFusion:()=>false, stateDecode:()=>2, stateVerify:(m,N)=>N+1, prefillGraph:()=>false, prefillPad:0,
+    hMat:()=>true, mlaReexpand:true, dsaAbsorbPrefill:true, sharedOverlap:"none",
+    kernels:{ gqa:"FlashAttention", mla:"FlashMLA", dsa:"FlashMLA sparse + DeepGEMM indexer", gdn:"FLA fused_recurrent", kda:"FLA fused_recurrent (KDA)", moe:"fused MoE grouped GEMM", ar:"—" } },
   titan: { name:"TorchTitan TitanRL", mixed:true, lmInGraph:false, samplerInGraph:false, specCap:Infinity, defaultMoe:"standard",
     ladder:(hw)=> [1,2,4,...range(8,248,8),...range(256,512,16)], maxGraph:()=>512,
     arFusion:()=>false, stateDecode:()=>2, stateVerify:(m,N)=>N+1, prefillGraph:()=>false, prefillPad:0,
@@ -92,8 +102,9 @@ function step(m, hw, topo, c, g){
       op("aprol","QK-norm + RoPE + KV 写入","attn",f.n,10*rowsG*(Hl+2*kvHeads)*f.dh, rowsG*(Hl+2*kvHeads)*f.dh*2*2 + rowsR*kvTokRank, pkA, c.engine==="sglang"&&f.gate?2:1);
       // 滑窗层只读最近 W 个 token 的 KV；全局层读整段
       const core=(layers,keyCap,tag)=>{ const cx=Math.min(ctx,keyCap);
-        if(dec) op("acore","paged attention decode（"+P.kernels.gqa+"）"+tag,"attn",layers, 4*Hl*f.dh*cx*Breq*w, Breq*cx*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1,{scalesWith:"real"});
-        else op("acore","causal attention（prefill / extend）"+tag,"attn",layers, 4*Hl*f.dh*rowsR*Math.min(ctx+rowsR/2,keyCap), (cx+rowsR)*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1); };
+        const mod = keyCap<Infinity ? "swa" : "full";     // 架构页按层类型拆模块用
+        if(dec) op("acore","paged attention decode（"+P.kernels.gqa+"）"+tag,"attn",layers, 4*Hl*f.dh*cx*Breq*w, Breq*cx*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1,{scalesWith:"real",mod});
+        else op("acore","causal attention（prefill / extend）"+tag,"attn",layers, 4*Hl*f.dh*rowsR*Math.min(ctx+rowsR/2,keyCap), (cx+rowsR)*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1,{mod}); };
       core(nGlob, Infinity, nSwa?"：全局层":"");
       if(nSwa) core(nSwa, f.W, "：滑窗 "+f.W);
       if(f.gate) op("agate",f.gateHead?"每头 sigmoid 门":"sigmoid 输出门","attn",f.n,2*rowsG*Hl*f.dh,3*rowsG*Hl*f.dh*2,pkA,1);
@@ -114,7 +125,7 @@ function step(m, hw, topo, c, g){
           op("aidx","lightning indexer 打分 + top-k（n/"+kp+" 个池）","attn",f.n, 2*f.idxH*f.idxD*(nk/kp)*rowsR, (dec?Breq*ctx:(ctx+rowsR))*idxTok + 2*4*rowsR*nk/kp, peakOf(hw,"fp8"),2,{scalesWith:dec?"real":undefined});
       }
       // absorb：q 乘 W_uk 到 latent，attention 在 latent 上做 MQA，再乘 W_uv
-      const absorb = dec || f.kind==="dsa" && c.engine==="tokenspeed";
+      const absorb = dec || f.kind==="dsa" && !!P.dsaAbsorbPrefill;
       if(absorb){
         op("auk","W_uk absorb bmm","attn",f.n,2*rowsG*Hl*f.nope*f.kvLora, Hl*f.nope*f.kvLora*2 + rowsG*Hl*(f.nope+f.kvLora)*2, pkA,1);
         const nKV = f.kind==="dsa" ? Math.min(dec?ctx:ctx+rowsR/2, f.topk+3) : (dec?ctx:ctx+rowsR/2);

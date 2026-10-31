@@ -78,10 +78,10 @@ function run(m, hw, topo, c, g){
       op("aqkv","QKV"+(f.gate?"（含门）":"")+" GEMM","attn",f.n,...gemm(Tc,D,qo+kvo,tp));
       op("arope","q/k norm + RoPE","attn",f.n,...elem(10*(f.Hq+2*f.Hkv)*f.dh/tp,(f.Hq+2*f.Hkv)*f.dh*2*2/tp,Tc,2));
       // 每 token 平均看 S/2 个 key（滑窗层看 swaKeys 个）：QKᵀ + PV
-      const core=(layers,keys,tag)=>{ const fl=4*(f.Hq/tp)*f.dh*keys*Tc;
-        op("acore","causal attention（"+(mg?"TE fused / cuDNN":"varlen：FA3 / FA4 / cuDNN")+"）"+tag,"attn",layers,{fl,by:Tc*(2*f.Hq+2*f.Hkv)*f.dh*2/tp,pk:pkAt},{fl:2.5*fl,by:Tc*(4*f.Hq+4*f.Hkv)*f.dh*2/tp,pk:pkAt},null); return ops[ops.length-1]; };
-      coreFullOp = core(f.n-nSwa, S/2, nSwa?"：全局层":"");
-      if(nSwa) coreSwaOp = core(nSwa, swaKeys(S,f.W), "：滑窗 "+f.W);
+      const core=(layers,keys,tag,mod)=>{ const fl=4*(f.Hq/tp)*f.dh*keys*Tc;
+        op("acore","causal attention（"+(mg?"TE fused / cuDNN":"varlen：FA3 / FA4 / cuDNN")+"）"+tag,"attn",layers,{fl,by:Tc*(2*f.Hq+2*f.Hkv)*f.dh*2/tp,pk:pkAt},{fl:2.5*fl,by:Tc*(4*f.Hq+4*f.Hkv)*f.dh*2/tp,pk:pkAt},null,{mod}); return ops[ops.length-1]; };
+      coreFullOp = core(f.n-nSwa, S/2, nSwa?"：全局层":"", "full");
+      if(nSwa) coreSwaOp = core(nSwa, swaKeys(S,f.W), "：滑窗 "+f.W, "swa");
       if(f.gate) op("agate",f.gateHead?"每头 sigmoid 门":"sigmoid 输出门","attn",f.n,...elem(2*f.Hq*f.dh/tp,3*f.Hq*f.dh*2/tp,Tc,2));
       op("aout","o_proj GEMM","attn",f.n,...gemm(Tc,f.Hq*f.dh,D,tp));
     } else {
