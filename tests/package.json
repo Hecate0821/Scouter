@@ -1,11 +1,13 @@
 {
   "name": "scouter-tests",
   "private": true,
-  "description": "Headless checks for Scouter: the engine on its own, its collectives against PyTorch traces, text kept out of code, and every page rendering without errors or NaN.",
+  "description": "Headless checks for Scouter: the engine and the data plane on their own, collectives against PyTorch traces, text kept out of code, the console shell, and every page rendering without errors or NaN.",
   "scripts": {
-    "test": "node engine.js && node sim.js && node i18n.js && node regression.js ../index.html",
+    "test": "node engine.js && node plane.js && node sim.js && node i18n.js && node shell.js && node regression.js ../index.html",
     "engine": "node engine.js",
+    "plane": "node plane.js",
     "sim": "node sim.js",
+    "shell": "node shell.js",
     "regression": "node regression.js ../index.html",
     "i18n": "node i18n.js",
     "timing": "node timing.js ../index.html"

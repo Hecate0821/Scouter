@@ -7,6 +7,21 @@ function mokRatio(g){
   const t=DB.set("training_public").find(p=>p.replay&&p.replay.kind==="mok_ratio"); if(!t) return null;
   return { t, ratio:Calib.mokRatio(t.replay, g) };
 }
+/* 实测 kernel 和三条屋顶：理想（峰值）、建模（η）、实测（最好的 GEMM 算力 / 拷贝带宽） */
+function renderKernels(){
+  const k=Scouter.kernels(), hw=HW[k.hw], pk=peakOf(hw,"bf16"), x0=1, x1=1e4, xs=logspace(x0,x1,160);
+  const line=(cap,bw)=>xs.map(I=>[I,Math.min(cap,bw*I)]);
+  const gemm=k.points.filter(p=>p.flops>0);
+  plot($("d-kern"),{h:360,x0,x1,y0:1e12,y1:pk*2,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("infer.roof.xl"),yl:t("infer.roof.yl"),
+    series:[{pts:line(pk,hw.hbm*1e9),color:css("ink"),w:1.8},
+      {pts:line(pk*k.modeled.peaks.bf16.attainableTFLOPs/k.ideal.peaks.bf16.peakTFLOPs,k.modeled.attainableGBs*1e9),color:css("muted"),w:1.4,dash:"6 4"},
+      {pts:line(k.measured.TFLOPs*1e12,k.measured.GBs*1e9),color:css("ok"),w:1.6,dash:"2 3"}],
+    points:gemm.map(p=>({x:p.I,y:p.TFLOPs*1e12,color:css("s1"),r:4.5}))});
+  $("d-kern-legend").innerHTML='<span><i></i>'+t("appendix.data.kern.ideal")+'</span><span><i class="d"></i>'+t("appendix.data.kern.modeled")+'</span><span style="color:var(--ok)"><i class="d"></i>'+t("appendix.data.kern.measured")+'</span>'+
+    '<span><span class="sw" style="background:'+css("s1")+'"></span>'+t("appendix.data.kern.gemm")+'</span>';
+  $("d-kern-lede").innerHTML=t("appendix.data.kern.lede",{hw:hw.name,tf:V(fInt(k.measured.TFLOPs)),tfp:pct(k.measured.TFLOPs,k.ideal.peaks.bf16.peakTFLOPs),
+    gb:V(fInt(k.measured.GBs)),gbp:pct(k.measured.GBs,k.ideal.hbmGBs),etaC:Common.G0.etaC,etaM:Common.G0.etaM});
+}
 function renderPublic(){
   const g=S.glob, hw=HW[S.q.hw], inf=DB.set("inference_public");
   table($("pub-infer"),[t("appendix.pub.infer.head.what"),t("appendix.pub.infer.head.config"),t("appendix.pub.infer.head.value"),t("appendix.pub.infer.head.src")],

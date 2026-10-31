@@ -1,5 +1,11 @@
 /* appendix：index.html 里的静态文字（由迁移脚本从 index.html 抽出） */
 I18N.add("zh", "appendix", {
+  "data.kern.h2": "实测 kernel 和屋顶",
+  "data.kern.lede": "单张 {hw} 上实测的 BF16 GEMM（点）和 HBM 拷贝。最好的 GEMM 跑到 {tf} TFLOP/s（BF16 峰值的 {tfp}），最好的拷贝 {gb} GB/s（HBM 带宽的 {gbp}）。实线是理想屋顶（峰值算力和带宽），虚线是建模口径的屋顶（η<sub>c</sub> = {etaC}、η<sub>m</sub> = {etaM}），点线是实测给出的屋顶。几个小 GEMM 都要 11 µs 左右，落在屋顶下面很远：限制它们的是 kernel 的固定耗时，不是带宽。",
+  "data.kern.ideal": "理想屋顶（峰值）",
+  "data.kern.modeled": "建模屋顶（η）",
+  "data.kern.measured": "实测屋顶（最好的 GEMM / 拷贝）",
+  "data.kern.gemm": "实测 GEMM（M × N × K）",
   "rack.h3": "改模型参数（当前预设的副本）",
   "rack.model-reset.text": "恢复预设值",
   "rack.hint": "这一页只列公开数字和发布摘要。“本页模型”和“本页”两列按低精度一节的硬件和效率系数的当前值现场算。",

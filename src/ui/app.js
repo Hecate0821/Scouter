@@ -8,7 +8,7 @@ const VIEW = {
   "train/step": renderTrain, "train/par": ()=>{ syncTrnRack(); renderTrnComm(); renderPar(); }, "train/quant": renderQuantTrain, "train/calib": renderCalib,
   "infer/step": renderInfer, "infer/deploy": ()=>{ syncInfRack(); renderInfComm(); renderInferTO(); }, "infer/quant": renderQuantInfer, "infer/spec": ()=>{ syncInfRack(); renderSpec(); },
   "rl/mismatch": renderMismatch, "rl/determinism": renderDeterminism, "rl/lowprec": renderLowprec, "rl/qat": renderQat,
-  "appendix/data": ()=>{ renderPublic(); renderReleases(); renderDB(); }, "appendix/quant": renderFormats, "appendix/method": ()=>{} };
+  "appendix/data": ()=>{ renderKernels(); renderPublic(); renderReleases(); renderDB(); }, "appendix/quant": renderFormats, "appendix/method": ()=>{} };
 const lastSub = {};
 const viewKey = () => S.tab+(S.sub?"/"+S.sub:"");
 function render(){
@@ -33,15 +33,15 @@ function showTab(h){
   const {page,sub,anchor}=route(h), key=page+(sub?"/"+sub:""), same=viewKey()===key;
   S.tab=page; S.sub=sub; S.anchor=anchor; if(sub) lastSub[page]=sub;
   const pick = key==="arch/module" && Arch.ORDER.includes(anchor);      // #arch/module/<模块>：锚点是选哪个模块，不是滚动位置
-  qa("nav.tabs a").forEach(a=>{ const t=a.dataset.tab; a.setAttribute("aria-current",t===page?"page":"false"); if(NAV[t].length) a.setAttribute("href","#"+t+"/"+(lastSub[t]||NAV[t][0])); });
-  qa("nav.subtabs").forEach(n=>{ const on=n.dataset.page===page; n.hidden=!on; n.querySelectorAll("a").forEach(a=>a.setAttribute("aria-current",on&&a.dataset.sub===sub?"page":"false")); });
+  pageHead(key);
   qa("[data-pane]").forEach(p=>p.hidden=p.dataset.pane!==key);
   qa("[data-rack]").forEach(p=>p.hidden=!p.dataset.rack.split(" ").includes(key));
   try{ localStorage.setItem("moe-roof-nav3",JSON.stringify({h:key,last:lastSub})); }catch(e){}
   if(!(same && anchor) || pick) render();
+  applySource();
   const tgt=anchor && !pick && ($(sub+"-"+anchor)||$(page+"-"+anchor)||$(anchor));
   if(tgt && tgt.scrollIntoView) tgt.scrollIntoView({block:"start"});
-  else if(!same){ const nav=document.querySelector("nav.tabs"); if(nav && nav.getBoundingClientRect().top<0) nav.scrollIntoView({block:"start"}); }
+  else if(!same) (document.scrollingElement||document.documentElement).scrollTop=0;
 }
 window.addEventListener("hashchange",()=>showTab(location.hash.slice(1)));
 let first=location.hash.slice(1);
@@ -52,4 +52,4 @@ const LANGS=Object.keys(I18N.LOCALES);
 if(LANGS.length>1){ fillOpts($("g-lang"),LANGS.map(k=>[k,I18N.LOCALES[k].name]),I18N.locale); $("g-lang-wrap").hidden=false;
   $("g-lang").addEventListener("change",e=>I18N.setLocale(e.target.value)); }
 ["q-ev-topic","q-ev-bw","q-ev-sort"].forEach(id=>$(id).addEventListener("change",render));
-applyAll(); qShape(); buildEditor(); syncInputs(); showTab(first||"overview");
+applyAll(); qShape(); buildEditor(); syncInputs(); loadUrl(); themeLabel(); showTab(first||"overview");

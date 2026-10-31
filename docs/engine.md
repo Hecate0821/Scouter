@@ -9,7 +9,7 @@
 | 文件 | 全局 | 内容 |
 |---|---|---|
 | `msg.js` | `Msg` | 消息：`Msg.of(key, 参数)`；`.invalid()` 标出“这个配置跑不起来”；`Msg.id` 比较两条消息 |
-| `common.js` | `Common` | 数据类型与峰值（`dtB`、`peakOf`）、roofline 公式（`compT`、`memT`、`ridge`、`attainable`、`linkRidge`、`roof`）、默认效率 `G0`、模型 / GPU / 拓扑表（`MODELS`、`HW`、`TOPO`）、参数量 `derive`、层排布 `layerPlan`、链路与集合通信时间 |
+| `common.js` | `Common` | 数据类型与峰值（`dtB`、`peakOf`）、roofline 公式（`compT`、`memT`、`ridge`、`attainable`、`linkRidge`、`roof`）、默认效率 `G0`、理想屋顶 `IDEAL`（效率 1、固定开销 0）和口径表 `BASIS`、模型 / GPU / 拓扑表（`MODELS`、`HW`、`TOPO`）、参数量 `derive`、层排布 `layerPlan`、链路与集合通信时间 |
 | `par.js` | `Par` | CP / EP / FSDP 一层的通信与时间（`cpLayer`、`epLayer`、`fsdpDet`），一次集合通信的记录 `xc` |
 | `infer.js` | `Infer` | 推理引擎画像 `ENGINES`、默认配置 `BASE`、`step` / `decode` / `prefill` / `memory` |
 | `train.js` | `Train` | 训练一步 `run`、默认配置 `BASE`、精度配方 `PREC` |
@@ -23,7 +23,8 @@
 - **输出**：普通对象，能 JSON 序列化。时间是秒，字节和 FLOPs 是原始数，带宽是 GB/s。
 - **文字**：名字、警告、说明都是 `Msg`。渲染由调用方决定：界面启动时设 `Msg.render = m => t(m.key, m.p)`；Node 里不设，渲染成 key。key 登记在 `locales/<语言>/engine_*.js`。输出里的普通字符串只能是标识符（key、枚举值）或引擎表里的名字（模型、GPU、引擎、kernel、格式），不能是要翻译的文字。
 - **警告**：`r.warn` 是消息列表，`w.bad` 为真表示配置不可行。
-- **默认值归计算核心**：`Common.G0`、`Infer.BASE`、`Train.BASE`、`Calib.BASE` 都是冻结的，调用方复制后再改。
+- **口径**：`g` 用 `Common.BASIS.ideal`（硬件屋顶）或 `Common.BASIS.modeled`（= `G0`）；实测不是计算，走数据点库（`Scouter.points` / `kernels` / `calib`）。
+- **默认值归计算核心**：`Common.G0`、`Common.IDEAL`、`Infer.BASE`、`Train.BASE`、`Calib.BASE` 都是冻结的，调用方复制后再改。
 - **不读数据点库**：`Calib.SETS` 只给筛选条件和预测函数，数据点由调用方传进来（界面从 `DB` 取，测试直接读 `data/db.json`）。
 
 ## 在 Node 里用
@@ -35,13 +36,13 @@ const r = E.Train.run(E.MODELS.qwen35, E.HW.H200, E.TOPO.hgx8, c, E.G0);
 console.log(r.stepT, r.mfu, r.comm.map(x => x.key));   // 一步的秒数、MFU、各类通信
 ```
 
-命令行（输出 JSON）：
+计算核心外面还有一层数据平面入口 `src/plane/scouter.js`（`Scouter.*`）：把计算核心和数据点库包成一组调用（`catalog`、`roofline`、`infer`、`train`、`module`、`sweep`、`points`、`kernels`、`calib`），输入是 key 和覆盖项，输出能 JSON 序列化。界面的“命令行 / JSON”按钮、`tools/scouter.js` 和 agent 用的都是它，用法见 [`AGENTS.md`](../AGENTS.md)：
 
 ```
-node tools/sim.js list
-node tools/sim.js infer --model kimik3 --hw B200 --engine vllm --phase prefill --n 32768
-node tools/sim.js train --model qwen35 --fw torchtitan --ep 8 --g.etaC 0.6
-node tools/sim.js arch  --model glm53f --phase decode --B 64 --lang zh
+node tools/scouter.js catalog
+node tools/scouter.js infer --model kimik3 --hw B200 --engine vllm --phase prefill --n 32768 --basis ideal
+node tools/scouter.js train --model qwen35 --fw torchtitan --ep 8 --g.etaC 0.6
+node tools/scouter.js module --model glm53f --phase decode --B 64 --lang zh
 ```
 
 ## 和真实并行实现对照

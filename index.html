@@ -6,68 +6,77 @@
 <title data-i18n="shell.title"></title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@500;700;800&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Noto+Serif+SC:wght@400;500;600;700&display=swap">
+<script src="src/ui/theme.js"></script>
 <link rel="stylesheet" href="css/roofline.css">
 </head>
 <body>
-<div class="wrap">
-<header class="top">
-  <span class="eyebrow" data-i18n="shell.eyebrow"></span>
+<div class="app">
+<nav class="side" id="g-side" data-i18n-attr="aria-label=shell.attr.nav.aria-label">
+  <a class="brand" href="#overview"><b>Scouter</b><span data-i18n="shell.brand"></span></a>
+  <input class="find" id="g-find" type="search" autocomplete="off" data-i18n-attr="placeholder=shell.find;aria-label=shell.find">
+  <div class="grp"><a href="#overview" data-route="overview" data-i18n="shell.nav.overview"></a></div>
+  <div class="grp" data-grp="arch"><h4 data-i18n="shell.nav.arch"></h4>
+    <a href="#arch/overview" data-route="arch/overview" data-i18n="shell.nav.arch.overview"></a>
+    <a href="#arch/module" data-route="arch/module" data-i18n="shell.nav.arch.module"></a>
+    <a href="#arch/compare" data-route="arch/compare" data-i18n="shell.nav.arch.compare"></a>
+  </div>
+  <div class="grp" data-grp="train"><h4 data-i18n="shell.nav.train"></h4>
+    <a href="#train/step" data-route="train/step" data-i18n="shell.nav.train.step"></a>
+    <a href="#train/par" data-route="train/par" data-i18n="shell.nav.train.par"></a>
+    <a href="#train/quant" data-route="train/quant" data-i18n="shell.nav.train.quant"></a>
+    <a href="#train/calib" data-route="train/calib" data-i18n="shell.nav.train.calib"></a>
+  </div>
+  <div class="grp" data-grp="infer"><h4 data-i18n="shell.nav.infer"></h4>
+    <a href="#infer/step" data-route="infer/step" data-i18n="shell.nav.infer.step"></a>
+    <a href="#infer/deploy" data-route="infer/deploy" data-i18n="shell.nav.infer.deploy"></a>
+    <a href="#infer/quant" data-route="infer/quant" data-i18n="shell.nav.infer.quant"></a>
+    <a href="#infer/spec" data-route="infer/spec" data-i18n="shell.nav.infer.spec"></a>
+  </div>
+  <div class="grp" data-grp="rl"><h4>RL</h4>
+    <a href="#rl/mismatch" data-route="rl/mismatch" data-i18n="shell.nav.rl.mismatch"></a>
+    <a href="#rl/determinism" data-route="rl/determinism" data-i18n="shell.nav.rl.determinism"></a>
+    <a href="#rl/lowprec" data-route="rl/lowprec" data-i18n="shell.nav.rl.lowprec"></a>
+    <a href="#rl/qat" data-route="rl/qat" data-i18n="shell.nav.rl.qat"></a>
+  </div>
+  <div class="grp" data-grp="appendix"><h4 data-i18n="shell.nav.appendix"></h4>
+    <a href="#appendix/data" data-route="appendix/data" data-i18n="shell.nav.appendix.data"></a>
+    <a href="#appendix/quant" data-route="appendix/quant" data-i18n="shell.nav.appendix.quant"></a>
+    <a href="#appendix/method" data-route="appendix/method" data-i18n="shell.nav.appendix.method"></a>
+  </div>
+  <div class="side-foot">
+    <p class="disc" data-i18n="shell.disc"></p>
+    <p><a href="https://github.com/Hecate0821/Scouter" target="_blank" rel="noopener">GitHub</a> · <a href="https://hecate0821.github.io/">hecate0821.github.io</a></p>
+  </div>
+</nav>
+<div class="scrim" id="g-scrim" hidden></div>
+<div class="col">
+<header class="ctx">
+  <button class="act icon" id="g-menu" type="button" aria-controls="g-side" aria-expanded="false" data-i18n-attr="aria-label=shell.menu">☰</button>
+  <label class="pick"><span data-i18n="shell.ctl.g-model"></span><select id="g-model" data-i18n-attr="aria-label=shell.attr.g-model.aria-label"></select></label>
+  <label class="pick"><span>GPU</span><select id="g-hw" aria-label="GPU"></select></label>
+  <label class="pick"><span data-i18n="shell.ctl.g-topo"></span><select id="g-topo" data-i18n-attr="aria-label=shell.attr.g-topo.aria-label"></select></label>
+  <div class="srcsw" id="g-src" role="radiogroup" data-i18n-attr="aria-label=shell.src.label">
+    <button type="button" role="radio" data-src="ideal" data-i18n="shell.src.ideal" data-i18n-attr="title=shell.src.ideal.tip"></button><button type="button" role="radio" data-src="modeled" data-i18n="shell.src.modeled" data-i18n-attr="title=shell.src.modeled.tip"></button><button type="button" role="radio" data-src="measured" data-i18n="shell.src.measured" data-i18n-attr="title=shell.src.measured.tip"></button>
+  </div>
+  <span class="grow"></span>
+  <button class="act" id="g-cli" type="button" data-i18n-attr="title=shell.act.cli.tip">CLI</button>
+  <button class="act" id="g-json" type="button" data-i18n-attr="title=shell.act.json.tip">JSON</button>
+  <button class="act" id="g-link" type="button" data-i18n="shell.act.link" data-i18n-attr="title=shell.act.link.tip"></button>
   <label class="lang" id="g-lang-wrap" hidden><span data-i18n="shell.lang"></span><select id="g-lang"></select></label>
-  <h1 data-i18n="shell.h1"></h1>
-  <p data-i18n="shell.lede"></p>
-  <p class="disc" data-i18n="shell.disc"></p>
+  <button class="act" id="g-theme" type="button"></button>
 </header>
-<nav class="tabs" data-i18n-attr="aria-label=shell.attr.nav.aria-label">
-  <a href="#overview" data-tab="overview" data-i18n="shell.nav.overview"></a>
-  <a href="#arch/overview" data-tab="arch" data-i18n="shell.nav.arch"></a>
-  <a href="#train/step" data-tab="train" data-i18n="shell.nav.train"></a>
-  <a href="#infer/step" data-tab="infer" data-i18n="shell.nav.infer"></a>
-  <a href="#rl/mismatch" data-tab="rl">RL</a>
-  <a href="#appendix/data" data-tab="appendix" data-i18n="shell.nav.appendix"></a>
-</nav>
-<nav class="subtabs" data-page="arch" hidden data-i18n-attr="aria-label=shell.attr.nav.arch.aria-label">
-  <a href="#arch/overview" data-sub="overview" data-i18n="shell.nav.arch.overview"></a><a href="#arch/module" data-sub="module" data-i18n="shell.nav.arch.module"></a><a href="#arch/compare" data-sub="compare" data-i18n="shell.nav.arch.compare"></a>
-</nav>
-<nav class="subtabs" data-page="train" hidden data-i18n-attr="aria-label=shell.attr.nav.train.aria-label">
-  <a href="#train/step" data-sub="step" data-i18n="shell.nav.train.step"></a><a href="#train/par" data-sub="par" data-i18n="shell.nav.train.par"></a><a href="#train/quant" data-sub="quant" data-i18n="shell.nav.train.quant"></a><a href="#train/calib" data-sub="calib" data-i18n="shell.nav.train.calib"></a>
-</nav>
-<nav class="subtabs" data-page="infer" hidden data-i18n-attr="aria-label=shell.attr.nav.infer.aria-label">
-  <a href="#infer/step" data-sub="step" data-i18n="shell.nav.infer.step"></a><a href="#infer/deploy" data-sub="deploy" data-i18n="shell.nav.infer.deploy"></a><a href="#infer/quant" data-sub="quant" data-i18n="shell.nav.infer.quant"></a><a href="#infer/spec" data-sub="spec" data-i18n="shell.nav.infer.spec"></a>
-</nav>
-<nav class="subtabs" data-page="rl" aria-label="RL" hidden>
-  <a href="#rl/mismatch" data-sub="mismatch" data-i18n="shell.nav.rl.mismatch"></a><a href="#rl/determinism" data-sub="determinism" data-i18n="shell.nav.rl.determinism"></a><a href="#rl/lowprec" data-sub="lowprec" data-i18n="shell.nav.rl.lowprec"></a><a href="#rl/qat" data-sub="qat" data-i18n="shell.nav.rl.qat"></a>
-</nav>
-<nav class="subtabs" data-page="appendix" hidden data-i18n-attr="aria-label=shell.attr.nav.appendix.aria-label">
-  <a href="#appendix/data" data-sub="data" data-i18n="shell.nav.appendix.data"></a><a href="#appendix/quant" data-sub="quant" data-i18n="shell.nav.appendix.quant"></a><a href="#appendix/method" data-sub="method" data-i18n="shell.nav.appendix.method"></a>
-</nav>
+<div class="phead">
+  <div class="crumb" id="g-crumb"></div>
+  <h1 id="g-title"></h1>
+  <p class="lede" id="g-lede" data-i18n="shell.lede"></p>
+  <p class="srcnote" id="g-srcnote"></p>
+  <div class="warnbox" id="g-warn" hidden></div>
+</div>
 
 <div class="layout">
 <aside class="rack" data-i18n-attr="aria-label=shell.attr.aside.aria-label">
-  <h3 data-i18n="shell.h3"></h3>
-  <label class="ctl"><span data-i18n="shell.ctl.g-model"></span></label>
-  <select id="g-model" class="full" data-i18n-attr="aria-label=shell.attr.g-model.aria-label"></select>
-  <label class="ctl"><span>GPU</span><select id="g-hw" aria-label="GPU"></select></label>
-  <label class="ctl"><span data-i18n="shell.ctl.g-topo"></span></label>
-  <select id="g-topo" class="full" data-i18n-attr="aria-label=shell.attr.g-topo.aria-label"></select>
-  <div class="warnbox" id="g-warn" hidden></div>
-  <details class="adv"><summary data-i18n="shell.summary"></summary>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaC"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaC"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaM"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaM"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaN"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaN"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.alphaNv"></span><input type="number" step="1" min="0" data-bind="glob.alphaNv"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.kernelUs"></span><input type="number" step="0.5" min="0" data-bind="glob.kernelUs"></label>
-    <h3 data-i18n="shell.h3_2"></h3>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.launchUs"></span><input type="number" step="0.5" min="0" data-bind="glob.launchUs"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.graphLaunchUs"></span><input type="number" step="1" min="0" data-bind="glob.graphLaunchUs"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.dpSyncUs"></span><input type="number" step="10" min="0" data-bind="glob.dpSyncUs"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.a2aLLus"></span><input type="number" step="1" min="0" data-bind="glob.a2aLLus"></label>
-    <label class="ctl"><span data-i18n="shell.ctl.glob.etaAg"></span><input type="number" step="0.02" min="0.1" max="1" data-bind="glob.etaAg"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.deepepUs"></span><input type="number" step="1" min="0" data-bind="glob.deepepUs"></label>
-    <label class="ctl"><span data-i18n-html="shell.ctl.glob.barrierUs"></span><input type="number" step="1" min="0" data-bind="glob.barrierUs"></label>
-    <p class="hint" data-i18n-html="shell.hint"></p>
-  </details>
-
+  <div class="rack-h" data-i18n="shell.rack.h"></div>
   <!-- 架构 -->
   <div data-rack="arch/overview arch/module arch/compare">
     <h3 data-i18n="arch.rack.h3"></h3>
@@ -248,9 +257,26 @@
   <div data-rack="appendix/data"><p class="hint" data-i18n="appendix.rack.hint"></p></div>
   <div data-rack="appendix/quant"><p class="hint" data-i18n="appendix.rack.hint_2"></p></div>
   <div data-rack="appendix/method"><p class="hint" data-i18n="appendix.rack.hint_3"></p></div>
+  <details class="adv" id="g-adv"><summary data-i18n="shell.summary"></summary>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaC"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaC"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaM"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaM"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.etaN"></span><input type="number" step="0.05" min="0.1" max="1" data-bind="glob.etaN"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.alphaNv"></span><input type="number" step="1" min="0" data-bind="glob.alphaNv"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.kernelUs"></span><input type="number" step="0.5" min="0" data-bind="glob.kernelUs"></label>
+    <h3 data-i18n="shell.h3_2"></h3>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.launchUs"></span><input type="number" step="0.5" min="0" data-bind="glob.launchUs"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.graphLaunchUs"></span><input type="number" step="1" min="0" data-bind="glob.graphLaunchUs"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.dpSyncUs"></span><input type="number" step="10" min="0" data-bind="glob.dpSyncUs"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.a2aLLus"></span><input type="number" step="1" min="0" data-bind="glob.a2aLLus"></label>
+    <label class="ctl"><span data-i18n="shell.ctl.glob.etaAg"></span><input type="number" step="0.02" min="0.1" max="1" data-bind="glob.etaAg"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.deepepUs"></span><input type="number" step="1" min="0" data-bind="glob.deepepUs"></label>
+    <label class="ctl"><span data-i18n-html="shell.ctl.glob.barrierUs"></span><input type="number" step="1" min="0" data-bind="glob.barrierUs"></label>
+    <p class="hint" data-i18n-html="shell.hint"></p>
+  </details>
 </aside>
 
 <main>
+<div class="empty" id="g-empty" hidden></div>
 <!-- ============ 总览 ============ -->
 <section class="pane" data-pane="overview" hidden>
   <div class="block"><h2 data-i18n="overview.b1.h2"></h2>
@@ -556,7 +582,7 @@
 
 <!-- ============ 后训练 · 和实测对照 ============ -->
 <section class="pane" data-pane="train/calib" hidden>
-  <div class="block" id="calib-main"><h2 data-i18n="calib.b1.h2"></h2>
+  <div class="block" id="calib-main" data-src="both"><h2 data-i18n="calib.b1.h2"></h2>
     <p class="lede" data-i18n="calib.b1.lede"></p>
     <div class="fig"><svg id="p-calib-plot" viewBox="0 0 680 380" role="img" data-i18n-attr="aria-label=calib.attr.p-calib-plot.aria-label"></svg><div class="legend" id="p-calib-legend"></div></div>
     <div class="tbl"><table id="p-calib-sum"></table></div>
@@ -719,7 +745,7 @@
     <p class="lede" data-i18n="spec.b5.lede"></p>
     <div class="tbl"><table id="s-eng"></table></div>
   </div>
-  <div class="block"><h2 data-i18n="spec.b6.h2"></h2>
+  <div class="block" data-src="measured"><h2 data-i18n="spec.b6.h2"></h2>
     <p class="lede" data-i18n="spec.b6.lede"></p>
     <div class="tbl"><table id="s-pub"></table></div>
   </div>
@@ -741,7 +767,7 @@
         <tr><td data-i18n="rl.mismatch.b1.tbl.row6.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row6.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row6.c3"></td></tr>
       </tbody></table></div>
   </div>
-  <div class="block"><h2 data-i18n="rl.mismatch.b2.h2"></h2>
+  <div class="block" data-src="measured"><h2 data-i18n="rl.mismatch.b2.h2"></h2>
     <p data-i18n-html="rl.mismatch.b2.p"></p>
     <p data-i18n-html="rl.mismatch.b2.p_2"></p>
     <div class="tbl"><table id="r-mm-pub"></table></div>
@@ -774,7 +800,7 @@
     <div id="r-det-lp"></div>
   </div>
   <div class="block"><h2 data-i18n="rl.determinism.b5.h2"></h2>
-    <div class="tbl"><table id="r-det-pub"></table></div>
+    <div class="tbl" data-src="measured"><table id="r-det-pub"></table></div>
     <h3 data-i18n="rl.determinism.b5.h3"></h3>
     <p class="lede" data-i18n-html="rl.determinism.b5.lede"></p>
     <div class="tbl"><table id="r-det-oss"></table></div>
@@ -786,8 +812,8 @@
   <div class="block"><h2 data-i18n="rl.lowprec.b1.h2"></h2>
     <p class="lede" id="r-lp-lede"></p>
     <div class="tbl"><table id="q-rl"></table></div>
-    <h3 data-i18n="rl.lowprec.b1.h3"></h3>
-    <div class="tbl"><table id="r-lp-pub"></table></div>
+    <h3 data-src="measured" data-i18n="rl.lowprec.b1.h3"></h3>
+    <div class="tbl" data-src="measured"><table id="r-lp-pub"></table></div>
   </div>
   <div class="block"><h2 data-i18n="rl.lowprec.b2.h2"></h2>
     <div class="tbl"><table>
@@ -805,8 +831,8 @@
   <div class="block"><h2 data-i18n="rl.lowprec.b3.h2"></h2>
     <p class="lede" id="r-ws-lede"></p>
     <div class="tbl"><table id="r-ws"></table></div>
-    <h3 data-i18n="rl.lowprec.b3.h3"></h3>
-    <div class="tbl"><table id="r-ws-pub"></table></div>
+    <h3 data-src="measured" data-i18n="rl.lowprec.b3.h3"></h3>
+    <div class="tbl" data-src="measured"><table id="r-ws-pub"></table></div>
   </div>
 </section>
 
@@ -839,21 +865,25 @@
 
 <!-- ============ 附录 · 数据与发布 ============ -->
 <section class="pane" data-pane="appendix/data" hidden>
-  <div class="block"><h2 data-i18n="appendix.data.b1.h2"></h2>
+  <div class="block" data-src="measured"><h2 data-i18n="appendix.data.b1.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b1.lede"></p>
     <div class="subnav" data-i18n-html="appendix.data.b1.div"></div>
   </div>
-  <div class="block" id="data-infer"><h2 data-i18n="appendix.data.b2.h2"></h2>
+  <div class="block" data-src="measured" id="data-kernels"><h2 data-i18n="appendix.data.kern.h2"></h2>
+    <p class="lede" id="d-kern-lede"></p>
+    <div class="fig"><svg id="d-kern"></svg><div class="legend" id="d-kern-legend"></div></div>
+  </div>
+  <div class="block" data-src="measured" id="data-infer"><h2 data-i18n="appendix.data.b2.h2"></h2>
     <div class="tbl"><table id="pub-infer"></table></div>
   </div>
-  <div class="block" id="data-pareto"><h2 data-i18n="appendix.data.b3.h2"></h2>
+  <div class="block" data-src="measured" id="data-pareto"><h2 data-i18n="appendix.data.b3.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b3.lede"></p>
     <div class="tbl"><table id="pub-pareto"></table></div>
   </div>
-  <div class="block" id="data-train"><h2 data-i18n="appendix.data.b4.h2"></h2>
+  <div class="block" data-src="measured" id="data-train"><h2 data-i18n="appendix.data.b4.h2"></h2>
     <div class="tbl"><table id="pub-train"></table></div>
   </div>
-  <div class="block" id="data-quant"><h2 data-i18n="appendix.data.b5.h2"></h2>
+  <div class="block" data-src="measured" id="data-quant"><h2 data-i18n="appendix.data.b5.h2"></h2>
     <p class="lede" data-i18n="appendix.data.b5.lede"></p>
     <div class="legend">
       <label><span data-i18n="appendix.data.b5.label.text"></span> <select id="q-ev-topic" data-i18n-attr="aria-label=appendix.data.attr.q-ev-topic.aria-label"></select></label>
@@ -862,13 +892,13 @@
     </div>
     <div class="tbl"><table id="q-evid"></table></div>
   </div>
-  <div class="block" id="data-releases"><h2 data-i18n="appendix.data.b6.h2"></h2>
+  <div class="block" data-src="measured" id="data-releases"><h2 data-i18n="appendix.data.b6.h2"></h2>
     <p class="lede" data-i18n="appendix.data.b6.lede"></p>
     <div class="tbl"><table id="rel-sum"></table></div>
     <div class="legend"><label><span data-i18n="appendix.data.b6.label.text"></span> <select id="rel-proj" data-i18n-attr="aria-label=appendix.data.attr.rel-proj.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_2"></span> <select id="rel-tag" data-i18n-attr="aria-label=appendix.data.attr.rel-tag.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_3"></span> <input id="rel-q" type="search" data-i18n-attr="placeholder=appendix.data.attr.rel-q.placeholder;aria-label=appendix.data.attr.rel-q.aria-label"></label><span id="rel-n" class="tag"></span></div>
     <div class="tbl" style="max-height:560px;overflow:auto"><table id="rel-list"></table></div>
   </div>
-  <div class="block" id="data-db"><h2 data-i18n="appendix.data.b7.h2"></h2>
+  <div class="block" data-src="measured" id="data-db"><h2 data-i18n="appendix.data.b7.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b7.lede"></p>
     <div class="tbl"><table id="m-db-sets"></table></div>
     <div class="legend"><label><span data-i18n="appendix.data.b7.label.text"></span> <select id="m-db-set" data-i18n-attr="aria-label=appendix.data.attr.m-db-set.aria-label"></select></label><label><span data-i18n="appendix.data.b7.label.text_2"></span> <input id="m-db-q" type="search" data-i18n-attr="placeholder=appendix.data.attr.m-db-q.placeholder;aria-label=appendix.data.attr.m-db-q.aria-label"></label><span id="m-db-n" class="tag"></span></div>
@@ -996,6 +1026,14 @@
 </main>
 </div>
 </div>
+</div>
+<div class="dlg" id="g-dlg" role="dialog" aria-modal="true" aria-labelledby="g-dlg-t" hidden>
+  <div class="dlg-box">
+    <div class="dlg-h"><b id="g-dlg-t"></b><span class="grow"></span><button class="act" id="g-dlg-copy" type="button" data-i18n="shell.dlg.copy"></button><button class="act" id="g-dlg-dl" type="button" data-i18n="shell.dlg.download"></button><button class="act" id="g-dlg-x" type="button" data-i18n="shell.dlg.close"></button></div>
+    <p class="hint" id="g-dlg-hint"></p>
+    <pre id="g-dlg-pre"></pre>
+  </div>
+</div>
 <div class="tip" id="tip" hidden></div>
 <script src="src/i18n/i18n.js"></script>
 <script src="locales/zh/common.js"></script>
@@ -1030,6 +1068,7 @@
 <script src="src/engine/calib.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
+<script src="src/plane/scouter.js"></script>
 <script src="src/ui/base.js"></script>
 <script src="src/ui/config.js"></script>
 <script src="src/ui/state.js"></script>
@@ -1049,6 +1088,7 @@
 <script src="src/ui/overview.js"></script>
 <script src="src/ui/spec.js"></script>
 <script src="src/ui/rl.js"></script>
+<script src="src/ui/shell.js"></script>
 <script src="src/ui/app.js"></script>
 </body>
 </html>

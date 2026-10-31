@@ -65,6 +65,10 @@ const linkRidge = (peak, gbs, g) => peak*g.etaC/(gbs*1e9*g.etaAg);             /
 /* 默认的效率系数与固定开销（每页共用，界面上可以改）：η 是可达峰值的比例，α 是集合通信延迟（µs），其余是 kernel / launch / 同步开销（µs） */
 const freeze = o => { for(const v of Object.values(o)) if(v && typeof v==="object") freeze(v); return Object.freeze(o); };
 const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5 });
+/* 理想 roofline：只看硬件峰值，可达比例都是 1、固定开销和延迟都是 0；kernel 序列、重叠规则还是所选引擎 / 框架自己的。
+   BASIS 是界面和命令行的“口径”开关：ideal = 硬件屋顶，modeled = 上面的默认效率（实测走数据点库，不在计算核心里） */
+const IDEAL = freeze(Object.fromEntries(Object.keys(G0).map(k => [k, k.startsWith("eta") ? 1 : 0])));
+const BASIS = freeze({ ideal: IDEAL, modeled: G0 });
 
 /* GQA 的 q + 输出门宽度：门按元素（Qwen）是 Hq·dh，按头（Muse Spark）是 Hq */
 const qoW = f => f.Hq*f.dh + (f.gate ? (f.gateHead ? f.Hq : f.Hq*f.dh) : 0);
@@ -148,5 +152,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
 })();

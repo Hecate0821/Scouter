@@ -12,6 +12,18 @@ The interface is in Chinese for now. All of its text lives in `locales/`, so you
 
 Open `index.html` directly. It works from `file://` and needs no build step. You can also serve the folder with any static server.
 
+The layout follows a developer console:
+
+- **Sidebar:** the pages, grouped by tab. Press `/` to search them.
+- **Top bar:** the model, GPU and topology, plus the **source** switch:
+  - **Ideal:** the hardware roofline, at peak with no overheads;
+  - **Modeled:** reachable efficiency plus fixed costs, following the open-source engines (the default);
+  - **Measured:** only real data points from public sources and anonymized measurements.
+- **Parameter panel** on the right: the controls for the current page.
+- **CLI** and **JSON** buttons: show the `Scouter.*` call behind the current page, as a `tools/scouter.js` command and as its output.
+- **Copy link:** copies the URL. It keeps the context, for example `?model=kimik3&hw=B200&src=ideal#infer/step`.
+- **Light / Dark:** switches the theme. It shares its setting with [hecate0821.github.io](https://hecate0821.github.io/), and so do the fonts and colors.
+
 | Tab | What it shows |
 |---|---|
 | Overview | One decode step and one post-training step of the same model, side by side. |
@@ -19,7 +31,7 @@ Open `index.html` directly. It works from `file://` and needs no build step. You
 | Post-training | One step (fwd, dgrad, wgrad, recompute, communication, optimizer, memory). Parallelism: every collective in a one- or two-layer sample, with FSDP, CP and EP shown one dimension at a time. Low-precision recipes: Megatron, Transformer Engine and torchtitan defaults only. A comparison with anonymized measurements. |
 | Inference | One decode or prefill step. Deployment and parallelism: TP, DP-attention, EP and PD disaggregation. Low-precision inference. Speculative decoding: MTP, EAGLE-3, DFlash and DSpark. |
 | RL | Train/inference mismatch. Deterministic rollout: batch invariance, reproducibility and bitwise train/inference match. Low-precision rollout and weight sync. Low-precision training and QAT. |
-| Appendix | Public data points and the past year's releases, quantization basics, and the modeling method with the open-source code it follows. |
+| Appendix | Measured H200 kernels against the ideal and modeled rooflines, public data points and the past year's releases, quantization basics, and the modeling method with the open-source code it follows. |
 
 Addresses look like `#tab/subtab/anchor`, for example `#arch/module/lin`, `#infer/spec` or `#train/par/cp`. Old addresses such as `#par`, `#quant`, `#public` and `#appendix/models` redirect to their new place.
 
@@ -63,6 +75,18 @@ The roofline model:
 
 The mechanism diagrams reimplement the visual ideas of [Attention Lab](https://divagr.com/attention-lab/), credited under each diagram.
 
+## Data plane and agents
+
+All numbers come from one data plane: the models in `src/engine/`, the data points in `src/data/`, and one entry point, `src/plane/scouter.js`. The page only draws what it returns. The same calls run in Node and on the command line, so an agent can use Scouter as a reference calculator without a browser:
+
+```
+node tools/scouter.js infer --model kimik3 --hw B200 --basis ideal --B 128 --pick stepT,tComp
+node tools/scouter.js sweep --run train --model qwen35 --over.ep 4,8 --pick stepT,mfu
+node tools/scouter.js points --set inference_public --where.engine SGLang
+```
+
+[AGENTS.md](AGENTS.md) lists every call, its options and the fields it returns.
+
 ## Layout
 
 ```
@@ -81,11 +105,15 @@ src/engine/             the models: tables and pure functions; no DOM, no text, 
   arch.js               architecture explorer: step kernels grouped into attention / MLP modules per layer, and the
                         mechanism quantities each diagram draws
   calib.js              calibration: which measured points each data set reproduces, and the prediction for each
-  node.js               loads the engine in Node (one vm context), for tests and tools/sim.js
+  node.js               loads the engine in Node (one vm context), for tests
 src/data/
   db.js                 generated: the data-point store (const DB_RAW)
   query.js              DB.set / DB.where / DB.one / DB.meta
+src/plane/
+  scouter.js            the data plane's entry point (Scouter.*): engine + data store, JSON in and out (AGENTS.md)
+  node.js               loads the data plane in Node, for tests and tools/scouter.js
 src/ui/                 one renderer per page; app.js loads last and handles routing and the first render
+  theme.js shell.js     theme before first paint; sidebar, top bar, source switch, CLI / JSON views, URL state
   base.js state.js config.js   formatting and plotting base, global state, presets
   arch.js archviz.js    architecture explorer pages; mechanism diagrams
   overview.js train.js par.js calib.js comm.js infer.js tradeoff.js quant.js spec.js rl.js
@@ -95,10 +123,11 @@ data/
   public/*.json         public data points (hand-curated, each with src / url)
   db.json               generated: canonical form, one point per line
 tools/build_db.py       builds data/db.json and src/data/db.js
-tools/sim.js            runs the engine from the command line and prints JSON
+tools/scouter.js        the data plane from the command line, printing JSON
 sim/                    separate Python project: the training layouts on CPU gloo processes with PyTorch FSDP2 / TP / EP,
                         recording every collective as a JSON trace (sim/README.md)
-tests/                  Node checks: engine, sim, i18n, regression and snapshot (jsdom), timing
+tests/                  Node checks: engine, data plane, sim, i18n, shell, regression and snapshot (jsdom), timing
+AGENTS.md               the data plane for agents: calls, options, returned fields
 docs/engine.md          the engine's interface and rules
 docs/i18n.md            how UI text and languages work
 ```
@@ -136,9 +165,12 @@ Pages read points with queries like `DB.where("cp_full_model", {model: "qwen35",
 
 ```
 cd tests && npm install
-npm test               # engine + sim + i18n + regression
+npm test               # engine + plane + sim + i18n + shell + regression
 npm run engine         # the engine alone in Node: every model × GPU × topology × engine / framework / precision / module;
                        # no throw, no NaN, text only as messages; prints the calibration medians
+npm run plane          # the data plane alone in Node: every call under both bases, ideal never slower than modeled,
+                       # tools/scouter.js prints what the API returns
+npm run shell          # the console: every page under every source, and page = data plane = printed CLI command
 npm run sim            # the engine's training collectives against the PyTorch traces in sim/traces (no Python needed)
 npm run i18n           # no UI text in code (checked with a pseudo-localized render of every page); every key used exists
 npm run regression     # every model × framework × preset, then every page: reports NaN / undefined and script errors

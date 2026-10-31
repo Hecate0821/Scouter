@@ -108,7 +108,7 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
     const TABLE = new RegExp("(?<![A-Za-z0-9])(" + [...table].sort((a, b) => b.length - a.length).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![A-Za-z0-9])", "g");
     const UNITS = new Set(["ms", "us", "s", "min", "h", "tok", "x"]);
     // 代码里会出现的专名和代码词：框架、GPU 架构、GEMM 的三遍、计数同步的 op 名、命令行参数；再加上模型名里的每个词
-    const NAMES = new Set(["torchtitan", "Megatron", "Megatron-Core", "Miles", "slime", "Blackwell", "Hopper", "fprop", "dgrad", "wgrad", "sync", "top-k", "dp-size"]);
+    const NAMES = new Set(["torchtitan", "Megatron", "Megatron-Core", "Miles", "slime", "Blackwell", "Hopper", "fprop", "dgrad", "wgrad", "sync", "top-k", "dp-size", "Scouter"]);
     for (const m of Object.values(w.eval("Common.MODELS"))) for (const v of [m.name, m.short]) if (typeof v === "string") v.split(/\s+/).forEach(x => NAMES.add(x));
     for (const id of Object.keys(w.eval("DB.sets"))) NAMES.add(id);   // 数据集的 id（数据浏览里照印）
     const plain = p => p.length > 1 && /[a-z]/.test(p) && !/^[A-Za-z][a-z]*[A-Z]/.test(p) && !UNITS.has(p) && !NAMES.has(p);
