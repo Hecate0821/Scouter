@@ -1,12 +1,6 @@
 /* ---------- 基础配置 ---------- */
-const GLOB = { etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5 };
-const BASE_INF = { engine:"sglang", phase:"decode", N:1, dpA:1, B:64, n:8192, C:8192, P:32768, p:0, wDt:"bf16", eAct:"", dDt:"bf16", kvDt:"bf16", stateDt:"fp32",
-  specK:0, specMethod:"mtp", accept:0, graph:true, imb:1.15, redundant:0, dcp:1, prefixCache:true, moePar:"tp", dispFp8:true, tbo:false, hostSyncUs:20,
-  memFrac:0.85, reserveGB:6, bi:false, biFactor:2.5, implEff:1, reqPerChunk:1 };
-const BASE_TRN = { fw:"megatron", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"alltoall", cpType:"p2p", linCP:"headwise", tok:16384, S:8192, Gtok:2097152,
-  prec:"bf16", recompute:"full", rcModules:[], offload:true, overlapOffload:true, cpuAdamGBs:30, overlapGrad:true, overlapParam:true,
-  epOverlap:false, sharedOverlap:false, tpOverlap:false, reshard:true, imb:1.15, hostSyncUs:20, workspaceGB:6,
-  cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0 };
+/* 默认值属于计算核心：效率系数 Common.G0、推理 / 训练的基础配置 Infer.BASE / Train.BASE */
+const GLOB = Common.G0, BASE_INF = Infer.BASE, BASE_TRN = Train.BASE;
 
 const MOEPAR = {
   sglang:[["tp",t("config.moePar.sglang.tp")],["replicated",t("config.moePar.sglang.replicated")],["deepep",t("config.moePar.sglang.deepep")],["fused",t("config.moePar.sglang.fused")]],

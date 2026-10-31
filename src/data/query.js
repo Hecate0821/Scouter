@@ -11,7 +11,5 @@ const DB = (function(){
     where: (id, f) => (bySet[id] || []).filter(p => match(p, f || {})),
     one: (id, f) => (bySet[id] || []).find(p => match(p, f || {})),
     count: id => (bySet[id] || []).length,
-    // 公开点显示出处，匿名点只显示“匿名数据点”
-    origin: p => DB_RAW.sets[p.set].origin === "anon" ? t("common.anonPoint") : p.src,
   };
 })();

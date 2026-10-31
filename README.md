@@ -69,15 +69,19 @@ The mechanism diagrams reimplement the visual ideas of [Attention Lab](https://d
 index.html              page shell; loads the scripts below in order (plain <script> tags sharing one global scope)
 css/roofline.css
 src/i18n/i18n.js        t(key, params), data-i18n attributes, language choice (?lang=, saved choice, browser language)
-locales/zh/*.js         all UI text, one file per namespace (docs/i18n.md)
-src/engine/             the models; no DOM
-  common.js             model, hardware and topology tables; derive(); link times
+locales/zh/*.js         all UI text, one file per namespace; data.js holds translations of data text (docs/i18n.md)
+src/engine/             the models: tables and pure functions; no DOM, no text, no data store (docs/engine.md)
+  msg.js                Msg.of(key, params): the engine returns messages, the caller renders them
+  common.js             model, hardware and topology tables; derive(); roofline helpers; link and collective times
   infer.js              one inference step: SGLang / vLLM / TokenSpeed kernel sequences, the engine-neutral reference,
                         speculative decoding (draft, verify, commit)
   train.js              one training step: Megatron-Core / torchtitan
   par.js                FSDP / CP / EP communication and overlap
   quant.js              low-precision GEMM, one MoE layer, the three training GEMMs
-  arch.js               architecture explorer: step kernels grouped into attention / MLP modules per layer
+  arch.js               architecture explorer: step kernels grouped into attention / MLP modules per layer, and the
+                        mechanism quantities each diagram draws
+  calib.js              calibration: which measured points each data set reproduces, and the prediction for each
+  node.js               loads the engine in Node (one vm context), for tests and tools/sim.js
 src/data/
   db.js                 generated: the data-point store (const DB_RAW)
   query.js              DB.set / DB.where / DB.one / DB.meta
@@ -91,7 +95,11 @@ data/
   public/*.json         public data points (hand-curated, each with src / url)
   db.json               generated: canonical form, one point per line
 tools/build_db.py       builds data/db.json and src/data/db.js
-tests/                  jsdom checks
+tools/sim.js            runs the engine from the command line and prints JSON
+sim/                    separate Python project: the training layouts on CPU gloo processes with PyTorch FSDP2 / TP / EP,
+                        recording every collective as a JSON trace (sim/README.md)
+tests/                  Node checks: engine, sim, i18n, regression and snapshot (jsdom), timing
+docs/engine.md          the engine's interface and rules
 docs/i18n.md            how UI text and languages work
 ```
 
@@ -122,14 +130,20 @@ uv run tools/build_db.py --check             # only check that the generated fil
 uv run tools/build_db.py --sqlite x.sqlite   # also export SQLite (one view per set) for ad-hoc queries
 ```
 
-Pages read points with queries like `DB.where("cp_full_model", {model: "qwen35", cp: 8})`.
+Pages read points with queries like `DB.where("cp_full_model", {model: "qwen35", cp: 8})`. Data text is written in the data files; translations of it go in `locales/<lang>/data.js` (see [docs/i18n.md](docs/i18n.md)).
 
 ## Tests
 
 ```
 cd tests && npm install
+npm test               # engine + sim + i18n + regression
+npm run engine         # the engine alone in Node: every model × GPU × topology × engine / framework / precision / module;
+                       # no throw, no NaN, text only as messages; prints the calibration medians
+npm run sim            # the engine's training collectives against the PyTorch traces in sim/traces (no Python needed)
+npm run i18n           # no UI text in code (checked with a pseudo-localized render of every page); every key used exists
 npm run regression     # every model × framework × preset, then every page: reports NaN / undefined and script errors
-npm run i18n           # no UI text left in code; every key used exists; no page renders a missing key
 npm run timing         # render time of each page
 node snapshot.js ../index.html new.json base.json   # dump the visible text of every view and diff it with a baseline
 ```
+
+After changing a simulator case, regenerate its trace with `cd sim && uv run python -m scouter_sim.run` (see [sim/README.md](sim/README.md)).

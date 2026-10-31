@@ -8,8 +8,7 @@ function parBase(){
 }
 function runP(over, topoKey, hwKey){ const {m,g}=ctx(), topo=TOPO[topoKey||S.topo], hw=HW[hwKey||S.hw];
   return Train.run(m, hw, topo, Object.assign({N:topo.gpus}, parBase(), over||{}), g); }
-const BADCFG = /必须|要求|只支持|只能|面向/;
-const runOK = r => r.dp>=1 && Number.isInteger(r.dp) && !r.warn.some(w=>BADCFG.test(w));
+const runOK = r => r.dp>=1 && Number.isInteger(r.dp) && !r.warn.some(w=>w.bad);      // 计算核心把“配置跑不起来”的警告标成 invalid
 const runFit = r => r.mem.used <= r.mem.total;
 /* 把 TP / CP / EP 缩到 N 张卡放得下 */
 function fitPar(c, N){ c=Object.assign({},c); while(c.tp*c.cp*(c.pp||1)>N || N%(c.tp*c.cp*(c.pp||1))){ if(c.cp>1) c.cp/=2; else if(c.tp>1) c.tp/=2; else break; }
@@ -26,12 +25,12 @@ function layerPieces(r){
 /* EP 段：torchtitan 直接用 Par.epLayer 的分段；Megatron 从通信表的 a2a 拆成 dispatch / combine */
 function epPartsOf(r, P){
   if(r.par.ep) return r.par.ep.parts;
-  const {hw,topo}=ctx(), a=r.comm.find(x=>x.key==="a2a"), cn=r.comm.find(x=>x.key==="cnt"), nA=a?+((a.name.match(/×(\d+)/)||[0,4])[1]):4;
+  const {hw,topo}=ctx(), a=r.comm.find(x=>x.key==="a2a"), cn=r.comm.find(x=>x.key==="cnt"), nA=a?a.exch:4;
   const one=a?a.t/a.layers/nA:0, lane=Common.link(hw,topo,r.ep,r.etp).intra?"nvl":"ib", sync=cn?cn.t/cn.layers:0, f=[], b=[];
   if(sync) f.push(["cpu",t("par.seg.epSync"),sync,"sync"]);
-  f.push([lane,"dispatch",one,"ep"],["sm","expert GEMM",P.exp.f,"moe"],[lane,"combine",one,"ep"]);
+  f.push([lane,t("par.seg.disp"),one,"ep"],["sm",t("par.seg.exp"),P.exp.f,"moe"],[lane,t("par.seg.comb"),one,"ep"]);
   if(nA>4) b.push([lane,t("par.seg.rcDisp"),one,"ep"],[lane,t("par.seg.rcComb"),one,"ep"]);
-  b.push([lane,t("par.seg.bwdComb"),one,"ep"],["sm","expert dgrad + wgrad",P.exp.b+P.exp.rc,"moe"],[lane,t("par.seg.bwdDisp"),one,"ep"]);
+  b.push([lane,t("par.seg.bwdComb"),one,"ep"],["sm",t("par.seg.expBwd"),P.exp.b+P.exp.rc,"moe"],[lane,t("par.seg.bwdDisp"),one,"ep"]);
   return {f,b};
 }
 /* 一层的时间线：which = layer（全注意力层 + MoE / FFN）、attn（只看注意力，比较 CP）、moe（只看 MoE，比较 EP） */
@@ -50,9 +49,9 @@ function layerSeq(r, which){
   if(which!=="moe"){
     if(tpAll) f.push([tpL,t("par.seg.tpAg"),tpAll/6,"tp"]);
     f.push(["sm",t("par.seg.qkv"),P.pre.f,"proj"]); cpFwd(f,P.core.f,cwF); f.push(["sm",t("par.seg.oGate"),P.post.f,"proj"]);
-    if(tpAll) f.push([tpL,"TP reduce-scatter",tpAll/6,"tp"]);
+    if(tpAll) f.push([tpL,t("par.seg.tpRs"),tpAll/6,"tp"]);
   }
-  if(which!=="attn"){ if(moe){ f.push(["sm","router / permute / shared",P.rep.f,"proj"]); f.push(...EPp.f); } else f.push(["sm","dense FFN",P.den.f,"proj"]); }
+  if(which!=="attn"){ if(moe){ f.push(["sm",t("par.seg.rep"),P.rep.f,"proj"]); f.push(...EPp.f); } else f.push(["sm",t("par.seg.dense"),P.den.f,"proj"]); }
   if(ac && which==="layer") b.push(["sm",t("par.seg.rcLayer"),P.pre.rc+P.core.rc+P.post.rc+P.rep.rc+(moe?0:P.den.rc),"oth"]);
   if(which!=="attn"){ if(moe){ b.push(...EPp.b); b.push(["sm",t("par.seg.routerBwd"),P.rep.b,"proj"]); } else b.push(["sm",t("par.seg.denseBwd"),P.den.b,"proj"]); }
   if(which!=="moe"){
@@ -128,7 +127,7 @@ function renderLayerGantt(r){
   G.lanes=["cpu","sm","nvl","ib"].filter(x=>x==="sm"||segs.some(z=>z.lane===x));
   gantt("t-gantt",[G]);
   const {m,d}=ctx();
-  $("t-gantt-lede").innerHTML=t("par.gantt.lede.main", { H: d.Hattn, ffn: m.moe.E?" + MoE":" + dense FFN", tok: fN(r.Tc), fwd: V(fT(G.fEnd)), rc: r.ops.some(o=>o.rc) ? t("par.gantt.lede.rc") : "", bwd: V(fT(G.end-G.fEnd)) })+
+  $("t-gantt-lede").innerHTML=t("par.gantt.lede.main", { H: d.Hattn, ffn: t(m.moe.E?"par.gantt.lede.ffnMoe":"par.gantt.lede.ffnDense"), tok: fN(r.Tc), fwd: V(fT(G.fEnd)), rc: r.ops.some(o=>o.rc) ? t("par.gantt.lede.rc") : "", bwd: V(fT(G.end-G.fEnd)) })+
     (fs?t("par.gantt.lede.fsdp"):t("par.gantt.lede.mg"))+
     t("par.gantt.lede.links");
   legendInto("t-gantt-legend",GANTT_LEGEND.filter(([n,k])=>segs.some(s=>s.cat===k)).map(([n,k])=>({name:n,col:CAT[k]})));
@@ -272,7 +271,7 @@ t("par.fsdp.f.states", { p: fN(r.Pshard), bytes: fB(r.mem.states) });
     return [n, runOK(r2) ? r2.fsdpExposedMB/r2.tMB : null, {hollow:!runFit(r2)}]; })}));
   lineChart("p-f-n",{series:ser,xLog:true,xBase:2,xFmt:fK,yFmt:pc,xLab:t("par.fsdp.n.xLab"),yLab:t("par.fsdp.n.yLab"),vlines:[{x:r.Tc,label:t("par.chart.now")}],yMin:0});
   legendInto("p-f-n-legend",ser.map(se=>({name:se.name,col:se.col,line:true})));
-  const pkb=peakOf(hw,"bf16")*g.etaC, rN=pkb/(hw.nvl*1e9*g.etaAg), rI=pkb/(hw.ib*1e9*g.etaAg);
+  const pkb=peakOf(hw,"bf16"), rN=Common.linkRidge(pkb,hw.nvl,g), rI=Common.linkRidge(pkb,hw.ib,g);
   $("p-f-n-lede").textContent=t("par.fsdp.n.lede", { hw: hw.name, rN: fN(rN), ratio: fN(rI/rN) });
   const rep=moe ? t("par.fsdp.tbl.rep") : "";
   $("p-f-tbl").innerHTML='<thead><tr><th>'+t("par.fsdp.tbl.th.kind")+'</th><th>'+t("par.fsdp.tbl.th.layers")+'</th><th>'+t("par.fsdp.tbl.th.params")+'</th><th>'+t("par.fsdp.tbl.th.group")+'</th><th>'+t("par.fsdp.tbl.th.bytes")+'</th><th>'+t("par.fsdp.tbl.th.wire")+'</th><th>'+t("par.fsdp.tbl.th.fwd")+'</th></tr></thead><tbody>'+

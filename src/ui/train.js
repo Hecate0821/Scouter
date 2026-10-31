@@ -28,7 +28,7 @@ function renderTrain(){
     [t("train.kpi.micro"),fT(r.tMB),t("train.kpi.microSub",{comp:fT(r.compMB/r.pp),exp:fT(r.exposed/r.pp)})],
     [t("train.kpi.bubble"),r.pp>1?pct(r.bubble,r.microsPerStep):t("train.kpi.bubbleNone"),r.pp>1?t("train.kpi.bubbleSub",{n:fI(r.bubble)}):""],
     [t("train.kpi.mem"),fB(M.used),t("train.kpi.memSub",{cap:hw.mem}),M.used>M.total],
-    [t("train.kpi.params"),fN(r.PlD+r.PlE),"dense "+fN(r.PlD)+" · expert "+fN(r.PlE)]]);
+    [t("train.kpi.params"),fN(r.PlD+r.PlE),t("train.kpi.paramsFoot",{d:fN(r.PlD),e:fN(r.PlE)})]]);
   renderMesh(r); renderLayerGantt(r);
   // micro-batch 分解
   const pp=r.pp, ex=r.comm.filter(x=>!x.perStage), exSum=sum(ex,x=>x.exp||0), scale=exSum>0?r.exposed/exSum:0, byCls={};
@@ -41,7 +41,7 @@ function renderTrain(){
     {label:t("train.bar.pp"),v:sum(r.comm.filter(x=>x.key==="pp"),x=>x.t)*0.1,color:css("c-dp"),tag:pill("comm")}],r.tMB,fT);
   $("t-step-lede").innerHTML=t("train.stepBar.lede",{n:r.microsPerStep,dp:esc(r.dpNote||t("train.stepBar.ledeFsdp")),opt:esc(r.optNote)});
   stackBar($("t-sbar"),$("t-sbarlist"),[
-    {label:"micro-batch × "+r.microsPerStep,v:r.tMB*r.microsPerStep,color:css("c-attn")},{label:t("train.stepBar.bubble"),v:r.tMB*r.bubble,color:css("c-free")},
+    {label:t("train.stepBar.micro",{n:r.microsPerStep}),v:r.tMB*r.microsPerStep,color:css("c-attn")},{label:t("train.stepBar.bubble"),v:r.tMB*r.bubble,color:css("c-free")},
     {label:t("train.stepBar.dp"),v:r.tDPexp,color:css("c-fsdp"),tag:pill("comm")},{label:t("train.stepBar.opt",{note:r.optNote}),v:r.tOpt,color:css("c-moe")},
     {label:t("train.stepBar.smallAR"),v:r.tSmallAR,color:css("c-ar"),tag:pill("comm")}],r.stepT,fT);
   // 逐算子
@@ -53,11 +53,11 @@ function renderTrain(){
   for(const d of [PR.f,PR.b]) if(d!=="bf16" && !pks.some(p=>p.v===peakOf(hw,d))) pks.push({v:peakOf(hw,d),n:Common.peakKey(d).toUpperCase()});
   const pts=[], topT=new Set([...r.ops].sort((a,b)=>b.fwd.t-a.fwd.t).slice(0,8));
   for(const o of r.ops){ const col=GROUPC[o.group];
-    if(o.fwd.fl>0) pts.push({x:o.fwd.I,y:o.fwd.fl/o.fwd.t,color:col,label:topT.has(o)?o.name.replace(/（.*?）/g,""):null});
+    if(o.fwd.fl>0) pts.push({x:o.fwd.I,y:o.fwd.fl/o.fwd.t,color:col,label:topT.has(o)?shortName(o.name):null});
     if(o.dgrad.fl>0) pts.push({x:o.dgrad.I,y:o.dgrad.fl/o.dgrad.t,color:col,shape:"sq",r:4});
     if(o.wgrad.fl>0) pts.push({x:o.wgrad.I,y:o.wgrad.fl/o.wgrad.t,color:col,shape:"tri",r:4}); }
   plot($("t-roof"),{h:380,x0:0.1,x1:20000,y0:1e10,y1:Math.max(...pks.map(p=>p.v))*3,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("train.roof.xl"),yl:t("train.roof.yl"),
-    series:roofSeries(hw,g,pks,0.1,20000),points:pts,vlines:pks.map((p,i)=>({x:p.v*g.etaC/(hw.hbm*1e9*g.etaM),color:css("muted"),label:t("train.roof.knee",{peak:p.n,x:fI(p.v*g.etaC/(hw.hbm*1e9*g.etaM))}),dy:i*14}))});
+    series:roofSeries(hw,g,pks,0.1,20000),points:pts,vlines:pks.map((p,i)=>({x:Common.ridge(p.v,hw,g),color:css("muted"),label:t("train.roof.knee",{peak:p.n,x:fI(Common.ridge(p.v,hw,g))}),dy:i*14}))});
   $("t-roof-legend").innerHTML='<span>'+t("train.roof.legendShapes")+'</span>'+Object.entries({attn:t("train.roof.group.attn"),lin:t("train.roof.group.lin"),moe:t("train.roof.group.moe"),lm:t("train.roof.group.lm"),misc:t("train.roof.group.misc")}).map(([k,v])=>'<span><span class="sw" style="background:'+GROUPC[k]+'"></span>'+v+'</span>').join("");
   // 通信表
   const parOf=x=>x.par||({cp:"cp",ep:"ep"})[x.cls]||(x.key==="fsdp"?"fsdp":"");
@@ -81,7 +81,7 @@ function renderTrain(){
     {label:t("train.mem.act",{how:c.recompute==="full"?t("train.mem.actFull"):t("train.mem.actSaved"),inflight:r.pp>1?t("train.mem.actInflight",{n:fI(M.inflight)}):""}),v:M.act,color:css("c-act")},
     {label:mg?t("train.mem.logitsFp32"):t("train.mem.logitsChunked"),v:M.logits,color:css("c-lm")},{label:t("train.mem.a2a"),v:M.a2aBuf,color:css("c-a2a")},{label:t("train.mem.cpKV"),v:M.cpBuf,color:css("c-cp")},
     {label:t("train.mem.qW",{prec:esc(Train.PREC[c.prec].name)}),v:M.qW,color:css("c-moe")},
-    {label:"workspace",v:M.work,color:css("c-free")},{label:t("train.mem.free"),v:Math.max(0,M.total-M.used),color:css("soft")}],Math.max(M.total,M.used),fB);
+    {label:t("train.mem.work"),v:M.work,color:css("c-free")},{label:t("train.mem.free"),v:Math.max(0,M.total-M.used),color:css("soft")}],Math.max(M.total,M.used),fB);
   // 两个框架
   const cur=(k,name)=>c.fw===k?t("train.diff.current",{fw:name}):name;
   table($("t-diff"),["",cur("megatron","Megatron-Core"),cur("torchtitan","torchtitan")],[
@@ -98,7 +98,7 @@ function renderTrain(){
   // 解析
   const ops=[...r.ops].sort((a,b)=>(b.fwd.t+b.dgrad.t+b.wgrad.t)-(a.fwd.t+a.dgrad.t+a.wgrad.t));
   const A=[];
-  A.push(t("train.analysis.heavy",{ops:ops.slice(0,3).map(o=>esc(o.name.replace(/（.*?）/g,""))+" "+V(fT(o.fwd.t+o.dgrad.t+o.wgrad.t))).join(t("train.sep.list")),
+  A.push(t("train.analysis.heavy",{ops:ops.slice(0,3).map(o=>esc(shortName(o.name))+" "+V(fT(o.fwd.t+o.dgrad.t+o.wgrad.t))).join(t("train.sep.list")),
     bwd:V(fI((r.tD+r.tW)/Math.max(r.tF,1e-12))+"×"),rc:r.tR?t("train.analysis.heavyRc",{pct:V(pct(r.tR,r.tF))}):""}));
   const commAll=sum(r.comm.filter(x=>!x.perStage),x=>x.t);
   A.push(t("train.analysis.comm",{total:V(fT(commAll/pp)),exp:V(fT(r.exposed/pp)),top:Object.keys(byCls).sort((a,b)=>byCls[b]-byCls[a]).slice(0,2).map(k=>clsName[k]+" "+V(fT(byCls[k]/pp))).join(t("train.sep.list"))}));

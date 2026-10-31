@@ -109,6 +109,7 @@ I18N.add("zh", "spec", {
   "cost.capped": "{engine} 开投机后并发默认设为 {cap}（没有显式设 --max-running-requests 时），右图按默认值到这里截止。",
   "cost.uncapped": "右图扫到显存放不下为止。",
   "ledger.method": "方法（α = {a}，B = {b}）",
+  "ledger.draft": "draft",
   "ledger.width": "验证宽度",
   "ledger.verify": "验证",
   "ledger.commit": "提交",

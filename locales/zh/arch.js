@@ -46,6 +46,7 @@ I18N.add("zh", "arch", {
   "rack.modelReset": "恢复这个模型的预设",
 
   // ---- 模型编辑器（src/ui/state.js） ----
+  "editor.D": "hidden D",
   "editor.basic": "基本",
   "editor.L": "层数 L",
   "editor.V": "词表 V",
@@ -66,6 +67,7 @@ I18N.add("zh", "arch", {
   "editor.E": "routed expert 数 E",
   "editor.Fs": "shared expert 合计 intermediate",
   "editor.Dlat": "latent 维度（0 = 不用）",
+  "editor.denseF": "dense intermediate",
   "editor.denseN": "前几层 dense FFN",
   "editor.dsaOpt": "DSA（MLA + 稀疏）",
 
@@ -82,6 +84,8 @@ I18N.add("zh", "arch", {
   "ov.th.F": "expert F（@latent）",
   "ov.th.kv": "KV / token（BF16，随上下文增长）",
   "ov.th.state": "固定大小的状态 / 序列（线性 FP32、滑窗 KV BF16）",
+  "ov.sharedTag": " + shared",
+  "ov.denseTag": "dense",
   "ov.swaOf": "（{n} 层滑窗 {w}）",
   "ov.mtp": " 另有 {n} 层 MTP（推理开投机时才加载）。",
   "ov.edited": " 结构已改动，和预设不同。",
@@ -115,6 +119,8 @@ I18N.add("zh", "arch", {
   "ov.p.shared": "shared expert（每层）",
   "ov.p.lat": "latent 上下投影（每层）",
   "ov.p.router": "router（每层）",
+  "ov.p.emb": "embedding",
+  "ov.p.head": "lm_head",
   "ov.p.dense": "dense FFN（每层）",
   "ov.p.total": "总计 / 每 token 激活",
   "ov.p.activeIs": "激活 {v}",
@@ -417,6 +423,7 @@ I18N.add("zh", "arch", {
   "viz.swa.barGlob": "全局层读的 key",
   "viz.mla.cache": "每 token 缓存什么",
   "viz.mla.expanded": "展开成每头 K / V（{h} 头）",
+  "viz.mla.tag": "latent",
   "viz.mla.latent": "latent（{c} + rope {r}）",
   "viz.mla.ratio": "latent 比展开的每头 K / V 小 {x} 倍",
   "viz.mla.decode": "decode：absorb，所有头读同一份 latent",

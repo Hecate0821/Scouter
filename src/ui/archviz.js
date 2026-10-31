@@ -70,31 +70,31 @@ function mla(m, f, wl, dsaMode){
   // prefill：kv_b 把 latent 展开成每头 K / V
   const px=360;
   s+=tx(px,112,t(dsaMode?"arch.viz.mla.prefillDsa":"arch.viz.mla.prefill"),{cls:"lbl"});
-  s+=r(px,150,60,22,"var(--c-kv)")+tx(px+30,165,"latent",{a:"middle",fill:"var(--panel)"});
+  s+=r(px,150,60,22,"var(--c-kv)")+tx(px+30,165,t("arch.viz.mla.tag"),{a:"middle",fill:"var(--panel)"});
   for(let i=0;i<8;i++){ s+=ln(px+60,161,px+120,128+i*10,"var(--muted)",0.8); s+=r(px+120,124+i*10,dsaMode?40:150,7,dsaMode?"var(--c-kv)":"var(--c-attn)",dsaMode?'opacity=".4"':""); }
   s+=tx(px,228,t(dsaMode?"arch.viz.mla.preNoteDsa":"arch.viz.mla.preNote",{h:H,d:dq,v:f.vh}));
   return svgWrap(240, s);
 }
 
 /* DSA：indexer（fp8、少量头）扫全部 key 打分，主注意力只读 top-k 个 latent */
-function dsa(m, f, wl){
-  const n=Math.max(1,wl.n), kp=f.kpool||1, pools=Math.ceil(n/kp), topk=f.topk, cells=96, x0=30, w=W-60, cw=w/cells;
-  const keepFrac=Math.min(1,topk/n), rnd=rng(n*31+topk), scores=[...Array(cells)].map(()=>rnd()), cut=[...scores].sort((a,b)=>b-a)[Math.max(0,Math.round(keepFrac*cells)-1)];
+function dsa(m, f, wl, x){
+  const n=x.n, kp=f.kpool||1, pools=x.pools, topk=f.topk, cells=96, x0=30, w=W-60, cw=w/cells;
+  const keepFrac=x.keep, rnd=rng(n*31+topk), scores=[...Array(cells)].map(()=>rnd()), cut=[...scores].sort((a,b)=>b-a)[Math.max(0,Math.round(keepFrac*cells)-1)];
   let s=tx(x0,16,t("arch.viz.dsa.scan",{n:fInt(n),p:fInt(pools),kp}),{cls:"lbl"});
   for(let i=0;i<cells;i++){ const h=6+scores[i]*30, on=scores[i]>=cut; s+=r(x0+i*cw+0.5,62-h,cw-1,h,on?"var(--c-attn)":"var(--line)"); }
   s+=tx(x0,80,t(n>topk?"arch.viz.dsa.pick":"arch.viz.dsa.all",{k:fInt(topk),pct:pc(keepFrac)}));
-  const idxB=pools*(f.idxD+4), attB=Math.min(n,topk)*(f.kvLora+f.rope)*dtB(wl.kvDt), denseB=n*(f.kvLora+f.rope)*dtB(wl.kvDt);
+  const idxB=x.idxB, attB=x.attB, denseB=x.allB;
   s+=tx(x0,108,t("arch.viz.dsa.bytes"),{cls:"lbl"});
   s+=bars(x0,116,w,[{label:t("arch.viz.dsa.idx",{h:f.idxH,d:f.idxD}),v:idxB,col:"var(--c-lin)",hl:true},{label:t("arch.viz.dsa.sparse",{k:fInt(Math.min(n,topk))}),v:attB,col:"var(--c-kv)",hl:true},{label:t("arch.viz.dsa.dense"),v:denseB,col:"var(--c-kv)"}],fB);
-  const idxF=2*f.idxH*f.idxD*pools, attF=2*f.H*(f.kvLora+f.rope+f.kvLora)*Math.min(n,topk);
+  const idxF=x.idxF, attF=x.attF;
   s+=tx(x0,200,t("arch.viz.dsa.flops",{a:fF(idxF),b:fF(attF)}));
   s+=tx(x0,220,t("arch.viz.dsa.note",{k:fInt(topk)}));
   return svgWrap(232, s);
 }
 
 /* 线性注意力：每个头一个 d_k × d_v 的状态，大小与上下文无关；GDN 一个头一个衰减门，KDA 每个通道一个 */
-function lin(m, l, wl, kind){
-  const x0=30, n=Math.max(1,wl.n), sb=wl.stateDt==="bf16"?2:4, st=l.Hv*l.dk*l.dv*sb, kvEq=n*2*(l.Hk*l.dk)*dtB(wl.kvDt);
+function lin(m, l, wl, kind, x){
+  const x0=30, n=x.n, sb=x.sb, st=x.st, kvEq=x.kvEq;
   let s=tx(x0,16,t("arch.viz.lin.state",{h:l.Hv,k:l.dk,v:l.dv}),{cls:"lbl"});
   const gx=x0, gy=28, rows=Math.max(1,Math.min(16,Math.round(l.dk/8))), cols=Math.max(1,Math.min(16,Math.round(l.dv/8)));
   for(let i=0;i<rows;i++) for(let j=0;j<cols;j++) s+=r(gx+j*9,gy+i*9,8,8,"var(--c-st)",'opacity="'+(0.35+0.6*((i*7+j*3)%10)/10).toFixed(2)+'"');
@@ -120,8 +120,8 @@ function lin(m, l, wl, kind){
 }
 
 /* MoE：B 个 token、每个选 k 个 expert，一步碰到 E·(1−(1−k/E)^B) 个；碰到的每个 expert 读一遍权重 */
-function moe(m, e, wl, B){
-  const E=Math.max(1,e.E), k=Math.max(1,e.k), cov=Infer.cover(k,E,B), hit=Math.round(E*cov), x0=30, w=W-60;
+function moe(m, e, wl, B, x){
+  const E=Math.max(1,e.E), k=Math.max(1,e.k), cov=x.cov, hit=Math.round(x.hit), x0=30, w=W-60;
   const cols=Math.min(64,E), rowsN=Math.ceil(E/cols), cs=Math.min(9.5,(w)/cols), rnd=rng(E*7+k*131+B), order=[...Array(E).keys()];
   for(let i=E-1;i>0;i--){ const j=Math.floor(rnd()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
   const on=new Set(order.slice(0,hit));
@@ -130,19 +130,19 @@ function moe(m, e, wl, B){
   for(let i=0;i<Math.min(E,cols*rowsShow);i++){ const cx=x0+(i%cols)*cs, cy=26+Math.floor(i/cols)*cs; s+=r(cx,cy,cs-1.5,cs-1.5,on.has(i)?"var(--c-moe)":"var(--soft)"); }
   let y=30+rowsShow*cs;
   if(rowsN>rowsShow) { s+=tx(x0,y+8,t("arch.viz.more",{n:E-cols*rowsShow})); y+=12; }
-  const rowsPer = B*k/Math.max(1,hit);
+  const rowsPer = x.rows;
   s+=tx(x0,y+14,t("arch.viz.moe.rows",{r:fI(rowsPer),f:e.F,d:e.Dlat||m.D}));
-  const wb=dtB(wl.eDt), per=3*(e.Dlat||m.D)*e.F*wb;
+  const per=x.per;
   s+=bars(x0,y+24,w,[{label:t("arch.viz.moe.read",{hit}),v:hit*per,col:"var(--c-moe)",hl:true},{label:t("arch.viz.moe.all",{e:E}),v:E*per,col:"var(--c-moe)"},{label:t("arch.viz.moe.act",{b:fInt(B)}),v:B*(m.D*2*2),col:"var(--c-act)"}],fB);
   s+=tx(x0,y+100,t(e.Fs>0?(e.Dlat?"arch.viz.moe.extraBoth":"arch.viz.moe.extraShared"):(e.Dlat?"arch.viz.moe.extraLat":"arch.viz.moe.extraNone"),{fs:e.Fs,dl:e.Dlat,d:m.D}));
   return svgWrap(y+112, s);
 }
 
 /* dense FFN：一份 3·D·F 的权重被 B 行复用，强度 ≈ B（BF16） */
-function dense(m, F, wl, B, hw, g){
-  const x0=30, wb=dtB(wl.wDt), I=2*B*3*m.D*F/(3*m.D*F*wb + B*(m.D*2+3*F*2)), ridge=peakOf(hw,wl.wDt)*g.etaC/(hw.hbm*1e9*g.etaM), Bst=ridge*wb/2;
+function dense(m, F, wl, B, x){
+  const x0=30, I=x.I, ridge=x.ridge, Bst=x.Bstar;
   let s=tx(x0,16,t("arch.viz.dense.w",{d:m.D,f:F}),{cls:"lbl"});
-  s+=r(x0,26,300,90,"var(--c-lm)",'opacity=".55"')+tx(x0+150,76,t("arch.viz.dense.wBox",{b:fB(3*m.D*F*wb)}),{a:"middle",cls:"lbl"});
+  s+=r(x0,26,300,90,"var(--c-lm)",'opacity=".55"')+tx(x0+150,76,t("arch.viz.dense.wBox",{b:fB(x.wB)}),{a:"middle",cls:"lbl"});
   const rows=Math.min(32,B); for(let i=0;i<rows;i++) s+=r(x0+330,26+i*90/rows,120,Math.max(1,90/rows-1),"var(--c-act)");
   s+=tx(x0+330,132,t("arch.viz.dense.rows",{b:fInt(B)}));
   s+=tx(x0,160,t("arch.viz.dense.I",{i:fI(I),r:fI(ridge),bs:fInt(Bst)}),{cls:"lbl"});
@@ -152,12 +152,12 @@ function dense(m, F, wl, B, hw, g){
 
 /* 入口：按模块画；返回 {h, svg} */
 function draw(mod, m, wl, hw, g){
-  const f=m.full, B=wl.phase==="decode"?wl.B:wl.phase==="prefill"?Arch.chunkOf(wl,hw):wl.S;
-  if(mod.id==="full") return f.kind==="gqa" ? gqa(m,f) : f.kind==="mla" ? mla(m,f,wl,false) : dsa(m,f,wl);
+  const f=m.full, x=Arch.explain(m,hw,g,wl,mod.id), B=x.B;
+  if(mod.id==="full") return f.kind==="gqa" ? gqa(m,f) : f.kind==="mla" ? mla(m,f,wl,false) : dsa(m,f,wl,x);
   if(mod.id==="swa") return swa(m,f,wl);
-  if(mod.id==="lin") return lin(m,m.lin,wl,mod.kind);
-  if(mod.id==="moe") return moe(m,m.moe,wl,B);
-  return dense(m,m.dense.F,wl,B,hw,g);
+  if(mod.id==="lin") return lin(m,m.lin,wl,mod.kind,x);
+  if(mod.id==="moe") return moe(m,m.moe,wl,B,x);
+  return dense(m,x.F,wl,B,x);
 }
 /* DSA 的 latent 部分沿用 MLA 的图（第二张） */
 const extra = (mod, m, wl) => mod.id==="full" && m.full.kind==="dsa" ? mla(m,m.full,wl,true) : null;

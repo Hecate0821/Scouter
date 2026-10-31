@@ -1,8 +1,11 @@
 {
   "name": "scouter-tests",
   "private": true,
-  "description": "Headless checks for Scouter: every model × framework × preset renders without errors, NaN or missing text.",
+  "description": "Headless checks for Scouter: the engine on its own, its collectives against PyTorch traces, text kept out of code, and every page rendering without errors or NaN.",
   "scripts": {
+    "test": "node engine.js && node sim.js && node i18n.js && node regression.js ../index.html",
+    "engine": "node engine.js",
+    "sim": "node sim.js",
     "regression": "node regression.js ../index.html",
     "i18n": "node i18n.js",
     "timing": "node timing.js ../index.html"

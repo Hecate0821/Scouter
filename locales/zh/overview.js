@@ -25,6 +25,7 @@ I18N.add("zh", "overview", {
   "lede": "同一个 {model}，{hw} · {topo}。推理照搬推理页当前的 decode 配置，训练照搬后训练页当前的配置；改配置去对应的页，这里跟着变。",
   "kpi.tpot": "推理 TPOT",
   "kpi.tpotSub": "{engine}，每个 DP rank {n} 个请求",
+  "kpi.infThrFoot": "decode",
   "kpi.infThr": "推理吞吐",
   "kpi.trnStep": "训练 step",
   "kpi.trnStepSub": "{fw}，{tokens} token",

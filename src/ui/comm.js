@@ -90,7 +90,7 @@ function trnPlan(r, L, show){
   const epAll = xsOf("a2a","moe"), cnt = xsOf("cnt","moe"), etp = xsOf("etp","moe"), epFused = epAll.length && epAll[0].ent.fused;
   const epM = epFused ? "fused" : (mg && c.epOverlap ? "part" : "block"), epNote = epFused ? t("comm.note.epFused") : (mg && c.epOverlap ? t("comm.note.epOverlap") : "");
   const cpMeth = r.par.cpMeth;
-  const fsU = i => { const k=kind(i); return { d:(k.a==="lin"?fs.pLin:fs.pFull)+(k.f==="dense"?fs.pDen:0), e:k.f==="moe"?fs.pExpL:0 }; };
+  const fsU = i => fs.blocks[i];
   const lb = j => j<0 ? t("comm.lb.emb") : j>=m.L ? t("comm.lb.head") : t("comm.lb.layer",{i:j});
   const fsX = (i, pass, op, note, mode) => { if(!fs || i<0 || i>=m.L) return; const u=fsU(i);
     for(const [dim,P1,F,lk] of [["fsdp",u.d,fs.fs,fs.lkD],["efsdp",u.e,fs.fe,fs.lkE]])
@@ -120,15 +120,15 @@ function trnPlan(r, L, show){
     }
     X("tp",tp[1],tpM,i,{note:tpNote});
     if(k.f==="moe"){
-      C(rl("router + top-k + permute"),T(PC.router),"proj");
+      C(rl(t("comm.blk.router")),T(PC.router),"proj");
       P(cnt,pass).forEach(x=>X("ep",x,"block",i,{note:t("comm.note.cnt")}));
       const ep=P(epAll,pass), et=rc?[]:P(etp,"fwd");
       X("ep",ep[0],epM,i,{note:epNote}); X("etp",et[0],"block",i);
       C(rl(t("comm.moe.exp")),T(PC.exp),"moe");
       X("etp",et[1],"block",i); X("ep",ep[1],epM,i,{note:epNote});
       C(rl(t("comm.moe.unp")),T(PC.unp),"proj");
-      if(PC.shared.f>0){ const sh=P(xsOf("tp","moe"),pass); X("tp",sh[0],tpM,i); C(rl("shared expert"),T(PC.shared),"proj"); X("tp",sh[1],tpM,i); }
-    } else { const dn=P(xsOf("tp","dense"),pass); X("tp",dn[0],tpM,i); C(rl("dense FFN"),T(PC.dense),"proj"); X("tp",dn[1],tpM,i); }
+      if(PC.shared.f>0){ const sh=P(xsOf("tp","moe"),pass); X("tp",sh[0],tpM,i); C(rl(t("comm.blk.shared")),T(PC.shared),"proj"); X("tp",sh[1],tpM,i); }
+    } else { const dn=P(xsOf("tp","dense"),pass); X("tp",dn[0],tpM,i); C(rl(t("comm.blk.dense")),T(PC.dense),"proj"); X("tp",dn[1],tpM,i); }
   };
   /* 重算：一整行，计算是这一层被重算的算子，通信是前向里那些调用再来一遍（顺序同前向） */
   const rcLayer = i => { const k=kind(i), blk=tpAttnBlk(k), rc=p=>p.rc;
@@ -152,7 +152,7 @@ function trnPlan(r, L, show){
       if(PC.shared.f>0) tpBlock("moe",t("comm.bwd.shared"),B(PC.shared),"proj");
       const ep=P(epAll,"bwd"), et=P(etp,"bwd");
       X("ep",ep[0],epM,i,{note:epNote}); X("etp",et[0],"block",i);
-      C("expert dgrad + wgrad",B(PC.exp),"moe");
+      C(t("comm.blk.expBwd"),B(PC.exp),"moe");
       X("etp",et[1],"block",i); X("ep",ep[1],epM,i,{note:epNote});
       C(t("comm.bwd.router"),B(PC.unp)+B(PC.router),"proj");
     } else tpBlock("dense",t("comm.bwd.dense"),B(PC.dense),"proj");
@@ -276,13 +276,13 @@ function infPlan(r, L){
       C(t("comm.inf.router",{lat:m.moe.Dlat?t("comm.inf.routerLat"):""}),PI.router,"proj");
       if(PI.shared>0) C(t("comm.inf.shared"),PI.shared,"proj");
       X("ep","cnt",t("comm.inf.cnt"),i); X("ep","disp",t("comm.inf.disp"),i);
-      C("routed experts",PI.exp,"moe");
+      C(t("comm.inf.exp"),PI.exp,"moe");
       X("ep","comb",t("comm.inf.comb"),i);
       X("tp","latar",t("comm.inf.latar",{d:m.moe.Dlat}),i);
       if(PI.latu>0) C(t("comm.inf.latu"),PI.latu,"proj");
       X(epDim,"dps",ag?t("comm.inf.dpsEp"):t("comm.inf.dpsDpa"),i);
       X("tp","ar",t("comm.inf.arMoe",{fused:arF}),i);
-    } else { C("dense FFN",PI.dense,"proj"); X("tp","ar",t("comm.inf.arFfn",{fused:arF}),i); }
+    } else { C(t("comm.blk.dense"),PI.dense,"proj"); X("tp","ar",t("comm.inf.arFfn",{fused:arF}),i); }
   }
   sec(t("comm.sec.perStep"),{sub:true});
   C("lm_head",PI.lm,"lm"); X("tp","lmg",t("comm.inf.lmg"),"step"); C(t("comm.inf.samp"),PI.samp,"lm");

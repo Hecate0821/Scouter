@@ -5,7 +5,7 @@ const Common = (function(){
    mxfp8 / mxfp4 每 32 个一个 e8m0；nvfp4 每 16 个一个 e4m3（第二级 fp32 scale 另算） */
 const DT = { fp32:4, bf16:2, fp8:1+4/16384, fp8a:1+4/128, mxfp8:1+1/32, mxfp4:0.53125, nvfp4:0.5625 };
 const dtB = d => DT[d] ?? 2;
-const peakKey = d => d==="fp32"?"bf16":d==="mxfp4"||d==="nvfp4"?"fp4":d==="fp8"||d==="fp8a"||d==="mxfp8"?"fp8":"bf16";
+const peakKey = d => d==="fp32"?"bf16":d==="fp4"||d==="mxfp4"||d==="nvfp4"?"fp4":d==="fp8"||d==="fp8a"||d==="mxfp8"?"fp8":"bf16";
 
 /* 结构字段来自 HF config 与三个引擎 / 两个训练框架的模型文件（交叉核对见“口径与来源”）。 */
 const MODELS = {
@@ -13,32 +13,32 @@ const MODELS = {
     full:{ n:10, kind:"gqa", Hq:16, Hkv:2, dh:256, gate:true },
     lin:{ n:30, kind:"GDN", Hk:16, Hv:32, dk:128, dv:128, conv:4 },
     moe:{ E:256, k:8, F:512, Fs:512, sharedGate:true, Dlat:0 }, dense:{ n:0, F:0 },
-    wDefault:"bf16", official:t("engine_common.model.qwen35.official"),
-    note:t("engine_common.model.qwen35.note") },
+    wDefault:"bf16", official:Msg.of("engine_common.model.qwen35.official"),
+    note:Msg.of("engine_common.model.qwen35.note") },
   kimik3: { name:"Kimi K3", short:"Kimi K3", family:"kimi", D:7168, L:93, V:163840, mtp:0,
     full:{ n:24, kind:"mla", H:96, qLora:1536, kvLora:512, nope:128, rope:64, vh:128, gate:true, nope_only:true },
     lin:{ n:69, kind:"KDA", Hk:96, Hv:96, dk:128, dv:128, conv:4 },
     moe:{ E:896, k:16, F:3072, Fs:6144, sharedGate:false, Dlat:3584 }, dense:{ n:1, F:33792 },
-    attnRes:8, wDefault:"mxfp4", official:t("engine_common.model.kimik3.official"),
-    note:t("engine_common.model.kimik3.note") },
+    attnRes:8, wDefault:"mxfp4", official:Msg.of("engine_common.model.kimik3.official"),
+    note:Msg.of("engine_common.model.kimik3.note") },
   glm53f: { name:"GLM-5.3-Flash", short:"GLM-5.3-Flash", family:"glm", D:4096, L:45, V:154880, mtp:1,
     full:{ n:11, kind:"dsa", H:64, qLora:1536, kvLora:512, nope:256, rope:0, vh:256, gate:false, topk:2048, idxH:32, idxD:128, kpool:4 },
     lin:{ n:34, kind:"KDA", Hk:64, Hv:64, dk:128, dv:128, conv:4 },
     moe:{ E:288, k:8, F:2048, Fs:2048, sharedGate:false, Dlat:0 }, dense:{ n:3, F:12288 },
-    mhc:4, wDefault:"fp8", official:t("engine_common.model.glm53f.official"),
-    note:t("engine_common.model.glm53f.note") },
-  musespark: { name:t("engine_common.model.musespark.name"), short:"Muse Spark", family:"muse", D:8192, L:62, V:202048, mtp:0,
+    mhc:4, wDefault:"fp8", official:Msg.of("engine_common.model.glm53f.official"),
+    note:Msg.of("engine_common.model.glm53f.note") },
+  musespark: { name:Msg.of("engine_common.model.musespark.name"), short:"Muse Spark", family:"muse", D:8192, L:62, V:202048, mtp:0,
     full:{ n:62, kind:"gqa", Hq:128, Hkv:16, dh:64, gate:true, gateHead:true, swa:46, W:2048, gEvery:4, gOff:1 },
     lin:{ n:0, kind:"GDN", Hk:0, Hv:0, dk:128, dv:128, conv:4 },
     moe:{ E:256, k:8, F:4096, Fs:0, sharedGate:false, Dlat:4096 }, dense:{ n:0, F:0 },
-    wDefault:"nvfp4", official:t("engine_common.model.musespark.official"),
-    note:t("engine_common.model.musespark.note") },
-  qwen38_27b: { name:t("engine_common.model.qwen38_27b.name"), short:"Qwen3.8-27B", family:"qwen", D:5120, L:64, V:248320, mtp:1,
+    wDefault:"nvfp4", official:Msg.of("engine_common.model.musespark.official"),
+    note:Msg.of("engine_common.model.musespark.note") },
+  qwen38_27b: { name:Msg.of("engine_common.model.qwen38_27b.name"), short:"Qwen3.8-27B", family:"qwen", D:5120, L:64, V:248320, mtp:1,
     full:{ n:16, kind:"gqa", Hq:24, Hkv:4, dh:256, gate:true },
     lin:{ n:48, kind:"GDN", Hk:16, Hv:48, dk:128, dv:128, conv:4 },
     moe:{ E:0, k:0, F:0, Fs:0, sharedGate:false, Dlat:0 }, dense:{ n:64, F:17408 },
-    wDefault:"bf16", official:"27B dense",
-    note:t("engine_common.model.qwen38_27b.note") }
+    wDefault:"bf16", official:Msg.of("engine_common.model.qwen38_27b.official"),
+    note:Msg.of("engine_common.model.qwen38_27b.note") }
 };
 
 /* 规格表 dense 数值（TFLOP/s、GB/s、GB）；nvl / ib / host 为单 GPU 单向带宽 */
@@ -46,15 +46,25 @@ const HW = {
   H100:{ name:"H100 SXM", sm:90, bf16:989, fp8:1979, fp4:1979, hbm:3350, mem:80, nvl:450, ib:50, host:25 },
   H200:{ name:"H200", sm:90, bf16:989, fp8:1979, fp4:1979, hbm:4800, mem:141, nvl:450, ib:50, host:25 },
   B200:{ name:"B200", sm:100, bf16:2250, fp8:4500, fp4:9000, hbm:8000, mem:180, nvl:900, ib:50, host:25 },
-  B300:{ name:t("engine_common.hw.B300"), sm:103, bf16:2250, fp8:4500, fp4:13500, hbm:8000, mem:288, nvl:900, ib:100, host:25 },
-  GB200:{ name:"GB200", sm:100, bf16:2500, fp8:5000, fp4:10000, hbm:8000, mem:186, nvl:900, ib:50, host:200 },
-  GB300:{ name:"GB300", sm:103, bf16:2500, fp8:5000, fp4:15000, hbm:8000, mem:288, nvl:900, ib:100, host:200 }
+  B300:{ name:Msg.of("engine_common.hw.B300"), sm:103, bf16:2250, fp8:4500, fp4:13500, hbm:8000, mem:288, nvl:900, ib:100, host:25 },
+  GB200:{ name:"GB200", grace:true, sm:100, bf16:2500, fp8:5000, fp4:10000, hbm:8000, mem:186, nvl:900, ib:50, host:200 },
+  GB300:{ name:"GB300", grace:true, sm:103, bf16:2500, fp8:5000, fp4:15000, hbm:8000, mem:288, nvl:900, ib:100, host:200 }
 };
 const TOPO = {
-  hgx8:{ name:t("engine_common.topo.hgx8"), gpus:8, domain:8 },
-  nvl64:{ name:t("engine_common.topo.nvl64"), gpus:64, domain:72 }
+  hgx8:{ name:Msg.of("engine_common.topo.hgx8"), gpus:8, domain:8 },
+  nvl64:{ name:Msg.of("engine_common.topo.nvl64"), gpus:64, domain:72 }
 };   // 只算这两种：所有并行组都在一个 NVLink 域内。跨机走 IB 的公式（link、Par.epLayer）还在，但没有拓扑会用到
 const peakOf = (hw,d) => hw[peakKey(d)]*1e12;
+/* roofline 的几个量（界面画图和标注也用这些，不另写公式）。peak 是 FLOP/s（peakOf 的结果），η 来自 g */
+const compT = (flops, peak, g) => flops/(peak*g.etaC);                          // 按可达算力算的时间
+const memT = (bytes, hw, g) => bytes/(hw.hbm*1e9*g.etaM);                       // 按可达 HBM 带宽算的时间
+const ridge = (peak, hw, g) => peak*g.etaC/(hw.hbm*1e9*g.etaM);                 // 屋顶拐点（FLOP/B）
+const attainable = (I, peak, hw, g) => Math.min(peak*g.etaC, hw.hbm*1e9*g.etaM*I);   // 强度 I 下能达到的 FLOP/s
+const linkRidge = (peak, gbs, g) => peak*g.etaC/(gbs*1e9*g.etaAg);             // 每通信 1 字节要配多少 FLOPs 才藏得住（链路 GB/s）
+
+/* 默认的效率系数与固定开销（每页共用，界面上可以改）：η 是可达峰值的比例，α 是集合通信延迟（µs），其余是 kernel / launch / 同步开销（µs） */
+const freeze = o => { for(const v of Object.values(o)) if(v && typeof v==="object") freeze(v); return Object.freeze(o); };
+const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5 });
 
 /* GQA 的 q + 输出门宽度：门按元素（Qwen）是 Hq·dh，按头（Muse Spark）是 Hq */
 const qoW = f => f.Hq*f.dh + (f.gate ? (f.gateHead ? f.Hq : f.Hq*f.dh) : 0);
@@ -133,10 +143,10 @@ function a2aT(sent, n, lk, g, alphaUs){ if(n<=1||sent<=0) return 0; return (alph
 
 /* 单个算子的 roofline：t = max(FLOPs/峰值, 字节/带宽, kernel 数 × 最短 kernel 时间) */
 function roof(flops, bytes, peak, hw, g, kernels){
-  const tc = flops/(peak*g.etaC), tm = bytes/(hw.hbm*1e9*g.etaM), tf=(kernels||0)*g.kernelUs*1e-6;
+  const tc = compT(flops, peak, g), tm = memT(bytes, hw, g), tf=(kernels||0)*g.kernelUs*1e-6;
   const t = Math.max(tc, tm, tf);
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
 })();

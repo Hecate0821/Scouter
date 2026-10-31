@@ -17,14 +17,14 @@ function renderOverview(){
   $("o-lede").innerHTML=t("overview.lede",{model:esc(m.short),hw:hw.name,topo:esc(topo.name)});
   kpis($("o-kpis"),[
     [t("overview.kpi.tpot"),fT(ri.tpot),t("overview.kpi.tpotSub",{engine:ENGN[ci.engine],n:ri.Breq})],
-    [t("overview.kpi.infThr"),fN(ri.tokPerGpu)+" tok/s/GPU","decode"],
+    [t("overview.kpi.infThr"),fN(ri.tokPerGpu)+" tok/s/GPU",t("overview.kpi.infThrFoot")],
     [t("overview.kpi.trnStep"),fT(rt.stepT),t("overview.kpi.trnStepSub",{fw:ct.fw==="megatron"?"Megatron-Core":"torchtitan",tokens:fN(rt.tokens)})],
     [t("overview.kpi.trnThr"),fN(rt.tokPerGpu)+" tok/s/GPU","MFU "+(rt.mfu*100).toFixed(1)+"%"],
     [t("overview.kpi.ratio"),fX(ratio),t("overview.kpi.ratioSub")]]);
   const lamI=e.E?ri.Tg*e.k/e.E:0, lamT=e.E?ct.tok*rt.ep*e.k/e.E:0;
   const memI=sum(ri.ops.filter(o=>o.bound==="memory"),o=>o.t)/ri.stepT;
   const passes=rt.ops.flatMap(o=>[o.fwd,o.dgrad,o.wgrad]), memT=sum(passes.filter(p=>p.bound==="memory"),p=>p.t)/Math.max(1e-30,sum(passes,p=>p.t));
-  const tOf=o=>o.fwd.t+o.dgrad.t+o.wgrad.t, slowI=[...ri.ops].sort((a,b)=>b.t-a.t)[0], slowT=[...rt.ops].sort((a,b)=>tOf(b)-tOf(a))[0], nm=s=>esc(s.replace(/（.*?）/g,""));
+  const tOf=o=>o.fwd.t+o.dgrad.t+o.wgrad.t, slowI=[...ri.ops].sort((a,b)=>b.t-a.t)[0], slowT=[...rt.ops].sort((a,b)=>tOf(b)-tOf(a))[0], nm=s=>esc(shortName(s));
   const usedI=ri.mem.weights+Math.min(ri.Breq,Math.max(0,ri.mem.Bmax))*ri.mem.perSeq+ci.reserveGB*1e9;
   table($("o-cmp"),["",t("overview.cmp.head.inf"),t("overview.cmp.head.trn")],[
     [t("overview.cmp.par.k"),t("overview.cmp.par.inf",{engine:esc(ENGN[ci.engine]),n:ci.N,tp:+ri.tpA.toFixed(2),dp:ri.dpA,moe:esc(MOENAME[ri.moePar])}),

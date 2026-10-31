@@ -9,7 +9,7 @@ const FALLBACK = "zh";
 const LOCALES = { zh: { name: "中文", html: "zh-CN" } };
 /* 每种语言都按这个顺序加载同名文件；zh 的 <script> 写在 index.html 里 */
 const FILES = ["common", "shell", "overview", "arch", "train", "par", "calib", "comm", "infer", "tradeoff", "spec", "config",
-  "quant", "rl", "appendix", "releases", "engine_common", "engine_infer", "engine_train", "engine_par", "engine_quant"];
+  "quant", "rl", "appendix", "releases", "engine_common", "engine_infer", "engine_train", "engine_par", "engine_quant", "data"];
 const dict = {}, missing = new Set();
 
 function pick(){

@@ -108,8 +108,8 @@ function renderDeterminism(){
   table($("r-det-ops"),[t("rl.determinism.ops.head.where"),t("rl.determinism.ops.head.why"),t("rl.determinism.ops.head.fix"),t("rl.determinism.ops.head.src")],[
     [t("rl.determinism.ops.norm.where"),t("rl.determinism.ops.norm.why"),t("rl.determinism.ops.norm.fix"),detLink("tml-unique","TML")],
     ["GEMM",t("rl.determinism.ops.gemm.why"),t("rl.determinism.ops.gemm.fix"),t("rl.determinism.ops.gemm.src", {tml:detLink("tml-unique","TML"), v0111:relLink("vllm","v0.11.1"), v0120:relLink("vllm","v0.12.0")})],
-    ["attention",t("rl.determinism.ops.attn.why"),t("rl.determinism.ops.attn.fix"),t("rl.determinism.ops.attn.src", {tml:detLink("tml-unique","TML"), sglang:detLink("lmsys-det-cost","SGLang")})],
-    ["TP all-reduce",t("rl.determinism.ops.ar.why", {tok:V(fInt(rAR))}),t("rl.determinism.ops.ar.fix"),
+    [t("rl.determinism.ops.attn.where"),t("rl.determinism.ops.attn.why"),t("rl.determinism.ops.attn.fix"),t("rl.determinism.ops.attn.src", {tml:detLink("tml-unique","TML"), sglang:detLink("lmsys-det-cost","SGLang")})],
+    [t("rl.determinism.ops.ar.where"),t("rl.determinism.ops.ar.why", {tok:V(fInt(rAR))}),t("rl.determinism.ops.ar.fix"),
       t("rl.determinism.ops.ar.src", {v0518:relLink("sglang","v0.5.18"), v0310:relLink("vllm","v0.31.0"), v0320:relLink("vllm","v0.32.0"), tbik:detLink("tbik","TBIK")})],
     ["MoE",e.E ? t("rl.determinism.ops.moe.why", {E:e.E, k:e.k}) : t("rl.determinism.ops.moe.whyDense"),
       t("rl.determinism.ops.moe.fix"),t("rl.determinism.ops.moe.src", {sglang:relLink("sglang","v0.5.21"), vllm:relLink("vllm","v0.28.0"), lmsys:detLink("lmsys-det-limit","LMSYS")})],
@@ -129,12 +129,12 @@ function renderDeterminism(){
   $("r-det-cost-lede").innerHTML=t("rl.determinism.cost.lede", {f, v0120:relLink("vllm","v0.12.0"), v0220:relLink("vllm","v0.22.0"), v0290:relLink("vllm","v0.29.0"),
     graph:detLink("lmsys-det-graph",t("rl.determinism.cost.graphLink"))});
   const C=[
-    [t("rl.determinism.cost.sglang.name"),detLink("lmsys-det-cost","LMSYS 2025-09"),t("rl.determinism.cost.sglang.value", {pct:((lc.slow-1)*100).toFixed(2)}),"rollout",sp(lc.slow)],
-    [t("rl.determinism.cost.tml.name"),detLink("tml-cost","TML 2025-09"),t("rl.determinism.cost.tml.value", {base:tc.tBase, det:tc.tDet, opt:tc.tDetOpt}),"rollout",sp([tc.tDet/tc.tBase,tc.tDetOpt/tc.tBase])],
+    [t("rl.determinism.cost.sglang.name"),detLink("lmsys-det-cost","LMSYS 2025-09"),t("rl.determinism.cost.sglang.value", {pct:((lc.slow-1)*100).toFixed(2)}),t("rl.determinism.cost.rollout"),sp(lc.slow)],
+    [t("rl.determinism.cost.tml.name"),detLink("tml-cost","TML 2025-09"),t("rl.determinism.cost.tml.value", {base:tc.tBase, det:tc.tDet, opt:tc.tDetOpt}),t("rl.determinism.cost.rollout"),sp([tc.tDet/tc.tBase,tc.tDetOpt/tc.tBase])],
     [t("rl.determinism.cost.fwd.name"),aOut(ev.url,"vLLM 2026-10"),t("rl.determinism.cost.fwd.value", {thr:ev.thr.map(x=>(x*100).toFixed(1)+"%").join(" / ")}),t("rl.determinism.cost.fwd.side"),sp(ev.thr.map(x=>1/x))],
     [t("rl.determinism.cost.tt.name"),detLink("vllm-tt-bitwise","vLLM 2025-11"),t("rl.determinism.cost.tt.value", {x:vt.slow}),t("rl.determinism.cost.tt.side"),[vt.slow]],
     [t("rl.determinism.cost.page.name", {f:S.inf.biFactor}),t("rl.determinism.cost.page.src"),
-      t("rl.determinism.cost.page.value", {x:sBi.toFixed(2), tail:sBi<S.inf.biFactor-0.01 ? t("rl.determinism.cost.page.commSame") : t("rl.determinism.cost.page.noComm")}),"rollout",sp(sBi)]];
+      t("rl.determinism.cost.page.value", {x:sBi.toFixed(2), tail:sBi<S.inf.biFactor-0.01 ? t("rl.determinism.cost.page.commSame") : t("rl.determinism.cost.page.noComm")}),t("rl.determinism.cost.rollout"),sp(sBi)]];
   table($("r-det-cost"),[t("rl.determinism.cost.head.how"),t("rl.determinism.cost.head.src"),t("rl.determinism.cost.head.cost"),t("rl.determinism.cost.head.side"),t("rl.determinism.cost.head.step", {f})],C.map(x=>[esc(x[0]),x[1],esc(x[2]),esc(x[3]),fx(x[4])]),[4]);
   // 和低精度的关系
   const qh=HW[S.q.hw], r16=qInferE2E(qh,"bf16"), r4=qInferE2E(qh,"nvfp4"), sr=r16.stepT/r4.stepT;
@@ -165,7 +165,7 @@ function renderLowprec(){
 function renderQat(){
   const {q,hw,g,Q}=qHead(), N=q.N, K=q.K, Mt=Math.max(16,q.Mt), to={nMicro:q.nMicro,tokFused:q.tokFused};
   const G=(k,o)=>Q.trainGemm(hw,g,k,Mt,N,K,Object.assign({},to,o)), b=G("bf16");
-  const fq=Math.max(g.kernelUs*1e-6, N*K*(2+2)/(hw.hbm*1e9*g.etaM))/Math.max(1,q.nMicro);   // fake quant：读 BF16 权重、写回量化再反量化的 BF16，按 micro-batch 摊
+  const fq=Q.fakeQuantT(hw,g,N,K,q.nMicro);
   $("r-qat-lede").innerHTML=t("rl.qat.lede", {N:fInt(N), K:fInt(K), M:fInt(Mt), hw:esc(hw.name)});
   const rows=[
     [t("rl.qat.row.bf16Ptq"),"BF16","BF16",t("rl.qat.grad.unquant"),t("rl.qat.match.no"),b,t("rl.qat.who.bf16Ptq")],
@@ -177,7 +177,7 @@ function renderQat(){
     [t("rl.qat.row.nvfp4"),t("rl.qat.fwd.nvfp4W2d"),t("rl.qat.bwd.nvfp4"),t("rl.qat.grad.quantNoise"),t("rl.qat.match.te"),G("nvfp4"),t("rl.qat.who.nvfp4")]];
   table($("r-qat"),[t("rl.qat.head.how"),t("rl.qat.head.fwd"),t("rl.qat.head.bwd"),t("rl.qat.head.grad"),t("rl.qat.head.match"),t("rl.qat.head.time"),t("rl.qat.head.vsBf16"),t("rl.qat.head.saved"),t("rl.qat.head.who")],
     rows.map(x=>[esc(x[0]),esc(x[1]),esc(x[2]),esc(x[3]),esc(x[4]),fT(x[5].t),fX(b.t/x[5].t),fB(x[5].extra),esc(x[6])]),[5,6,7]);
-  const pk=k=>peakOf(hw,k)/peakOf(hw,"bf16"), ideal=(f,bk)=>3/(1/pk(f)+2/pk(bk));
+  const ideal=(f,bk)=>Q.idealSpeedup(hw,f,bk);
   const hp=G("nvfp4hp"), hpU=G("nvfp4hp",{tokFused:false}), hpF=G("nvfp4hp",{tokFused:true}), dq=G("nvfp4dq"), tDeq=(dq.q.find(z=>z[2]==="deq")||[0,0])[1];
   const mem=evOf(/mxfp8-nvfp4-rl/), A=[];
   A.push(t("rl.qat.an.peak", {hw:esc(hw.name), mx:V(fX(ideal("mxfp8","bf16"))), nv:V(fX(ideal("nvfp4","bf16"))), nvAll:fX(ideal("nvfp4","nvfp4"))}));

@@ -1,5 +1,6 @@
 /* engine_infer：src/engine/infer.js 里的文字 */
 I18N.add("zh", "engine_infer", {
+  "engine.ref": "Reference",
   "kernel.sglang.gqa": "SM100 trtllm_mha（page 64）/ SM90 fa3",
   "kernel.sglang.dsa": "dsa：SM100 trtllm 稀疏 MLA（fp8 KV）",
   "kernel.sglang.kda": "fused KDA decode（每卡 3/6/12 头）",
@@ -55,6 +56,13 @@ I18N.add("zh", "engine_infer", {
   "op.shared": "shared expert",
   "op.sharedGate": "shared expert + sigmoid 门",
   "op.latu": "latent RMSNorm + 上投影 {dim}→D（各卡复制）",
+  "op.aout": "o_proj GEMM",
+  "op.aqb": "q_b GEMM",
+  "op.auk": "W_uk absorb bmm",
+  "op.auv": "W_uv bmm",
+  "op.lnorm": "gated RMSNorm",
+  "op.lout": "out_proj GEMM",
+  "op.dense": "dense FFN",
   "op.lm": "lm_head",
   "op.lmGraph": "lm_head（在 graph 里，按补齐行）",
   "op.sampGraph": "采样（top-k/top-p，在 graph 里）",
@@ -64,6 +72,7 @@ I18N.add("zh", "engine_infer", {
   "comm.latar": "latent 宽度 all-reduce（{dim}）",
   "comm.dpg": "DP-attention：all-gather 进 MoE",
   "comm.dps": "DP-attention：reduce-scatter 回各 rank",
+  "comm.epRs": "EP reduce-scatter",
   "comm.epAg": "EP all-gather（allgather_reducescatter）",
   "comm.a2a.deepepLL": "DeepEP low-latency",
   "comm.a2a.deepepNormal": "DeepEP normal",

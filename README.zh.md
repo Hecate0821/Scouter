@@ -69,15 +69,18 @@ roofline 模型：
 index.html              页面骨架；按顺序加载下面的脚本（都是普通 <script>，共享全局作用域）
 css/roofline.css
 src/i18n/i18n.js        t(key, 参数)、data-i18n 属性、语言选择（?lang=、上次的选择、浏览器语言）
-locales/zh/*.js         全部界面文字，一个命名空间一个文件（docs/i18n.md）
-src/engine/             计算模型，不碰 DOM
-  common.js             模型 / 硬件 / 拓扑表，derive()，链路时间
+locales/zh/*.js         全部界面文字，一个命名空间一个文件；data.js 放数据文字的译文（docs/i18n.md）
+src/engine/             计算模型：数据表加纯函数，不碰 DOM、不出文字、不读数据点库（docs/engine.md）
+  msg.js                Msg.of(key, 参数)：计算核心返回消息，由调用方渲染成文字
+  common.js             模型 / 硬件 / 拓扑表，derive()，roofline 公式，链路与集合通信时间
   infer.js              推理一步：SGLang / vLLM / TokenSpeed 的 kernel 序列、引擎中立的参考画像，
                         投机解码的 draft、验证、提交
   train.js              训练一步：Megatron-Core / torchtitan
   par.js                FSDP / CP / EP 的通信与重叠
   quant.js              低精度 GEMM、一层 MoE、训练三遍 GEMM
-  arch.js               架构页：把一步里的 kernel 按层归到 attention / MLP 模块
+  arch.js               架构页：把一步里的 kernel 按层归到 attention / MLP 模块，以及示意图用的机制量
+  calib.js              和实测对照：每个数据集复现哪些实测点、预测怎么算
+  node.js               在 Node 里加载计算核心（一个 vm 上下文），给测试和 tools/sim.js 用
 src/data/
   db.js                 生成文件：数据点库（const DB_RAW）
   query.js              DB.set / DB.where / DB.one / DB.meta
@@ -91,7 +94,11 @@ data/
   public/*.json         公开数据点（手工整理，带 src / url）
   db.json               生成文件：规范版本，每个点一行
 tools/build_db.py       生成 data/db.json 和 src/data/db.js
-tests/                  jsdom 检查
+tools/sim.js            命令行跑计算核心，输出 JSON
+sim/                    独立的 Python 项目：在 CPU gloo 进程上用 PyTorch FSDP2 / TP / EP 跑训练布局，
+                        把每一次集合通信记成 JSON trace（sim/README.md）
+tests/                  Node 检查：计算核心、sim、i18n、回归和快照（jsdom）、渲染时间
+docs/engine.md          计算核心的接口和规则
 docs/i18n.md            界面文字与多语言
 ```
 
@@ -122,14 +129,20 @@ uv run tools/build_db.py --check             # 只检查生成结果是否最新
 uv run tools/build_db.py --sqlite x.sqlite   # 另导出 SQLite（每个数据集一个视图），方便临时查询
 ```
 
-页面里用 `DB.where("cp_full_model", {model: "qwen35", cp: 8})` 这样的查询取点。
+页面里用 `DB.where("cp_full_model", {model: "qwen35", cp: 8})` 这样的查询取点。数据的文字写在数据文件里，译文放在 `locales/<语言>/data.js`（见 [docs/i18n.md](docs/i18n.md)）。
 
 ## 测试
 
 ```
 cd tests && npm install
+npm test               # engine + sim + i18n + regression
+npm run engine         # 在 Node 里单独跑计算核心：每个模型 × GPU × 拓扑 × 引擎 / 框架 / 精度 / 模块；
+                       # 不抛错、没有 NaN、文字都是消息；打印和实测对照的中位数
+npm run sim            # 训练通信和 sim/traces 里 PyTorch 实际发出的集合通信对照（不需要 Python）
+npm run i18n           # 代码里没有界面文字（每一页做一遍伪本地化渲染来查）；用到的 key 都存在
 npm run regression     # 所有模型 × 框架 × 预设跑一遍，再把每一页渲染一遍：报 NaN / undefined 和脚本错误
-npm run i18n           # 代码里没有残留文字；用到的 key 都存在；每页渲染后没有缺失的 key
 npm run timing         # 每一页的渲染时间
 node snapshot.js ../index.html new.json base.json   # 导出每个视图的可见文字，和基线比对
 ```
+
+改了 sim 的用例后重新生成 trace：`cd sim && uv run python -m scouter_sim.run`（见 [sim/README.md](sim/README.md)）。

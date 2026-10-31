@@ -1,0 +1,2015 @@
+{
+ "schema": 1,
+ "case": "fsdp2_tp2_dense",
+ "torch": "2.14.1+cpu",
+ "backend": "gloo",
+ "layout": {
+  "N": 4,
+  "tp": 2
+ },
+ "tok": 512,
+ "mesh": {
+  "dp": 2,
+  "tp": 2
+ },
+ "params": {
+  "attn": 229376,
+  "dense": 393216,
+  "expert": 0,
+  "router": 0,
+  "shared": 0,
+  "emb": 262144,
+  "head": 262144
+ },
+ "note": "collectives issued on each rank during one micro-batch (forward + backward); raw sizes, no cost model",
+ "ranks": [
+  [
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   }
+  ],
+  [
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   }
+  ],
+  [
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   }
+  ],
+  [
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AR",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 512,
+    "pass": "fwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 311296,
+    "pass": "bwd"
+   },
+   {
+    "op": "AG",
+    "dim": "tp",
+    "n": 2,
+    "dtype": "bfloat16",
+    "elem": 2,
+    "numel": 131072,
+    "pass": "bwd"
+   },
+   {
+    "op": "RS",
+    "dim": "dp",
+    "n": 2,
+    "dtype": "float32",
+    "elem": 4,
+    "numel": 131072,
+    "pass": "bwd"
+   }
+  ]
+ ]
+}

@@ -1,7 +1,7 @@
 /* 训练核心：Megatron-Core 与 torchtitan 的逐层 fwd / dgrad / wgrad / 重算，以及各自的并行通信。
    与推理核心不共享算子表：这里没有 KV cache、状态缓存、采样，有的是反向、重算、整段 CE、优化器与梯度同步。 */
 const Train = (function(){
-const { dtB, peakOf, derive, qoW, swaKeys, link, agT, arT, a2aT, roof } = Common;
+const { dtB, peakOf, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof } = Common;
 
 /* FLA chunk kernel（C=64）每个 value head、每个 token 的 FLOPs：前向 / 反向（反向重算 w,u 与整条 h 递推） */
 function linFlops(kind, K, V){ const C=64;
@@ -11,11 +11,11 @@ function linFlops(kind, K, V){ const C=64;
 /* GEMM 精度配方：f 是前向，b 是 dgrad / wgrad；w2d 表示权重用方块，一份量化同时给两个方向用 */
 const PREC = {
   bf16:   { f:"bf16",  b:"bf16",  name:"BF16" },
-  fp8:    { f:"fp8",   b:"fp8",   w2d:true, name:t("engine_train.prec.fp8") },
-  mxfp8:  { f:"mxfp8", b:"mxfp8", name:t("engine_train.prec.mxfp8") },
-  mxfp8hp:{ f:"mxfp8", b:"bf16",  name:t("engine_train.prec.mxfp8hp") },
-  nvfp4:  { f:"nvfp4", b:"nvfp4", w2d:true, name:t("engine_train.prec.nvfp4") },
-  nvfp4hp:{ f:"nvfp4", b:"bf16",  tok:true, name:t("engine_train.prec.nvfp4hp") } };
+  fp8:    { f:"fp8",   b:"fp8",   w2d:true, name:Msg.of("engine_train.prec.fp8") },
+  mxfp8:  { f:"mxfp8", b:"mxfp8", name:Msg.of("engine_train.prec.mxfp8") },
+  mxfp8hp:{ f:"mxfp8", b:"bf16",  name:Msg.of("engine_train.prec.mxfp8hp") },
+  nvfp4:  { f:"nvfp4", b:"nvfp4", w2d:true, name:Msg.of("engine_train.prec.nvfp4") },
+  nvfp4hp:{ f:"nvfp4", b:"bf16",  tok:true, name:Msg.of("engine_train.prec.nvfp4hp") } };
 
 function run(m, hw, topo, c, g){
   const d=derive(m), f=m.full, l=m.lin, e=m.moe, D=m.D, N=c.N, mg=c.fw==="megatron";
@@ -23,15 +23,15 @@ function run(m, hw, topo, c, g){
   const dp = N/(tp*cp*pp);
   const edp = mg ? N/(etp*ep*pp) : dp*cp*tp/ep;
   const warn=[];
-  if(!Number.isInteger(dp)) warn.push(t("engine_train.warn.dpDivides",{n:N}));
-  if(mg && !Number.isInteger(edp)) warn.push(t("engine_train.warn.edpDivides",{n:N}));
-  if(d.nMoe>0 && !mg && ep<tp) warn.push(t("engine_train.warn.ttEpTp"));
-  if(d.nMoe>0 && e.E%ep) warn.push(t("engine_train.warn.epExperts",{e:e.E}));
+  if(!Number.isInteger(dp)) warn.push(Msg.of("engine_train.warn.dpDivides",{n:N}).invalid());
+  if(mg && !Number.isInteger(edp)) warn.push(Msg.of("engine_train.warn.edpDivides",{n:N}).invalid());
+  if(d.nMoe>0 && !mg && ep<tp) warn.push(Msg.of("engine_train.warn.ttEpTp").invalid());
+  if(d.nMoe>0 && e.E%ep) warn.push(Msg.of("engine_train.warn.epExperts",{e:e.E}));
   const tok=c.tok, T=tok*cp, Tc=tok, Tl=tok/tp;    // T：TP×CP 组一个 micro-batch 的 token；Tc：本 CP rank；Tl：SP 下本 rank 驻留
   const PR=PREC[c.prec]||PREC.bf16, fq=PR.f!=="bf16", bq=PR.b!=="bf16";
   const S=c.S, wbF=dtB(PR.f), wbB=dtB(PR.b), pkF=peakOf(hw,PR.f), pkB=peakOf(hw,PR.b), pkA=peakOf(hw,"bf16");
   const pkAt = c.etaA>0 ? pkA*c.etaA/g.etaC : pkA;          // attention 核心单独给效率（0 = 和 GEMM 一样用 η_c）
-  if(fq && PR.f!=="fp8" && hw.sm<100) warn.push(t("engine_train.warn.needBlackwell",{prec:PR.name}));
+  if(fq && PR.f!=="fp8" && hw.sm<100) warn.push(Msg.of("engine_train.warn.needBlackwell",{prec:PR.name}));
   // 低精度时每个 GEMM 输入多一次量化：读 bf16，写行方向一份（反向也低精度时再写列方向一份，wgrad 用）
   const qF = fq ? 2 + wbF + (bq?wbB:0) : 0, qB = bq ? 2 + 2*wbB : 0;
   const ops=[], comm=[];
@@ -44,8 +44,8 @@ function run(m, hw, topo, c, g){
       fwd:{fl:(fwd?fwd.fl:0)*layers, by:(fwd?fwd.by:0)*layers, t:rf.t*layers, bound:rf.bound, I:rf.I},
       dgrad:{fl:(dg?dg.fl:0)*layers, by:(dg?dg.by:0)*layers, t:rd.t*layers, bound:rd.bound, I:rd.I},
       wgrad:{fl:(wg?wg.fl:0)*layers, by:(wg?wg.by:0)*layers, t:rw.t*layers, bound:rw.bound, I:rw.I}},extra||{})); };
-  // GEMM：M 行、K→N，权重按 shard 切；三遍 FLOPs 相同，字节不同
-  const gemm=(M,K,Nn,wShard)=>{ const W=K*Nn/wShard;
+  // GEMM：M 行、K→N，权重按 shard 切；三遍 FLOPs 相同，字节不同。wMul：grouped GEMM 一次读完的权重份数（本 rank 的 expert 数）
+  const gemm=(M,K,Nn,wShard,wMul=1)=>{ const W=K*Nn/wShard*wMul;
     return [ {fl:2*M*K*Nn/wShard, by:W*wbF + M*(K+Nn/wShard)*2 + qF*M*K, pk:pkF, tb: PR.tok&&!c.tokFused ? 4*M*K + 4*M*Nn/wShard : 0},
              {fl:2*M*K*Nn/wShard, by:W*wbB + M*(K+Nn/wShard)*2 + qB*M*Nn/wShard, pk:pkB},
              {fl:2*M*K*Nn/wShard, by:W*4*2 + M*(K+Nn/wShard)*2, pk:pkB} ]; };      // wgrad 累加进 fp32 main_grad
@@ -72,53 +72,53 @@ function run(m, hw, topo, c, g){
   /* ---- 全注意力 ---- */
   let coreFullOp=null, coreSwaOp=null;
   if(f.n>0){
-    op("norm","pre-attn RMSNorm","misc",f.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
+    op("norm",Msg.of("engine_train.op.normAttn"),"misc",f.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
     if(f.kind==="gqa"){
       const qo=qoW(f), kvo=2*f.Hkv*f.dh, nSwa=f.swa||0;
-      op("aqkv",f.gate?t("engine_train.op.qkvGate"):t("engine_train.op.qkv"),"attn",f.n,...gemm(Tc,D,qo+kvo,tp));
-      op("arope","q/k norm + RoPE","attn",f.n,...elem(10*(f.Hq+2*f.Hkv)*f.dh/tp,(f.Hq+2*f.Hkv)*f.dh*2*2/tp,Tc,2));
+      op("aqkv",f.gate?Msg.of("engine_train.op.qkvGate"):Msg.of("engine_train.op.qkv"),"attn",f.n,...gemm(Tc,D,qo+kvo,tp));
+      op("arope",Msg.of("engine_train.op.arope"),"attn",f.n,...elem(10*(f.Hq+2*f.Hkv)*f.dh/tp,(f.Hq+2*f.Hkv)*f.dh*2*2/tp,Tc,2));
       // 每 token 平均看 S/2 个 key（滑窗层看 swaKeys 个）：QKᵀ + PV
       const core=(layers,keys,tag,mod)=>{ const fl=4*(f.Hq/tp)*f.dh*keys*Tc;
-        op("acore",mg?t("engine_train.op.acoreMg",{tag}):t("engine_train.op.acoreTt",{tag}),"attn",layers,{fl,by:Tc*(2*f.Hq+2*f.Hkv)*f.dh*2/tp,pk:pkAt},{fl:2.5*fl,by:Tc*(4*f.Hq+4*f.Hkv)*f.dh*2/tp,pk:pkAt},null,{mod}); return ops[ops.length-1]; };
-      coreFullOp = core(f.n-nSwa, S/2, nSwa?t("engine_train.op.tagGlobal"):"", "full");
-      if(nSwa) coreSwaOp = core(nSwa, swaKeys(S,f.W), t("engine_train.op.tagSwa",{w:f.W}), "swa");
-      if(f.gate) op("agate",f.gateHead?t("engine_train.op.gateHead"):t("engine_train.op.gate"),"attn",f.n,...elem(2*f.Hq*f.dh/tp,3*f.Hq*f.dh*2/tp,Tc,2));
-      op("aout","o_proj GEMM","attn",f.n,...gemm(Tc,f.Hq*f.dh,D,tp));
+        op("acore",mg?Msg.of("engine_train.op.acoreMg",{tag}):Msg.of("engine_train.op.acoreTt",{tag}),"attn",layers,{fl,by:Tc*(2*f.Hq+2*f.Hkv)*f.dh*2/tp,pk:pkAt},{fl:2.5*fl,by:Tc*(4*f.Hq+4*f.Hkv)*f.dh*2/tp,pk:pkAt},null,{mod}); return ops[ops.length-1]; };
+      coreFullOp = core(f.n-nSwa, S/2, nSwa?Msg.of("engine_train.op.tagGlobal"):"", "full");
+      if(nSwa) coreSwaOp = core(nSwa, swaKeys(S,f.W), Msg.of("engine_train.op.tagSwa",{w:f.W}), "swa");
+      if(f.gate) op("agate",f.gateHead?Msg.of("engine_train.op.gateHead"):Msg.of("engine_train.op.gate"),"attn",f.n,...elem(2*f.Hq*f.dh/tp,3*f.Hq*f.dh*2/tp,Tc,2));
+      op("aout",Msg.of("engine_train.op.aout"),"attn",f.n,...gemm(Tc,f.Hq*f.dh,D,tp));
     } else {
       const H=f.H, dq=f.nope+f.rope, lat=f.kvLora+f.rope;
-      op("aqa",mg?t("engine_train.op.aqaMg"):t("engine_train.op.aqaTt"),"attn",f.n,...gemm(mg?Tl:Tc,D,f.qLora+lat,1));
-      op("aqb",t("engine_train.op.aqb"),"attn",f.n,...gemm(Tc,f.qLora,H*dq,tp));
+      op("aqa",mg?Msg.of("engine_train.op.aqaMg"):Msg.of("engine_train.op.aqaTt"),"attn",f.n,...gemm(mg?Tl:Tc,D,f.qLora+lat,1));
+      op("aqb",Msg.of("engine_train.op.aqb"),"attn",f.n,...gemm(Tc,f.qLora,H*dq,tp));
       if(f.kind==="dsa"){
         // Megatron DSA = absorbed MLA：MQA 一个 latent 头；indexer 在每个 TP rank 上对整个 TP 组序列重复算
-        op("auk","W_uk absorb","attn",f.n,...gemm(Tc,f.nope,f.kvLora,1/(H/tp)));
+        op("auk",Msg.of("engine_train.op.auk"),"attn",f.n,...gemm(Tc,f.nope,f.kvLora,1/(H/tp)));
         const kp=f.kpool||1, nk=Math.min(S/2,f.topk);
-        op("aidxp",t("engine_train.op.aidxp"),"attn",f.n,...gemm(Tc,D,(f.qLora*f.idxH*f.idxD + D*f.idxD + D*f.idxH)/D,1));
+        op("aidxp",Msg.of("engine_train.op.aidxp"),"attn",f.n,...gemm(Tc,D,(f.qLora*f.idxH*f.idxD + D*f.idxD + D*f.idxH)/D,1));
         const fi=2*f.idxH*f.idxD*(S/2)/kp*Tc;
-        op("aidx",t("engine_train.op.aidx"),"attn",f.n,{fl:fi*2,by:Tc*(S/2)/kp*4*2,pk:pkA},{fl:fi*2,by:Tc*(S/2)/kp*4*2,pk:pkA},null);
+        op("aidx",Msg.of("engine_train.op.aidx"),"attn",f.n,{fl:fi*2,by:Tc*(S/2)/kp*4*2,pk:pkA},{fl:fi*2,by:Tc*(S/2)/kp*4*2,pk:pkA},null);
         const fl=2*(H/tp)*(lat+f.kvLora)*nk*Tc;
-        op("acore",t("engine_train.op.acoreDsa",{k:f.topk}),"attn",f.n,{fl,by:Tc*f.topk*4 + Tc*(H/tp)*(lat+f.kvLora)*2,pk:pkAt},{fl:2.5*fl,by:2*Tc*(H/tp)*(lat+f.kvLora)*2 + Tc*f.topk*4,pk:pkAt},null); coreFullOp=ops[ops.length-1];
-        op("auv","W_uv","attn",f.n,...gemm(Tc,f.kvLora,f.vh,1/(H/tp)));
+        op("acore",Msg.of("engine_train.op.acoreDsa",{k:f.topk}),"attn",f.n,{fl,by:Tc*f.topk*4 + Tc*(H/tp)*(lat+f.kvLora)*2,pk:pkAt},{fl:2.5*fl,by:2*Tc*(H/tp)*(lat+f.kvLora)*2 + Tc*f.topk*4,pk:pkAt},null); coreFullOp=ops[ops.length-1];
+        op("auv",Msg.of("engine_train.op.auv"),"attn",f.n,...gemm(Tc,f.kvLora,f.vh,1/(H/tp)));
       } else {
-        op("akvb",t("engine_train.op.akvb"),"attn",f.n,...gemm(Tc,f.kvLora,H*(f.nope+f.vh),tp));
+        op("akvb",Msg.of("engine_train.op.akvb"),"attn",f.n,...gemm(Tc,f.kvLora,H*(f.nope+f.vh),tp));
         const fl=2*(H/tp)*((dq+f.vh)/2)*S*Tc;
-        op("acore",t("engine_train.op.acoreMla",{qk:dq,v:f.vh}),"attn",f.n,{fl,by:Tc*H*(2*dq+2*f.vh)*2/tp,pk:pkAt},{fl:2.5*fl,by:Tc*H*(4*dq+4*f.vh)*2/tp,pk:pkAt},null); coreFullOp=ops[ops.length-1];
+        op("acore",Msg.of("engine_train.op.acoreMla",{qk:dq,v:f.vh}),"attn",f.n,{fl,by:Tc*H*(2*dq+2*f.vh)*2/tp,pk:pkAt},{fl:2.5*fl,by:Tc*H*(4*dq+4*f.vh)*2/tp,pk:pkAt},null); coreFullOp=ops[ops.length-1];
       }
-      if(f.gate){ op("agp",t("engine_train.op.agp"),"attn",f.n,...gemm(Tc,D,H*f.vh,tp)); op("agate",t("engine_train.op.gate"),"attn",f.n,...elem(2*H*f.vh/tp,3*H*f.vh*2/tp,Tc,2)); }
-      op("aout","o_proj GEMM","attn",f.n,...gemm(Tc,H*f.vh,D,tp));
+      if(f.gate){ op("agp",Msg.of("engine_train.op.agp"),"attn",f.n,...gemm(Tc,D,H*f.vh,tp)); op("agate",Msg.of("engine_train.op.gate"),"attn",f.n,...elem(2*H*f.vh/tp,3*H*f.vh*2/tp,Tc,2)); }
+      op("aout",Msg.of("engine_train.op.aout"),"attn",f.n,...gemm(Tc,H*f.vh,D,tp));
     }
-    tpBlocks.push({name:t("engine_train.blk.full"),blk:"attn",layers:f.n,inW: f.kind==="gqa"?D:(f.qLora+f.kvLora)});
+    tpBlocks.push({name:Msg.of("engine_train.blk.full"),blk:"attn",layers:f.n,inW: f.kind==="gqa"?D:(f.qLora+f.kvLora)});
   }
 
   /* ---- 线性注意力 ---- */
   if(l.n>0){
     const Hv=l.Hv/tp, lf=linFlops(l.kind,l.dk,l.dv), byTok=Hv*(l.kind==="KDA"?8200:5500);
-    op("norm","pre-attn RMSNorm","misc",l.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
-    op("lproj",t("engine_train.op.lproj"),"lin",l.n,...gemm(Tc,D,d.linIn,tp));
-    op("lconv",t("engine_train.op.lconv"),"lin",l.n,...elem(2*l.conv*d.linConvDim/tp+20*Hv*l.dk,(d.linConvDim+2*Hv*l.dk)*2*2/tp,Tc,3));
-    op("lcore",t("engine_train.op.lcore",{kind:l.kind,impl:mg?"FLA":"attn_gym"}),"lin",l.n,{fl:Hv*lf.f*Tc,by:byTok*Tc,pk:pkA,k:5},{fl:Hv*lf.b*Tc,by:2.5*byTok*Tc,pk:pkA,k:8},null);
-    op("lnorm","gated RMSNorm","lin",l.n,...elem(10*Hv*l.dv,3*Hv*l.dv*2,Tc,2));
-    op("lout","out_proj GEMM","lin",l.n,...gemm(Tc,l.Hv*l.dv,D,tp));
-    tpBlocks.push({name:t("engine_train.blk.lin"),blk:"lin",layers:l.n,inW:D});
+    op("norm",Msg.of("engine_train.op.normAttn"),"misc",l.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
+    op("lproj",Msg.of("engine_train.op.lproj"),"lin",l.n,...gemm(Tc,D,d.linIn,tp));
+    op("lconv",Msg.of("engine_train.op.lconv"),"lin",l.n,...elem(2*l.conv*d.linConvDim/tp+20*Hv*l.dk,(d.linConvDim+2*Hv*l.dk)*2*2/tp,Tc,3));
+    op("lcore",Msg.of("engine_train.op.lcore",{kind:l.kind,impl:mg?"FLA":"attn_gym"}),"lin",l.n,{fl:Hv*lf.f*Tc,by:byTok*Tc,pk:pkA,k:5},{fl:Hv*lf.b*Tc,by:2.5*byTok*Tc,pk:pkA,k:8},null);
+    op("lnorm",Msg.of("engine_train.op.lnorm"),"lin",l.n,...elem(10*Hv*l.dv,3*Hv*l.dv*2,Tc,2));
+    op("lout",Msg.of("engine_train.op.lout"),"lin",l.n,...gemm(Tc,l.Hv*l.dv,D,tp));
+    tpBlocks.push({name:Msg.of("engine_train.blk.lin"),blk:"lin",layers:l.n,inW:D});
   }
 
   /* ---- MoE ---- */
@@ -127,41 +127,42 @@ function run(m, hw, topo, c, g){
   const perRankExp = e.E/ep;
   const kEff = dedup ? ep*Par.pDest(e.E, ep, e.k) : e.k;     // 去重后每 token 发往的不同 rank 数（含本 rank）
   const R = Tl*e.k*imb;                                     // 本 rank 上 expert 处理的行数（EP 组内均匀）
-  op("norm","pre-MoE RMSNorm","misc",nM,...elem(8*D/tp,3*D*2/tp,Tc,2));
-  op("router",mg?t("engine_train.op.routerMg"):t("engine_train.op.routerTt"),"moe",nM,{fl:2*Tl*D*e.E+10*Tl*e.E,by:D*e.E*4+Tl*(D*2+e.E*4*3),pk:pkA/2},{fl:4*Tl*D*e.E,by:D*e.E*8+Tl*e.E*4*3,pk:pkA/2},null);
-  if(e.Dlat) op("latd",t("engine_train.op.latd",{n:e.Dlat}),"moe",nM,...gemm(Tl,D,e.Dlat,1));
-  op("permute",c.dispatcher==="distmoe"?t("engine_train.op.permuteDist"):t("engine_train.op.permute"),"moe",nM,{fl:0,by:Tl*De*2+R*De*2,pk:pkA},{fl:0,by:Tl*De*2+R*De*2,pk:pkA},null);
-  op("moe1",t("engine_train.op.moe1"),"moe",nM,...gemm(R,De,2*e.F*etp,etp));
-  op("act",(m.family==="kimi"?"SiTU-GLU":"SwiGLU")+" × routing prob","moe",nM,...elem(6*e.F,(2*e.F+e.F)*2,R,2));
-  op("moe2",t("engine_train.op.moe2"),"moe",nM,...gemm(R,e.F*etp,De,etp));
-  op("unperm",t("engine_train.op.unperm"),"moe",nM,{fl:R*De,by:R*De*2+Tl*De*2,pk:pkA},{fl:0,by:R*De*2+Tl*De*2,pk:pkA},null);
-  if(e.Dlat) op("latu",t("engine_train.op.latu",{n:e.Dlat}),"moe",nM,...gemm(Tl,e.Dlat,D,1));
-  if(e.Fs>0){ op("shared",t("engine_train.op.shared"),"moe",nM,...[0,1,2].map(i=>{ const a=gemm(Tc,D,3*e.Fs,tp)[i]; return a; }), {ovl: mg&&c.sharedOverlap}); tpBlocks.push({name:"shared expert",blk:"moe",layers:nM,inW:D}); }
-  if(m.dense.n>0){ op("norm",t("engine_train.op.normDense"),"misc",m.dense.n,...elem(8*D/tp,3*D*2/tp,Tc,2)); op("dense","dense FFN","moe",m.dense.n,...gemm(Tc,D,3*m.dense.F,tp)); tpBlocks.push({name:"dense FFN",blk:"dense",layers:m.dense.n,inW:D}); }
+  op("norm",Msg.of("engine_train.op.normMoe"),"misc",nM,...elem(8*D/tp,3*D*2/tp,Tc,2));
+  op("router",mg?Msg.of("engine_train.op.routerMg"):Msg.of("engine_train.op.routerTt"),"moe",nM,{fl:2*Tl*D*e.E+10*Tl*e.E,by:D*e.E*4+Tl*(D*2+e.E*4*3),pk:pkA/2},{fl:4*Tl*D*e.E,by:D*e.E*8+Tl*e.E*4*3,pk:pkA/2},null);
+  if(e.Dlat) op("latd",Msg.of("engine_train.op.latd",{n:e.Dlat}),"moe",nM,...gemm(Tl,D,e.Dlat,1));
+  op("permute",c.dispatcher==="distmoe"?Msg.of("engine_train.op.permuteDist"):Msg.of("engine_train.op.permute"),"moe",nM,{fl:0,by:Tl*De*2+R*De*2,pk:pkA},{fl:0,by:Tl*De*2+R*De*2,pk:pkA},null);
+  op("moe1",Msg.of("engine_train.op.moe1"),"moe",nM,...gemm(R,De,2*e.F*etp,etp,perRankExp));
+  op("act",Msg.of("engine_train.op.act",{fn:m.family==="kimi"?"SiTU-GLU":"SwiGLU"}),"moe",nM,...elem(6*e.F,(2*e.F+e.F)*2,R,2));
+  op("moe2",Msg.of("engine_train.op.moe2"),"moe",nM,...gemm(R,e.F*etp,De,etp,perRankExp));
+  op("unperm",Msg.of("engine_train.op.unperm"),"moe",nM,{fl:R*De,by:R*De*2+Tl*De*2,pk:pkA},{fl:0,by:R*De*2+Tl*De*2,pk:pkA},null);
+  if(e.Dlat) op("latu",Msg.of("engine_train.op.latu",{n:e.Dlat}),"moe",nM,...gemm(Tl,e.Dlat,D,1));
+  if(e.Fs>0){ op("shared",Msg.of("engine_train.op.shared"),"moe",nM,...[0,1,2].map(i=>{ const a=gemm(Tc,D,3*e.Fs,tp)[i]; return a; }), {ovl: mg&&c.sharedOverlap}); tpBlocks.push({name:Msg.of("engine_train.blk.shared"),blk:"moe",layers:nM,inW:D}); }
+  if(m.dense.n>0){ op("norm",Msg.of("engine_train.op.normDense"),"misc",m.dense.n,...elem(8*D/tp,3*D*2/tp,Tc,2)); op("dense",Msg.of("engine_train.op.dense"),"moe",m.dense.n,...gemm(Tc,D,3*m.dense.F,tp)); tpBlocks.push({name:Msg.of("engine_train.blk.dense"),blk:"dense",layers:m.dense.n,inW:D}); }
 
   /* ---- 输出头：整段序列的 logits + CE（推理只需最后一个 token） ---- */
   const chunked = !mg;
-  op("lm",t("engine_train.op.lm"),"lm",1,...gemm(Tc,D,m.V,tp));
-  op("ce",(mg?t("engine_train.op.ceMg"):t("engine_train.op.ceTt")),"lm",1,{fl:5*Tc*m.V/tp,by:Tc*m.V/tp*(2+4)*2,pk:pkA},{fl:3*Tc*m.V/tp,by:Tc*m.V/tp*(4+2),pk:pkA},null);
-  if(tp>1) tpBlocks.push({name:"lm_head",blk:"head",layers:1,inW:D});
+  op("lm",Msg.of("engine_train.op.lm"),"lm",1,...gemm(Tc,D,m.V,tp));
+  op("ce",(mg?Msg.of("engine_train.op.ceMg"):Msg.of("engine_train.op.ceTt")),"lm",1,{fl:5*Tc*m.V/tp,by:Tc*m.V/tp*(2+4)*2,pk:pkA},{fl:3*Tc*m.V/tp,by:Tc*m.V/tp*(4+2),pk:pkA},null);
+  // 词表并行的一对：embedding 前向 RS 到序列分片、反向 AG；lm_head 前向 AG 输入、反向 RS。合起来和一个 Column + Row 块的四次一样
+  if(tp>1) tpBlocks.push({name:Msg.of("engine_train.blk.head"),blk:"head",layers:1,inW:D});
 
   /* ---- 通信（每 micro-batch，每 rank） ---- */
   const tpX = (pass,op,what,msg) => xc(pass,op,what,msg*(tp-1)/tp,agT(msg,tp,lkTP,g));
   if(mg && tp>1){
     // Column 的输入在 SP 下只存本卡那份：前向 AG 出全序列；反向 Row 输出的 RS 变成 AG 梯度，Column 为 wgrad 再 AG 一次输入，输入梯度 RS 回去
-    for(const b of tpBlocks){ const msgAG=Tc*b.inW*2, msgRS=Tc*D*2, inN=b.inW===D?t("engine_train.tp.inX"):t("engine_train.tp.inLatent");
-      const xs=[tpX("fwd","AG",t("engine_train.tp.fwdAG",{input:inN}),msgAG), tpX("fwd","RS",t("engine_train.tp.fwdRS"),msgRS)];
-      if(rcFull) xs.push(tpX("rc","AG",t("engine_train.tp.rcAG",{input:inN}),msgAG), tpX("rc","RS",t("engine_train.tp.rcRS"),msgRS));
-      xs.push(tpX("bwd","AG",t("engine_train.tp.bwdAG"),msgRS), tpX("bwd","AG",t("engine_train.tp.bwdAGInput",{input:inN}),msgAG), tpX("bwd","RS",t("engine_train.tp.bwdRS",{input:inN}),msgAG));
-      cmX("tp",rcFull?t("engine_train.tp.nameRc",{blk:b.name}):t("engine_train.tp.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false}); }
-    if(f.kind==="dsa") cmX("tpidx",t("engine_train.tp.idx"),"tp",f.n,"attn",[tpX("fwd","AG",t("engine_train.tp.idxX"),Tc*D*2),tpX("fwd","AG",t("engine_train.tp.idxQ"),Tc*f.qLora*2),tpX("bwd","RS",t("engine_train.tp.idxGradX"),Tc*D*2),tpX("bwd","RS",t("engine_train.tp.idxGradQ"),Tc*f.qLora*2)]);
+    for(const b of tpBlocks){ const msgAG=Tc*b.inW*2, msgRS=Tc*D*2, inN=b.inW===D?Msg.of("engine_train.tp.inX"):Msg.of("engine_train.tp.inLatent");
+      const xs=[tpX("fwd","AG",Msg.of("engine_train.tp.fwdAG",{input:inN}),msgAG), tpX("fwd","RS",Msg.of("engine_train.tp.fwdRS"),msgRS)];
+      if(rcFull) xs.push(tpX("rc","AG",Msg.of("engine_train.tp.rcAG",{input:inN}),msgAG), tpX("rc","RS",Msg.of("engine_train.tp.rcRS"),msgRS));
+      xs.push(tpX("bwd","AG",Msg.of("engine_train.tp.bwdAG"),msgRS), tpX("bwd","AG",Msg.of("engine_train.tp.bwdAGInput",{input:inN}),msgAG), tpX("bwd","RS",Msg.of("engine_train.tp.bwdRS",{input:inN}),msgAG));
+      cmX("tp",rcFull?Msg.of("engine_train.tp.nameRc",{blk:b.name}):Msg.of("engine_train.tp.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false}); }
+    if(f.kind==="dsa") cmX("tpidx",Msg.of("engine_train.tp.idx"),"tp",f.n,"attn",[tpX("fwd","AG",Msg.of("engine_train.tp.idxX"),Tc*D*2),tpX("fwd","AG",Msg.of("engine_train.tp.idxQ"),Tc*f.qLora*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradX"),Tc*D*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradQ"),Tc*f.qLora*2)]);
   } else if(!mg && tp>1){
     // DTensor：Column 输入 Shard → Replicate（AG），Row 输出 Partial → Shard（RS）；反向各自对偶，gather 后的输入留给 wgrad
     for(const b of tpBlocks){ const msg=Tc*D*2;
-      const xs=[tpX("fwd","AG",t("engine_train.tpTt.fwdAG"),msg), tpX("fwd","RS",t("engine_train.tpTt.fwdRS"),msg)];
-      if(rcFull) xs.push(tpX("rc","AG",t("engine_train.tpTt.rcAG"),msg), tpX("rc","RS",t("engine_train.tp.rcRS"),msg));
-      xs.push(tpX("bwd","AG",t("engine_train.tpTt.bwdAG"),msg), tpX("bwd","RS",t("engine_train.tpTt.bwdRS"),msg));
-      cmX("tp",rcFull?t("engine_train.tpTt.nameRc",{blk:b.name}):t("engine_train.tpTt.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false}); }
+      const xs=[tpX("fwd","AG",Msg.of("engine_train.tpTt.fwdAG"),msg), tpX("fwd","RS",Msg.of("engine_train.tpTt.fwdRS"),msg)];
+      if(rcFull) xs.push(tpX("rc","AG",Msg.of("engine_train.tpTt.rcAG"),msg), tpX("rc","RS",Msg.of("engine_train.tp.rcRS"),msg));
+      xs.push(tpX("bwd","AG",Msg.of("engine_train.tpTt.bwdAG"),msg), tpX("bwd","RS",Msg.of("engine_train.tpTt.bwdRS"),msg));
+      cmX("tp",rcFull?Msg.of("engine_train.tpTt.nameRc",{blk:b.name}):Msg.of("engine_train.tpTt.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false}); }
   }
   // CP：全注意力层走 Par.cpLayer（和“并行”页同一套公式）
   const cpMeth = mg ? ({p2p:"ring",allgather:"allgather",a2a:"ulysses"}[c.cpType]||"ring") : (Par.CP[c.cpType] ? c.cpType : "allgather");
@@ -176,22 +177,22 @@ function run(m, hw, topo, c, g){
     const x = { S, C:cp, tp, m, d, hw, topo, g, ac:rcFull };
     cpFull = Par.cpLayer(cpMeth, Object.assign({ tCore:per(coreFullOp,nFull), kind:"full" }, x));
     if(!cpFull.ok) warn.push(cpFull.why);
-    const how = { ring:t("engine_train.cp.how.ring"), allgather:t("engine_train.cp.how.allgather"), ulysses:t("engine_train.cp.how.ulysses") }[cpMeth];
+    const how = { ring:Msg.of("engine_train.cp.how.ring"), allgather:Msg.of("engine_train.cp.how.allgather"), ulysses:Msg.of("engine_train.cp.how.ulysses") }[cpMeth];
     const perDocs = o2 => o2.xs.map(x=>xc(x.pass,x.op,x.what,x.bytes*docs,x.t*docs));     // 一个 micro-batch 有 docs 篇，每篇各走一遍
-    cmX("cpkv",f.kind==="dsa"?t("engine_train.cp.kvDsa",{meth:Par.CP[cpMeth].name,how}):t("engine_train.cp.kv",{meth:Par.CP[cpMeth].name,how}),"cp",nFull,"full",perDocs(cpFull),{ovl:"fixed",expT:nFull*docs*cpFull.exposed,lk:cpFull.lk,par:"cp"});
+    cmX("cpkv",f.kind==="dsa"?Msg.of("engine_train.cp.kvDsa",{meth:Par.CP[cpMeth].name,how}):Msg.of("engine_train.cp.kv",{meth:Par.CP[cpMeth].name,how}),"cp",nFull,"full",perDocs(cpFull),{ovl:"fixed",expT:nFull*docs*cpFull.exposed,lk:cpFull.lk,par:"cp"});
     if(nSwa){ cpSwa = Par.cpLayer(cpMeth, Object.assign({ tCore:per(coreSwaOp,nSwa), kind:"swa" }, x));
-      cmX("cpswa",cpMeth==="ulysses"?t("engine_train.cp.swaUlysses"):t("engine_train.cp.swa",{w:f.W}),"cp",nSwa,"swa",perDocs(cpSwa),{ovl:"fixed",expT:nSwa*docs*cpSwa.exposed,lk:cpSwa.lk,par:"cp"}); }
+      cmX("cpswa",cpMeth==="ulysses"?Msg.of("engine_train.cp.swaUlysses"):Msg.of("engine_train.cp.swa",{w:f.W}),"cp",nSwa,"swa",perDocs(cpSwa),{ovl:"fixed",expT:nSwa*docs*cpSwa.exposed,lk:cpSwa.lk,par:"cp"}); }
   }
   if(cp>1 && l.n>0){
     const Hv=l.Hv/tp;
     const head = l.kind==="GDN" || (mg ? c.linCP==="headwise" : c.linCP==="ulysses");
     if(head){ const sIn=Tc*d.linIn/tp*2, sOut=Tc*Hv*l.dv*2, aX=(pass,what,s)=>xc(pass,"A2A",what,s*(cp-1)/cp,a2aT(s,cp,lkCP,g));
-      const xs=[aX("fwd",t("engine_train.cpLin.fwdIn"),sIn), aX("fwd",t("engine_train.cpLin.fwdOut"),sOut)];
-      if(rcFull||sel.has("gdn")) xs.push(aX("rc",t("engine_train.cpLin.rcIn"),sIn), aX("rc",t("engine_train.cpLin.rcOut"),sOut));
-      xs.push(aX("bwd",t("engine_train.cpLin.bwdOut"),sOut), aX("bwd",t("engine_train.cpLin.bwdIn"),sIn));
-      cmX("cplin",xs.length>4?t("engine_train.cpLin.headRc",{kind:l.kind}):t("engine_train.cpLin.head",{kind:l.kind}),"cp",l.n,"lin",xs); }
+      const xs=[aX("fwd",Msg.of("engine_train.cpLin.fwdIn"),sIn), aX("fwd",Msg.of("engine_train.cpLin.fwdOut"),sOut)];
+      if(rcFull||sel.has("gdn")) xs.push(aX("rc",Msg.of("engine_train.cpLin.rcIn"),sIn), aX("rc",Msg.of("engine_train.cpLin.rcOut"),sOut));
+      xs.push(aX("bwd",Msg.of("engine_train.cpLin.bwdOut"),sOut), aX("bwd",Msg.of("engine_train.cpLin.bwdIn"),sIn));
+      cmX("cplin",xs.length>4?Msg.of("engine_train.cpLin.headRc",{kind:l.kind}):Msg.of("engine_train.cpLin.head",{kind:l.kind}),"cp",l.n,"lin",xs); }
     else { const msg=cp*Hv*l.dk*(l.dv+l.dk)*4;
-      cmX("cplin",t("engine_train.cpLin.chunk",{kind:l.kind}),"cp",l.n,"lin",[xc("fwd","AG",t("engine_train.cpLin.chunkFwd"),msg*(cp-1)/cp,agT(msg,cp,lkCP,g)),xc("bwd","AG",t("engine_train.cpLin.chunkBwd"),msg*(cp-1)/cp,agT(msg,cp,lkCP,g))]); }
+      cmX("cplin",Msg.of("engine_train.cpLin.chunk",{kind:l.kind}),"cp",l.n,"lin",[xc("fwd","AG",Msg.of("engine_train.cpLin.chunkFwd"),msg*(cp-1)/cp,agT(msg,cp,lkCP,g)),xc("bwd","AG",Msg.of("engine_train.cpLin.chunkBwd"),msg*(cp-1)/cp,agT(msg,cp,lkCP,g))]); }
   }
   // EP
   let a2aPerLayer=0, epL=null;
@@ -203,29 +204,30 @@ function run(m, hw, topo, c, g){
     if(!epL.ok) warn.push(epL.why);
     a2aPerLayer = epL.tw + epL.tAlpha;
     const ibShare = epL.wire>0 ? Math.min(1, epL.ib/epL.wire) : 0;
-    cmX("a2a",Par.EP[be].fused?t("engine_train.ep.a2aFused",{be:Par.EP[be].name,n:epL.exch}):t("engine_train.ep.a2a",{be:Par.EP[be].name,n:epL.exch}),"ep",nM,"moe",epL.xs,{ovl:"fixed",expT:nM*(epL.extra-epL.tSync),lk:epL.lk,ibShare,par:"ep",fused:!!Par.EP[be].fused});
-    if(epL.syncs){ const one=xc("fwd","sync",be==="deepep"?t("engine_train.ep.syncWhatDeepep"):t("engine_train.ep.syncWhat"),ep*e.E*8/epL.syncs,epL.tSync/epL.syncs);
-      cmX("cnt",be==="deepep"?t("engine_train.ep.syncDeepep",{n:epL.syncs}):t("engine_train.ep.sync",{n:epL.syncs}),"ep",nM,"moe",epL.syncs>1?[one,Object.assign({},one,{pass:"rc",what:t("engine_train.ep.syncRc")})]:[one],{ovl:"fixed",expT:nM*epL.tSync,par:"ep"}); }
+    cmX("a2a",Par.EP[be].fused?Msg.of("engine_train.ep.a2aFused",{be:Par.EP[be].name,n:epL.exch}):Msg.of("engine_train.ep.a2a",{be:Par.EP[be].name,n:epL.exch}),"ep",nM,"moe",epL.xs,{exch:epL.exch,ovl:"fixed",expT:nM*(epL.extra-epL.tSync),lk:epL.lk,ibShare,par:"ep",fused:!!Par.EP[be].fused});
+    // 计数交换：每卡把 E 个 int64 计数 all-to-all 出去（torchtitan AllToAllTokenDispatcher._token_count_exchange），重算时再来一次
+    if(epL.syncs){ const one=xc("fwd","sync",be==="deepep"?Msg.of("engine_train.ep.syncWhatDeepep"):Msg.of("engine_train.ep.syncWhat"),e.E*8*(ep-1)/ep,epL.tSync/epL.syncs);
+      cmX("cnt",be==="deepep"?Msg.of("engine_train.ep.syncDeepep",{n:epL.syncs}):Msg.of("engine_train.ep.sync",{n:epL.syncs}),"ep",nM,"moe",epL.syncs>1?[one,Object.assign({},one,{pass:"rc",what:Msg.of("engine_train.ep.syncRc")})]:[one],{ovl:"fixed",expT:nM*epL.tSync,par:"ep"}); }
   } else if(ep>1){
     const nA = 4 + (rcA2A?2:0);
     const sent = Tl*kEff*De*2;
     const t1 = a2aT(sent,ep,lkEP,g)*(c.dispatcher==="ncclep"?0.55:1), b1 = sent*(ep-1)/ep;
     a2aPerLayer=nA*t1;
-    const name = {alltoall:t("engine_train.ep.disp.alltoall"),deepep:t("engine_train.ep.disp.deepep"),hybridep:t("engine_train.ep.disp.hybridep"),ncclep:t("engine_train.ep.disp.ncclep"),standard:t("engine_train.ep.disp.standard"),distmoe:t("engine_train.ep.disp.distmoe")}[c.dispatcher]||c.dispatcher;
-    const xs=[xc("fwd","A2A",t("engine_train.ep.dispatch"),b1,t1), xc("fwd","A2A",t("engine_train.ep.combine"),b1,t1)];
-    if(rcA2A) xs.push(xc("rc","A2A",t("engine_train.ep.rcDispatch"),b1,t1), xc("rc","A2A",t("engine_train.ep.rcCombine"),b1,t1));
-    xs.push(xc("bwd","A2A",t("engine_train.ep.bwdCombine"),b1,t1), xc("bwd","A2A",t("engine_train.ep.bwdDispatch"),b1,t1));
-    cmX("a2a",t("engine_train.ep.a2a",{be:name,n:nA}),"ep",nM,"moe",xs,{ovl: c.dispatcher==="distmoe"?"moe" : (mg&&c.epOverlap?"comp":false),fused:c.dispatcher==="distmoe"});
-    if(!["hybridep","distmoe"].includes(c.dispatcher)){ const one=xc("fwd","sync",t("engine_train.ep.cntWhat"),ep*e.E*8/(1+(rcA2A?1:0)),(lkEP.intra?g.alphaNv:g.alphaIb)*1e-6+c.hostSyncUs*1e-6);
-      cmX("cnt",t("engine_train.ep.cnt"),"ep",nM,"moe",rcA2A?[one,Object.assign({},one,{pass:"rc",what:t("engine_train.ep.cntRc")})]:[one]); }
+    const name = {alltoall:Msg.of("engine_train.ep.disp.alltoall"),deepep:Msg.of("engine_train.ep.disp.deepep"),hybridep:Msg.of("engine_train.ep.disp.hybridep"),ncclep:Msg.of("engine_train.ep.disp.ncclep"),standard:Msg.of("engine_train.ep.disp.standard"),distmoe:Msg.of("engine_train.ep.disp.distmoe")}[c.dispatcher]||c.dispatcher;
+    const xs=[xc("fwd","A2A",Msg.of("engine_train.ep.dispatch"),b1,t1), xc("fwd","A2A",Msg.of("engine_train.ep.combine"),b1,t1)];
+    if(rcA2A) xs.push(xc("rc","A2A",Msg.of("engine_train.ep.rcDispatch"),b1,t1), xc("rc","A2A",Msg.of("engine_train.ep.rcCombine"),b1,t1));
+    xs.push(xc("bwd","A2A",Msg.of("engine_train.ep.bwdCombine"),b1,t1), xc("bwd","A2A",Msg.of("engine_train.ep.bwdDispatch"),b1,t1));
+    cmX("a2a",Msg.of("engine_train.ep.a2a",{be:name,n:nA}),"ep",nM,"moe",xs,{exch:nA,ovl: c.dispatcher==="distmoe"?"moe" : (mg&&c.epOverlap?"comp":false),fused:c.dispatcher==="distmoe"});
+    if(!["hybridep","distmoe"].includes(c.dispatcher)){ const one=xc("fwd","sync",Msg.of("engine_train.ep.cntWhat"),ep*e.E*8/(1+(rcA2A?1:0)),(lkEP.intra?g.alphaNv:g.alphaIb)*1e-6+c.hostSyncUs*1e-6);
+      cmX("cnt",Msg.of("engine_train.ep.cnt"),"ep",nM,"moe",rcA2A?[one,Object.assign({},one,{pass:"rc",what:Msg.of("engine_train.ep.cntRc")})]:[one]); }
   }
   if(mg && etp>1){ const msg=R*etp*De*2, eX=(pass,op,what,m2)=>xc(pass,op,what,m2*(etp-1)/etp,agT(m2,etp,lkTP,g));
-    cmX("etp",t("engine_train.etp.name"),"ep",nM,"moe",[eX("fwd","AG",t("engine_train.etp.fwdAG"),msg),eX("fwd","RS",t("engine_train.etp.fwdRS"),2*msg),eX("bwd","AG",t("engine_train.etp.bwdAG"),2*msg),eX("bwd","RS",t("engine_train.etp.bwdRS"),msg)],{dim:"etp"}); }
+    cmX("etp",Msg.of("engine_train.etp.name"),"ep",nM,"moe",[eX("fwd","AG",Msg.of("engine_train.etp.fwdAG"),msg),eX("fwd","RS",Msg.of("engine_train.etp.fwdRS"),2*msg),eX("bwd","AG",Msg.of("engine_train.etp.bwdAG"),2*msg),eX("bwd","RS",Msg.of("engine_train.etp.bwdRS"),msg)],{dim:"etp"}); }
   // PP p2p
-  if(pp>1){ const msg=Tl*D*2, t1=(msg/(lkPP.bw*g.etaN)+(lkPP.intra?g.alphaNv:g.alphaIb)*1e-6)*vpp, v=vpp>1?t("engine_train.pp.vstage",{n:vpp}):"";
-    cmX("pp",t("engine_train.pp.name"),"pp",1,"stage",[xc("fwd","P2P",t("engine_train.pp.fwd",{v}),msg*vpp,t1),xc("bwd","P2P",t("engine_train.pp.bwd",{v}),msg*vpp,t1)],{ovl:"comp",perStage:true}); }
+  if(pp>1){ const msg=Tl*D*2, t1=(msg/(lkPP.bw*g.etaN)+(lkPP.intra?g.alphaNv:g.alphaIb)*1e-6)*vpp, v=vpp>1?Msg.of("engine_train.pp.vstage",{n:vpp}):"";
+    cmX("pp",Msg.of("engine_train.pp.name"),"pp",1,"stage",[xc("fwd","P2P",Msg.of("engine_train.pp.fwd",{v}),msg*vpp,t1),xc("bwd","P2P",Msg.of("engine_train.pp.bwd",{v}),msg*vpp,t1)],{ovl:"comp",perStage:true}); }
 
-  if(tokB>0) op("tok",t("engine_train.op.tok"),"misc",1,{fl:tokB/4,by:tokB,pk:pkA},null,null);
+  if(tokB>0) op("tok",Msg.of("engine_train.op.tok"),"misc",1,{fl:tokB/4,by:tokB,pk:pkA},null,null);
 
   /* ---- 汇总一个 micro-batch（整模型，按 rank） ---- */
   let tF=0,tD=0,tW=0,tR=0, flF=0,flB=0, moeT=0;
@@ -246,18 +248,27 @@ function run(m, hw, topo, c, g){
   let fsdpMB=0, fsdp=null;
   if(!mg){
     const R = Math.max(1, c.hsdp||1), fs = dp*cp/R, fe = edp/R;
-    if(!Number.isInteger(fs) || !Number.isInteger(fe)) warn.push(t("engine_train.warn.hsdp",{r:R,dpcp:dp*cp,edp}));
+    if(!Number.isInteger(fs) || !Number.isInteger(fe)) warn.push(Msg.of("engine_train.warn.hsdp",{r:R,dpcp:dp*cp,edp}).invalid());
     const reshard = c.reshard ?? (pp===1), aG = reshard?2:1, gB = c.gradDt==="bf16"?2:4;
     const lkD = Par.lk(hw,topo,fs,tp), lkE = Par.lk(hw,topo,fe,ep), lkR = Par.lk(hw,topo,R,fs*tp);
     const pRep = nM ? (d.pShared+d.pRouter+d.pLat)/tp : 0;           // MoE 层里随 dense 一起切的部分（shared、router、latent 投影）
     const pFull = f.n ? d.pAttn/tp + pRep : 0, pLin = l.n ? d.pLin/tp + pRep : 0, pDen = d.pDense/tp, pEH = (d.pEmb+d.pHead)/tp, pExpL = nM ? e.E*d.pExpert/ep : 0;
-    const lay = [[pFull,f.n],[pLin,l.n],[pDen,m.dense.n],[pEH,1]];
-    const tDense = lay.reduce((a,[P,n2])=>a+n2*Par.fsdpT(P,fs,lkD,g,aG,gB),0)/pp, bDense = lay.reduce((a,[P,n2])=>a+n2*Par.fsdpBytes(P,fs,aG,gB),0)/pp;
+    // torchtitan apply_fsdp_to_decoder：每个 transformer 块一个 FSDP 单元，attention + MLP 的非 expert 部分在 dense 分片组（d），
+    // routed expert 在 expert 分片组（e）。pFull / pLin 是 MoE 块的 d（界面的说明用）；dense FFN 块没有 shared / router
+    const blocks = layerPlan(m).map(x => ({ d: (x.attn==="lin" ? d.pLin : d.pAttn)/tp + (x.mlp==="moe" ? pRep : pDen), e: x.mlp==="moe" ? pExpL : 0 }));
+    // [参数, 块数, 每块 gather 几次]，大小相同的块合成一项。tok_embeddings 反向不 gather（set_unshard_in_backward(False)），
+    // [norm, lm_head] 只在 policy = always 时 reshard，所以两者每个 micro-batch 只在前向 gather 一次
+    const same = new Map(); for(const b of blocks) same.set(b.d, (same.get(b.d)||0)+1);
+    const lay = [...same].map(([P,n2])=>[P,n2,aG]).concat([[d.pEmb/tp,1,1],[d.pHead/tp,1,1]]);
+    const tDense = lay.reduce((a,[P,n2,ag])=>a+n2*Par.fsdpT(P,fs,lkD,g,ag,gB),0)/pp, bDense = lay.reduce((a,[P,n2,ag])=>a+n2*Par.fsdpBytes(P,fs,ag,gB),0)/pp;
     const tExp = nM*Par.fsdpT(pExpL,fe,lkE,g,aG,gB)/pp, bExp = nM*Par.fsdpBytes(pExpL,fe,aG,gB)/pp;
-    const firstAG = Par.wireT(Math.max(pFull,pLin)*(fs-1)/fs*2, lkD, g.etaAg, 1, g) + (fe>1 ? Par.wireT(pExpL*(fe-1)/fe*2, lkE, g.etaAg, 1, g) : 0);
+    // 每个 micro-batch 的逐次清单（每卡线上字节）：dim = dp（dense 分片组）/ edp（expert 分片组），calls = 这一项发几次
+    const fsdpX = (P,F,l,n2,ag,dim) => n2>0 ? Par.fsdpDet(P,F,l,g,ag,gB).map(x=>Object.assign(x,{dim,calls:n2/pp,bytes:x.bytes*n2/pp,t:x.t*n2/pp})) : [];
+    const xs = lay.flatMap(([P,n2,ag])=>fsdpX(P,fs,lkD,n2,ag,"dp")).concat(fsdpX(pExpL,fe,lkE,nM,aG,"edp"));
+    const firstAG = Par.wireT(blocks[0].d*(fs-1)/fs*2, lkD, g.etaAg, 1, g) + (fe>1 && blocks[0].e ? Par.wireT(blocks[0].e*(fe-1)/fe*2, lkE, g.etaAg, 1, g) : 0);
     fsdpMB = tDense + tExp;
-    fsdp = { R, fs, fe, aG, gB, reshard, lkD, lkE, lkR, pFull, pLin, pDen, pEH, pExpL, tDense, tExp, bDense, bExp, firstAG };
-    comm.push({key:"fsdp",name:t("engine_train.fsdp.name",{passes:reshard?"fwd + bwd":"fwd",dt:gB===4?"FP32":"BF16",fs,fe,hsdp:R>1?t("engine_train.fsdp.hsdp",{r:R}):""}),cls:"dp",layers:1,passes:1,t:fsdpMB,bytes:bDense+bExp,ovl:"prefetch",perStage:true,par:"fsdp"});
+    fsdp = { R, fs, fe, aG, gB, reshard, lkD, lkE, lkR, pFull, pLin, pDen, pEH, pExpL, blocks, tDense, tExp, bDense, bExp, firstAG, xs };
+    comm.push({key:"fsdp",name:Msg.of("engine_train.fsdp.name",{passes:Msg.of(reshard?"engine_train.fsdp.passesBoth":"engine_train.fsdp.passesFwd"),dt:gB===4?"FP32":"BF16",fs,fe,hsdp:R>1?Msg.of("engine_train.fsdp.hsdp",{r:R}):""}),cls:"dp",layers:1,passes:1,t:fsdpMB,bytes:bDense+bExp,ovl:"prefetch",perStage:true,par:"fsdp"});
   }
 
   const tMBstage = (compMB + exposed)/pp;
@@ -283,13 +294,13 @@ function run(m, hw, topo, c, g){
   const stepX=[];                                                    // 每个 step 一次的集合通信（dim：dp / edp / rep）
   if(mg){
     const dd=dp*cp, sx=(dim,op,what,msg,n,l2)=>{ if(n>1&&msg>0) stepX.push(Object.assign(xc("step",op,what,msg*(n-1)/n,agT(msg,n,l2,g)),{dim,n,lk:Par.lk(hw,topo,n,dim==="dp"?tp:etp*ep)})); };
-    sx("dp","RS",t("engine_train.dp.rsDense"),PlD*4,dd,lkDP); sx("edp","RS",t("engine_train.dp.rsExpert"),PlE*4,edp,lkEDP);
-    sx("dp","AG",t("engine_train.dp.agDense"),PlD*2,dd,lkDP); sx("edp","AG",t("engine_train.dp.agExpert"),PlE*2,edp,lkEDP);
+    sx("dp","RS",Msg.of("engine_train.dp.rsDense"),PlD*4,dd,lkDP); sx("edp","RS",Msg.of("engine_train.dp.rsExpert"),PlE*4,edp,lkEDP);
+    sx("dp","AG",Msg.of("engine_train.dp.agDense"),PlD*2,dd,lkDP); sx("edp","AG",Msg.of("engine_train.dp.agExpert"),PlE*2,edp,lkEDP);
     const rs = agT(PlD*4,dd,lkDP,g) + agT(PlE*4,edp,lkEDP,g), ag = agT(PlD*2,dd,lkDP,g)+agT(PlE*2,edp,lkEDP,g);
     tDP = rs+ag;
     const lastBwd = (tD+tW)/pp, firstFwd=tF/pp;
     tDPexp = (c.overlapGrad? Math.max(0,rs-lastBwd*0.9) : rs) + (c.overlapParam? Math.max(0,ag-firstFwd*0.9) : ag);
-    dpNote=t("engine_train.dp.noteMg",{dd,edp});
+    dpNote=Msg.of("engine_train.dp.noteMg",{dd,edp});
   }
   const shardD = mg ? PlD/(dp*cp) : Pdense/(tp*pp)/fsdp.fs, shardE = mg ? PlE/edp : Pexp/(ep*pp)/fsdp.fe;
   const Pshard = shardD + shardE;
@@ -299,13 +310,13 @@ function run(m, hw, topo, c, g){
     const xfer = Pshard*(4+2)/host;                                   // grad D2H + param H2D
     const cpu = Pshard*16*2/(c.cpuAdamGBs*1e9);                       // CPU Adam：读写 master + m + v
     tOpt = c.overlapOffload ? Math.max(xfer,cpu) : xfer+cpu;
-    optNote=c.overlapOffload?t("engine_train.opt.cpuOverlap"):t("engine_train.opt.cpuSerial");
-  } else { tOpt = Pshard*30/(hw.hbm*1e9*g.etaM) + Pshard*4/(hw.hbm*1e9*g.etaM); optNote=t("engine_train.opt.gpu"); }
+    optNote=c.overlapOffload?Msg.of("engine_train.opt.cpuOverlap"):Msg.of("engine_train.opt.cpuSerial");
+  } else { tOpt = Pshard*30/(hw.hbm*1e9*g.etaM) + Pshard*4/(hw.hbm*1e9*g.etaM); optNote=Msg.of("engine_train.opt.gpu"); }
   const tSmallAR = 4*((lkDP.intra?g.alphaNv:g.alphaIb)*1e-6)*2;       // grad norm、aux-free bias、loss finite 等标量 all-reduce
   let tAR = 0;
   if(fsdp && fsdp.R>1){ tAR = Par.wireT(2*(fsdp.R-1)/fsdp.R*Pshard*fsdp.gB, fsdp.lkR, g.etaAg, 1, g); tDP = tAR; tDPexp = Math.max(0, tAR - (tD+tW)/pp*0.9);
-    stepX.push(Object.assign(xc("step","AR",t("engine_train.dp.arRep",{dt:fsdp.gB===4?"FP32":"BF16"}),2*(fsdp.R-1)/fsdp.R*Pshard*fsdp.gB,tAR),{dim:"rep",n:fsdp.R,lk:fsdp.lkR}));
-    dpNote = t("engine_train.dp.noteHsdp",{r:fsdp.R,link:fsdp.lkR.kind}); }
+    stepX.push(Object.assign(xc("step","AR",Msg.of("engine_train.dp.arRep",{dt:fsdp.gB===4?"FP32":"BF16"}),2*(fsdp.R-1)/fsdp.R*Pshard*fsdp.gB,tAR),{dim:"rep",n:fsdp.R,lk:fsdp.lkR}));
+    dpNote = Msg.of("engine_train.dp.noteHsdp",{r:fsdp.R,link:fsdp.lkR.kind}); }
   const stepT = tPipe + tDPexp + tOpt + tSmallAR;
   const tokens = microsPerStep*dp*T;
   const mfu = (flF+flB)/pp*microsPerStep/(stepT*pkF);
@@ -349,5 +360,11 @@ function run(m, hw, topo, c, g){
     par:{ cpMeth, cpLB, imbCP, docs, cpFull, cpSwa, coreFullOp, ep:epL, fsdp, tAR } };
 }
 
-return { run, linFlops, PREC };
+/* 默认的训练配置（界面的初始值；预设和架构页都在它上面改）。卡数 N 由调用方按拓扑给 */
+const BASE = Common.freeze({ fw:"megatron", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"alltoall", cpType:"p2p", linCP:"headwise", tok:16384, S:8192, Gtok:2097152,
+  prec:"bf16", recompute:"full", rcModules:[], offload:true, overlapOffload:true, cpuAdamGBs:30, overlapGrad:true, overlapParam:true,
+  epOverlap:false, sharedOverlap:false, tpOverlap:false, reshard:true, imb:1.15, hostSyncUs:20, workspaceGB:6,
+  cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0 });
+
+return { run, linFlops, PREC, BASE };
 })();

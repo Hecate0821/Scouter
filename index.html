@@ -12,7 +12,7 @@
 <body>
 <div class="wrap">
 <header class="top">
-  <span class="eyebrow">Scouter · MoE · post-training × inference × RL · roofline</span>
+  <span class="eyebrow" data-i18n="shell.eyebrow"></span>
   <label class="lang" id="g-lang-wrap" hidden><span data-i18n="shell.lang"></span><select id="g-lang"></select></label>
   <h1 data-i18n="shell.h1"></h1>
   <p data-i18n="shell.lede"></p>
@@ -71,18 +71,18 @@
   <!-- 架构 -->
   <div data-rack="arch/overview arch/module arch/compare">
     <h3 data-i18n="arch.rack.h3"></h3>
-    <label class="ctl"><span data-i18n="arch.rack.phase"></span><select data-bind="arch.phase" data-i18n-attr="aria-label=arch.rack.phase"><option value="decode">decode</option><option value="prefill">prefill</option><option value="train" data-i18n="arch.rack.train"></option></select></label>
+    <label class="ctl"><span data-i18n="arch.rack.phase"></span><select data-bind="arch.phase" data-i18n-attr="aria-label=arch.rack.phase"><option value="decode" data-i18n="common.phase.decode"></option><option value="prefill" data-i18n="common.phase.prefill"></option><option value="train" data-i18n="arch.rack.train"></option></select></label>
     <label class="ctl" id="ar-B"><span data-i18n="arch.rack.B"></span><input type="number" min="1" max="4096" step="1" data-bind="arch.B"></label>
     <label class="ctl" id="ar-n"><span data-i18n="arch.rack.n"></span><input type="number" min="1" max="1048576" step="1024" data-bind="arch.n"></label>
     <label class="ctl" id="ar-C"><span data-i18n="arch.rack.C"></span><input type="number" min="0" max="65536" step="1024" data-bind="arch.C"></label>
     <label class="ctl" id="ar-S"><span data-i18n="arch.rack.S"></span><input type="number" min="256" max="1048576" step="1024" data-bind="arch.S"></label>
     <div id="ar-inf">
-      <label class="ctl"><span data-i18n="arch.rack.wDt"></span><select data-bind="arch.wDt" data-i18n-attr="aria-label=arch.rack.wDt"><option value="bf16">BF16</option><option value="fp8">FP8 block</option></select></label>
-      <label class="ctl"><span data-i18n="arch.rack.eDt"></span><select data-bind="arch.eDt" data-i18n-attr="aria-label=arch.rack.eDt"><option value="bf16">BF16</option><option value="fp8">FP8 block</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
-      <label class="ctl"><span>KV cache</span><select data-bind="arch.kvDt" aria-label="KV cache"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
+      <label class="ctl"><span data-i18n="arch.rack.wDt"></span><select data-bind="arch.wDt" data-i18n-attr="aria-label=arch.rack.wDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option></select></label>
+      <label class="ctl"><span data-i18n="arch.rack.eDt"></span><select data-bind="arch.eDt" data-i18n-attr="aria-label=arch.rack.eDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
+      <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="arch.kvDt" data-i18n-attr="aria-label=common.ctl.kvCache"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
       <label class="ctl"><span data-i18n="arch.rack.stateDt"></span><select data-bind="arch.stateDt" data-i18n-attr="aria-label=arch.rack.stateDt"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
     </div>
-    <label class="ctl" id="ar-prec"><span data-i18n="arch.rack.prec"></span><select data-bind="arch.prec" data-i18n-attr="aria-label=arch.rack.prec"><option value="bf16">BF16</option><option value="fp8">block FP8</option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
+    <label class="ctl" id="ar-prec"><span data-i18n="arch.rack.prec"></span><select data-bind="arch.prec" data-i18n-attr="aria-label=arch.rack.prec"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.blockFp8"></option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
     <button type="button" id="ar-reset" data-i18n="arch.rack.reset"></button>
     <p class="hint" data-i18n-html="arch.rack.hint"></p>
   </div>
@@ -104,9 +104,9 @@
     <h3 data-i18n="infer.rack.h3_2"></h3>
     <select id="i-preset" class="full" data-i18n-attr="aria-label=infer.rack.attr.i-preset.aria-label"></select>
     <p class="hint" id="i-preset-src"></p>
-    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.phase"></span><select data-bind="inf.phase" data-i18n-attr="aria-label=infer.rack.attr.inf.phase.aria-label"><option value="decode">decode</option><option value="prefill">prefill</option></select></label>
+    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.phase"></span><select data-bind="inf.phase" data-i18n-attr="aria-label=infer.rack.attr.inf.phase.aria-label"><option value="decode" data-i18n="common.phase.decode"></option><option value="prefill" data-i18n="common.phase.prefill"></option></select></label>
     <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.N"></span><input type="number" min="1" step="1" data-bind="inf.N"></label>
-    <label class="ctl"><span>attention DP <small>dp-size</small></span><input type="number" min="1" step="1" data-bind="inf.dpA"></label>
+    <label class="ctl"><span><span data-i18n="infer.rack.ctl.inf.dpA"></span> <small>dp-size</small></span><input type="number" min="1" step="1" data-bind="inf.dpA"></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.moePar"></span></label>
     <select id="i-moepar" class="full" data-bind="inf.moePar" data-i18n-attr="aria-label=infer.rack.attr.i-moepar.aria-label"></select>
     <div data-phase="decode">
@@ -120,10 +120,10 @@
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.P"></span><output data-out="inf.P"></output><input type="range" min="1024" max="262144" step="1024" data-bind="inf.P"></label>
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.C"></span><input type="number" min="256" step="256" data-bind="inf.C"></label>
     </div>
-    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.wDt"></span><select data-bind="inf.wDt" data-i18n-attr="aria-label=infer.rack.attr.inf.wDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8 block</option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
+    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.wDt"></span><select data-bind="inf.wDt" data-i18n-attr="aria-label=infer.rack.attr.inf.wDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.eAct"></span><select data-bind="inf.eAct" data-i18n-attr="aria-label=infer.rack.attr.inf.eAct.aria-label"><option value="" data-i18n="infer.rack.opt.inf.eAct.empty"></option><option value="bf16" data-i18n="infer.rack.opt.inf.eAct.bf16"></option><option value="mxfp8" data-i18n="infer.rack.opt.inf.eAct.mxfp8"></option></select></label>
-    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dDt"></span><select data-bind="inf.dDt" data-i18n-attr="aria-label=infer.rack.attr.inf.dDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8 block</option><option value="mxfp8">MXFP8</option></select></label>
-    <label class="ctl"><span>KV cache</span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
+    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dDt"></span><select data-bind="inf.dDt" data-i18n-attr="aria-label=infer.rack.attr.inf.dDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option></select></label>
+    <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.stateDt"></span><select data-bind="inf.stateDt" data-i18n-attr="aria-label=infer.rack.attr.inf.stateDt.aria-label"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
     <label class="check"><input type="checkbox" data-bind="inf.graph"><span data-i18n="infer.rack.ctl.inf.graph"></span></label>
     <label class="check"><input type="checkbox" data-bind="inf.tbo"><span data-i18n="infer.rack.ctl.inf.tbo"></span></label>
@@ -156,16 +156,16 @@
     <label class="ctl"><span>TP <small data-fw="megatron">+ SP</small></span><input type="number" min="1" step="1" data-bind="trn.tp"></label>
     <label class="ctl"><span>CP</span><input type="number" min="1" step="1" data-bind="trn.cp"></label>
     <label class="ctl"><span>PP</span><input type="number" min="1" step="1" data-bind="trn.pp"></label>
-    <label class="ctl"><span>virtual PP</span><input type="number" min="1" step="1" data-bind="trn.vpp"></label>
+    <label class="ctl"><span data-i18n="train.rack.ctl.trn.vpp"></span><input type="number" min="1" step="1" data-bind="trn.vpp"></label>
     <label class="ctl"><span>EP</span><input type="number" min="1" step="1" data-bind="trn.ep"></label>
-    <label class="ctl" data-fw="megatron"><span>ETP <small>expert TP</small></span><input type="number" min="1" step="1" data-bind="trn.etp"></label>
+    <label class="ctl" data-fw="megatron"><span>ETP <small data-i18n="train.rack.ctl.trn.etp"></small></span><input type="number" min="1" step="1" data-bind="trn.etp"></label>
     <label class="ctl"><span data-i18n="train.rack.ctl.trn.dispatcher"></span></label><select id="t-disp" class="full" data-bind="trn.dispatcher" data-i18n-attr="aria-label=train.rack.attr.t-disp.aria-label"></select>
     <label class="ctl"><span data-i18n="train.rack.ctl.trn.cpType"></span></label><select id="t-cptype" class="full" data-bind="trn.cpType" data-i18n-attr="aria-label=train.rack.attr.t-cptype.aria-label"></select>
     <label class="ctl"><span data-i18n="train.rack.ctl.trn.linCP"></span></label><select id="t-lincp" class="full" data-bind="trn.linCP" data-i18n-attr="aria-label=train.rack.attr.t-lincp.aria-label"></select>
     <label class="ctl"><span data-i18n-html="train.rack.ctl.trn.tok"></span><output data-out="trn.tok"></output><input type="range" min="512" max="65536" step="512" data-bind="trn.tok"></label>
     <label class="ctl"><span data-i18n="train.rack.ctl.trn.S"></span><input type="number" min="256" step="256" data-bind="trn.S"></label>
     <label class="ctl"><span data-i18n="train.rack.ctl.trn.Gtok"></span><input type="number" min="1024" step="65536" data-bind="trn.Gtok"></label>
-    <label class="ctl"><span data-i18n-html="train.rack.ctl.trn.prec"></span><select data-bind="trn.prec" data-i18n-attr="aria-label=train.rack.attr.trn.prec.aria-label"><option value="bf16">BF16</option><option value="fp8">block FP8</option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
+    <label class="ctl"><span data-i18n-html="train.rack.ctl.trn.prec"></span><select data-bind="trn.prec" data-i18n-attr="aria-label=train.rack.attr.trn.prec.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.blockFp8"></option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
     <p class="hint" data-i18n-html="train.rack.hint"></p>
     <label class="ctl"><span data-i18n="train.rack.ctl.trn.recompute"></span><select id="t-rc" data-bind="trn.recompute" data-i18n-attr="aria-label=train.rack.attr.t-rc.aria-label"></select></label>
     <div id="t-rcmods" data-fw="megatron"></div>
@@ -175,7 +175,7 @@
     <label class="check" data-fw="megatron"><input type="checkbox" data-bind="trn.overlapParam"><span data-i18n-html="train.rack.ctl.trn.overlapParam"></span></label>
     <label class="check" data-fw="megatron"><input type="checkbox" data-bind="trn.epOverlap"><span data-i18n-html="train.rack.ctl.trn.epOverlap"></span></label>
     <label class="check" data-fw="megatron"><input type="checkbox" data-bind="trn.sharedOverlap"><span data-i18n-html="train.rack.ctl.trn.sharedOverlap"></span></label>
-    <label class="check"><input type="checkbox" data-bind="trn.tpOverlap"><span><span data-i18n="train.rack.ctl.trn.tpOverlap.text"></span> <small data-fw="megatron">--tp-comm-overlap</small><small data-fw="torchtitan">async TP</small></span></label>
+    <label class="check"><input type="checkbox" data-bind="trn.tpOverlap"><span><span data-i18n="train.rack.ctl.trn.tpOverlap.text"></span> <small data-fw="megatron">--tp-comm-overlap</small><small data-fw="torchtitan" data-i18n="train.rack.ctl.trn.tpOverlap.tt"></small></span></label>
     <label class="check" data-fw="torchtitan"><input type="checkbox" data-bind="trn.reshard"><span data-i18n="train.rack.ctl.trn.reshard"></span></label>
     <label class="check" data-fw="torchtitan"><input type="checkbox" data-bind="trn.cpLB"><span data-i18n="train.rack.ctl.trn.cpLB"></span></label>
     <p class="hint" data-i18n-html="train.rack.hint_2"></p>
@@ -183,7 +183,7 @@
       <label class="ctl"><span data-i18n="train.rack.ctl.trn.imb"></span><input type="number" step="0.05" min="1" data-bind="trn.imb"></label>
       <label class="ctl"><span data-i18n-html="train.rack.ctl.trn.cpuAdamGBs"></span><input type="number" step="5" min="1" data-bind="trn.cpuAdamGBs"></label>
       <label class="ctl"><span data-i18n-html="train.rack.ctl.trn.hostSyncUs"></span><input type="number" step="5" min="0" data-bind="trn.hostSyncUs"></label>
-      <label class="ctl"><span>workspace <small>GB</small></span><input type="number" step="1" min="0" data-bind="trn.workspaceGB"></label>
+      <label class="ctl"><span><span data-i18n="train.rack.ctl.trn.workspaceGB"></span> <small>GB</small></span><input type="number" step="1" min="0" data-bind="trn.workspaceGB"></label>
       <label class="ctl" data-fw="torchtitan"><span data-i18n="train.rack.ctl.trn.hsdp"></span><input type="number" min="1" step="1" data-bind="trn.hsdp"></label>
       <label class="ctl" data-fw="torchtitan"><span data-i18n="train.rack.ctl.trn.gradDt"></span><select data-bind="trn.gradDt" data-i18n-attr="aria-label=train.rack.attr.trn.gradDt.aria-label"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
       <label class="ctl"><span data-i18n-html="train.rack.ctl.trn.etaA"></span><input type="number" step="0.02" min="0" max="1" data-bind="trn.etaA"></label>
@@ -211,7 +211,7 @@
     <select data-bind="q.shape" class="full" data-i18n-attr="aria-label=infer.rack.attr.q.shape.aria-label">
       <option value="up" data-i18n="infer.rack.opt.q.shape.up"></option>
       <option value="down" data-i18n="infer.rack.opt.q.shape.down"></option>
-      <option value="shared">shared expert / dense FFN gate_up</option>
+      <option value="shared" data-i18n="infer.rack.opt.q.shape.shared"></option>
       <option value="custom" data-i18n="infer.rack.opt.q.shape.custom"></option></select>
     <label class="ctl"><span data-i18n-html="infer.rack.ctl.q.N"></span><input type="number" min="16" step="16" data-bind="q.N"></label>
     <label class="ctl"><span data-i18n-html="infer.rack.ctl.q.K"></span><input type="number" min="16" step="16" data-bind="q.K"></label>
@@ -475,8 +475,8 @@
     <p data-i18n="par.b6.p"></p>
     <div class="cards">
       <div class="card"><h4><span class="dot" style="background:var(--s1)"></span>Ring</h4><p data-i18n="par.b6.p_2"></p><p class="meta" data-i18n="par.b6.meta"></p></div>
-      <div class="card"><h4 data-i18n-html="par.b6.h4"></h4><p data-i18n="par.b6.p_3"></p><p class="meta">torchtitan KV all-gather CP · Megatron --allgather-cp</p></div>
-      <div class="card"><h4><span class="dot" style="background:var(--s3)"></span>Ulysses</h4><p data-i18n="par.b6.p_4"></p><p class="meta">DeepSpeed-Ulysses · torchtitan Ulysses CP · Megatron a2a CP</p></div>
+      <div class="card"><h4 data-i18n-html="par.b6.h4"></h4><p data-i18n="par.b6.p_3"></p><p class="meta" data-i18n="par.b6.meta_3"></p></div>
+      <div class="card"><h4><span class="dot" style="background:var(--s3)"></span>Ulysses</h4><p data-i18n="par.b6.p_4"></p><p class="meta" data-i18n="par.b6.meta_4"></p></div>
     </div>
     <h3 data-i18n="par.b6.h3"></h3>
     <p class="lede" id="p-c-mat-lede"></p>
@@ -737,7 +737,7 @@
         <tr><td data-i18n="rl.mismatch.b1.tbl.row2.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row2.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row2.c3"></td></tr>
         <tr><td data-i18n="rl.mismatch.b1.tbl.row3.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row3.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row3.c3"></td></tr>
         <tr><td data-i18n="rl.mismatch.b1.tbl.row4.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row4.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row4.c3"></td></tr>
-        <tr><td>tokenization</td><td data-i18n="rl.mismatch.b1.tbl.row5.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row5.c3"></td></tr>
+        <tr><td data-i18n="rl.mismatch.b1.tbl.row5.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row5.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row5.c3"></td></tr>
         <tr><td data-i18n="rl.mismatch.b1.tbl.row6.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row6.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row6.c3"></td></tr>
       </tbody></table></div>
   </div>
@@ -796,7 +796,7 @@
         <tr><td data-i18n="rl.lowprec.b2.tbl.row1.c1"></td><td data-i18n="rl.lowprec.b2.tbl.row1.c2"></td><td>—</td><td data-i18n-html="rl.lowprec.b2.tbl.row1.c4"></td><td>Miles <code>tools/convert_hf_to_{mxfp8,nvfp4}.py</code></td></tr>
         <tr><td data-i18n="rl.lowprec.b2.tbl.row2.c1"></td><td data-i18n="rl.lowprec.b2.tbl.row2.c2"></td><td data-i18n="rl.lowprec.b2.tbl.row2.c3"></td><td data-i18n="rl.lowprec.b2.tbl.row2.c4"></td><td>Miles <code>--fp8-recipe mxfp8</code> / <code>--fp4-recipe nvfp4</code> + <code>NVTE_*</code></td></tr>
         <tr><td data-i18n="rl.lowprec.b2.tbl.row3.c1"></td><td data-i18n="rl.lowprec.b2.tbl.row3.c2"></td><td>—</td><td data-i18n="rl.lowprec.b2.tbl.row3.c4"></td><td data-i18n-html="rl.lowprec.b2.tbl.row3.c5"></td></tr>
-        <tr><td>④ rollout</td><td data-i18n="rl.lowprec.b2.tbl.row4.c2"></td><td data-i18n="rl.lowprec.b2.tbl.row4.c3"></td><td data-i18n="rl.lowprec.b2.tbl.row4.c4"></td><td data-i18n-html="rl.lowprec.b2.tbl.row4.c5"></td></tr>
+        <tr><td data-i18n="rl.lowprec.b2.tbl.row4.c1"></td><td data-i18n="rl.lowprec.b2.tbl.row4.c2"></td><td data-i18n="rl.lowprec.b2.tbl.row4.c3"></td><td data-i18n="rl.lowprec.b2.tbl.row4.c4"></td><td data-i18n-html="rl.lowprec.b2.tbl.row4.c5"></td></tr>
         <tr><td data-i18n="rl.lowprec.b2.tbl.row5.c1"></td><td data-i18n="rl.lowprec.b2.tbl.row5.c2"></td><td data-i18n="rl.lowprec.b2.tbl.row5.c3"></td><td data-i18n-html="rl.lowprec.b2.tbl.row5.c4"></td><td data-i18n-html="rl.lowprec.b2.tbl.row5.c5"></td></tr>
       </tbody></table></div>
     <p data-i18n-html="rl.lowprec.b2.p"></p>
@@ -865,13 +865,13 @@
   <div class="block" id="data-releases"><h2 data-i18n="appendix.data.b6.h2"></h2>
     <p class="lede" data-i18n="appendix.data.b6.lede"></p>
     <div class="tbl"><table id="rel-sum"></table></div>
-    <div class="legend"><label><span data-i18n="appendix.data.b6.label.text"></span> <select id="rel-proj" data-i18n-attr="aria-label=appendix.data.attr.rel-proj.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_2"></span> <select id="rel-tag" data-i18n-attr="aria-label=appendix.data.attr.rel-tag.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_3"></span> <input id="rel-q" type="search" placeholder="R3 / NVFP4 / DFlash" data-i18n-attr="aria-label=appendix.data.attr.rel-q.aria-label"></label><span id="rel-n" class="tag"></span></div>
+    <div class="legend"><label><span data-i18n="appendix.data.b6.label.text"></span> <select id="rel-proj" data-i18n-attr="aria-label=appendix.data.attr.rel-proj.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_2"></span> <select id="rel-tag" data-i18n-attr="aria-label=appendix.data.attr.rel-tag.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_3"></span> <input id="rel-q" type="search" data-i18n-attr="placeholder=appendix.data.attr.rel-q.placeholder;aria-label=appendix.data.attr.rel-q.aria-label"></label><span id="rel-n" class="tag"></span></div>
     <div class="tbl" style="max-height:560px;overflow:auto"><table id="rel-list"></table></div>
   </div>
   <div class="block" id="data-db"><h2 data-i18n="appendix.data.b7.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b7.lede"></p>
     <div class="tbl"><table id="m-db-sets"></table></div>
-    <div class="legend"><label><span data-i18n="appendix.data.b7.label.text"></span> <select id="m-db-set" data-i18n-attr="aria-label=appendix.data.attr.m-db-set.aria-label"></select></label><label><span data-i18n="appendix.data.b7.label.text_2"></span> <input id="m-db-q" type="search" placeholder="qwen35 / ulysses" data-i18n-attr="aria-label=appendix.data.attr.m-db-q.aria-label"></label><span id="m-db-n" class="tag"></span></div>
+    <div class="legend"><label><span data-i18n="appendix.data.b7.label.text"></span> <select id="m-db-set" data-i18n-attr="aria-label=appendix.data.attr.m-db-set.aria-label"></select></label><label><span data-i18n="appendix.data.b7.label.text_2"></span> <input id="m-db-q" type="search" data-i18n-attr="placeholder=appendix.data.attr.m-db-q.placeholder;aria-label=appendix.data.attr.m-db-q.aria-label"></label><span id="m-db-n" class="tag"></span></div>
     <p class="lede" id="m-db-cond"></p>
     <div class="tbl" style="max-height:420px;overflow:auto"><table id="m-db-pts"></table></div>
   </div>
@@ -898,7 +898,7 @@
         <tr><td>RHT</td><td data-i18n="quant.formats.b2.tbl.row7.c2"></td><td data-i18n-html="quant.formats.b2.tbl.row7.c3"></td></tr>
         <tr><td>SR</td><td data-i18n="quant.formats.b2.tbl.row8.c2"></td><td data-i18n-html="quant.formats.b2.tbl.row8.c3"></td></tr>
         <tr><td>PTQ / QAT</td><td data-i18n="quant.formats.b2.tbl.row9.c2"></td><td data-i18n-html="quant.formats.b2.tbl.row9.c3"></td></tr>
-        <tr><td>high_precision / dequantized</td><td data-i18n="quant.formats.b2.tbl.row10.c2"></td><td data-i18n-html="quant.formats.b2.tbl.row10.c3"></td></tr>
+        <tr><td data-i18n="quant.formats.b2.tbl.row10.c1"></td><td data-i18n="quant.formats.b2.tbl.row10.c2"></td><td data-i18n-html="quant.formats.b2.tbl.row10.c3"></td></tr>
       </tbody></table></div>
   </div>
 </section>
@@ -1019,12 +1019,15 @@
 <script src="locales/zh/engine_train.js"></script>
 <script src="locales/zh/engine_par.js"></script>
 <script src="locales/zh/engine_quant.js"></script>
+<script src="locales/zh/data.js"></script>
+<script src="src/engine/msg.js"></script>
 <script src="src/engine/common.js"></script>
 <script src="src/engine/par.js"></script>
 <script src="src/engine/infer.js"></script>
 <script src="src/engine/train.js"></script>
 <script src="src/engine/quant.js"></script>
 <script src="src/engine/arch.js"></script>
+<script src="src/engine/calib.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
 <script src="src/ui/base.js"></script>

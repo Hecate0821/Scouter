@@ -5,9 +5,7 @@ const isPareto = p => (p.tags||[]).includes("pareto");
 const PARETO_TREND = "inference_public:inferencex-pareto-trend";   // 跨模型的趋势（model 一栏是“多种”）：对象只写 config
 function mokRatio(g){
   const t=DB.set("training_public").find(p=>p.replay&&p.replay.kind==="mok_ratio"); if(!t) return null;
-  const R=t.replay, h=HW[R.hw], fl=2*R.n*R.K*3*R.De*R.F, tF=fl/(h.fp8*1e12*g.etaC);
-  const mk=be=>Par.epLayer(be,{n:R.n,K:R.K,Z:R.Z,E:R.E,De:R.De,hw:h,topo:TOPO[R.topo],g,ac:false,prec:R.prec,imb:1.1,tExpF:tF*1.1,tExpB:2*tF*1.1,syncUs:60,mokF:0.25}).t;
-  return { t, ratio:mk("deepep")/mk("mok") };
+  return { t, ratio:Calib.mokRatio(t.replay, g) };
 }
 function renderPublic(){
   const g=S.glob, hw=HW[S.q.hw], inf=DB.set("inference_public");

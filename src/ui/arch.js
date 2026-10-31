@@ -17,8 +17,7 @@ function pickMod(m){ const ps=Arch.present(m); if(!ps.some(p=>p.id===S.arch.mod)
 const fTF = v => fN(v/1e12)+" TFLOP/s";
 const fX = x => isFinite(x) ? (x>=10?x.toFixed(0):x.toFixed(2))+"×" : "—";
 /* 峰值键（bf16 / fp8 / fp4）或 dtype（mxfp4、nvfp4、fp8a…）都可以传 */
-const pkOf = k => ["bf16","fp8","fp4"].includes(k) ? k : Common.peakKey(k);
-const ridgeOf = (hw, g, k) => hw[pkOf(k)]*1e12*g.etaC/(hw.hbm*1e9*g.etaM);
+const ridgeOf = (hw, g, k) => Common.ridge(peakOf(hw,k), hw, g);
 const ctxList = [1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576];
 const bList = [1,2,4,8,16,24,32,48,64,96,128,192,256,384,512,768,1024];
 const cList = [512,1024,2048,4096,8192,16384,32768];
@@ -54,7 +53,7 @@ function renderArchOverview(){
   table($("m-compare"),[t("arch.ov.th.model"),t("arch.ov.th.total"),t("arch.ov.th.active"),t("arch.ov.th.official"),t("arch.ov.th.ratio"),t("arch.ov.th.attn"),t("arch.ov.th.experts"),t("arch.ov.th.F"),t("arch.ov.th.kv"),t("arch.ov.th.state")],
     keys.map(k=>{ const mm=k===S.modelKey?S.model:MODELS[k], dd=derive(mm), p=cacheParts(mm);
       return {cls:k===S.modelKey?"hl":"",cells:[esc(mm.short),fN(dd.total),fN(dd.active),esc(mm.official),(dd.active/dd.total*100).toFixed(1)+"%",
-        mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):"")+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?" + shared":""):"dense",mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
+        mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):"")+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
   $("m-title").textContent=m.name;
   $("m-note").textContent=m.note+(m.mtp?t("arch.ov.mtp",{n:m.mtp}):"")+(modelEdited()?t("arch.ov.edited"):"");
   $("m-stack").innerHTML=stackCells(m);
@@ -69,7 +68,7 @@ function renderArchOverview(){
       '<p class="meta">'+esc(t("arch.ov.card.now",{ph:phaseName(wl.phase),t:fT(a.t),i:fI(a.I)}))+' '+pillB(a.bound)+'</p></a>'; }).join("");
   $("ao-mods-lede").textContent=t("arch.ov.modsLede",{hw:hw.name,wl:wlText(wl)});
   const pr=[[t("arch.ov.p.full"),d.pAttn,m.full.n],[t("arch.ov.p.rep"),d.pAttnRep+d.pIdx,m.full.n],[t("arch.ov.p.lin"),d.pLin,m.lin.n],[t("arch.ov.p.expert"),d.pExpert,0],[t("arch.ov.p.routed"),d.pRouted,d.nMoe],
-    [t("arch.ov.p.shared"),d.pShared,d.nMoe],[t("arch.ov.p.lat"),d.pLat,d.nMoe],[t("arch.ov.p.router"),d.pRouter,d.nMoe],[t("arch.ov.p.dense"),d.pDense,m.dense.n],["embedding",d.pEmb,1],["lm_head",d.pHead,1]];
+    [t("arch.ov.p.shared"),d.pShared,d.nMoe],[t("arch.ov.p.lat"),d.pLat,d.nMoe],[t("arch.ov.p.router"),d.pRouter,d.nMoe],[t("arch.ov.p.dense"),d.pDense,m.dense.n],[t("arch.ov.p.emb"),d.pEmb,1],[t("arch.ov.p.head"),d.pHead,1]];
   table($("m-params"),[t("arch.ov.pth.part"),t("arch.ov.pth.each"),t("arch.ov.pth.n"),t("arch.ov.pth.sum"),t("arch.ov.pth.share")],
     pr.filter(x=>x[1]>0&&(x[2]>0||x===pr[3])).map(x=>{ const one=x[2]===0; return [esc(x[0]),fN(x[1]),one?"—":fInt(x[2]),one?"—":fN(x[1]*x[2]),one?"—":pct(x[1]*x[2],d.total)]; })
       .concat([{cls:"hl",cells:["<b>"+esc(t("arch.ov.p.total"))+"</b>","","",fN(d.total),esc(t("arch.ov.p.activeIs",{v:fN(d.active)}))]}]),[1,2,3,4]);
@@ -107,7 +106,7 @@ function buildKnobs(mod){
   const get=(o,p)=>p.split(".").reduce((x,k)=>x==null?x:x[k],o);
   let h="";
   if(mod.id==="full") h+='<label class="ctl"><span>'+esc(t("arch.knob.full.kind"))+'</span><select data-bind="model.full.kind"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(t("arch.editor.dsaOpt"))+'</option></select></label>';
-  if(mod.id==="lin") h+='<label class="ctl"><span>'+esc(t("arch.knob.lin.kind"))+'</span><select data-bind="model.lin.kind"><option value="GDN">Gated DeltaNet</option><option value="KDA">KDA</option></select></label>';
+  if(mod.id==="lin") h+='<label class="ctl"><span>'+esc(t("arch.knob.lin.kind"))+'</span><select data-bind="model.lin.kind"><option value="GDN">'+esc(t("arch.mod.lin.gdn"))+'</option><option value="KDA">KDA</option></select></label>';
   for(const [p,lo,hi,st] of list){ const mx=typeof hi==="string"?get(m,hi):hi, pv=get(b,p);
     h+='<label class="ctl"><span>'+t("arch.knob."+p)+(pv!=null?' <small>'+esc(t("arch.knob.preset",{v:fInt(pv)}))+'</small>':'')+'</span><output data-out="model.'+p+'"></output>'+
       '<input type="range" min="'+lo+'" max="'+Math.max(lo,mx)+'" step="'+st+'" data-bind="model.'+p+'"></label>'; }
@@ -132,7 +131,7 @@ function renderArchModule(){
   chips($("am-phase"), ["decode","prefill","train"].map(p=>({v:p, html:esc(phaseName(p))})), wl.phase, v=>{ S.arch.phase=v; syncInputs(); render(); });
   const cur=measure(m,wl), base0=edited?measure(base,wl):cur, a=cur.mods[mod.id], a0=base0.mods[mod.id]||a;
   const fx=Arch.facts(m,wl)[mod.id]||{}, fx0=Arch.facts(base,wl)[mod.id]||{};
-  const peaks=Arch.peaks(hw,wl), pk=Arch.peakKeyFor(mod.id,wl), ridge=ridgeOf(hw,g,pk), pkV=hw[pk]*1e12;
+  const peaks=Arch.peaks(hw,wl), pk=Arch.peakKeyFor(mod.id,wl), ridge=ridgeOf(hw,g,pk), pkV=peakOf(hw,pk);
   $("am-title").textContent=t("arch.mod.title",{m:m.short,mod:modName(mod),n:mod.layers});
   $("am-lede").innerHTML=t("arch.mod.lede",{wl:esc(wlText(wl)),hw:esc(hw.name)})+(edited?" "+t("arch.mod.ledeEdited"):"");
   const totalAll=mods.reduce((s,p)=>s+cur.mods[p.id].t*p.layers,0);
@@ -215,17 +214,15 @@ function renderModRead(mod, wl, a, a0, fx, fx0, edited, ridge, pk){
   if(a.byBound.launch>0.2*a.t) R.push(t("arch.read.launch",{p:pct(a.byBound.launch,a.t),us:g.kernelUs}));
   const B=wl.B, n=wl.n;
   if(wl.phase==="decode"){
-    if(mod.kind==="gqa"||mod.kind==="swa"){ const keys=mod.id==="swa"?Math.min(n,f.W):n, kv=fx.kvTok, rd=B*keys*kv;
+    const x=Arch.explain(m,hw,g,wl,mod.id,B);
+    if(mod.kind==="gqa"||mod.kind==="swa"){ const keys=x.keys, kv=x.kvTok, rd=B*keys*kv;
       R.push(t("arch.read.gqa",{kv:V(fB(kv)),hkv:f.Hkv,dh:f.dh,rd:V(fB(rd)),share:pct(rd,a.bytes),g:fI(f.Hq/f.Hkv)}));
       if(mod.id==="swa") R.push(t("arch.read.swa",{w:fInt(f.W),n:fInt(n),glob:fB(B*n*kv)})); }
-    else if(mod.kind==="mla"){ const lat=f.kvLora+f.rope; R.push(t("arch.read.mla",{lat,kv:V(fB(fx.kvTok)),h:f.H,i:fI(2*f.H*(lat+f.kvLora)/(lat*dtB(wl.kvDt)))})); }
-    else if(mod.kind==="dsa"){ const k=Math.min(n,f.topk), pools=Math.ceil(n/(f.kpool||1));
-      R.push(t(n>f.topk?"arch.read.dsa":"arch.read.dsaShort",{n:fInt(n),k:fInt(f.topk),pools:fInt(pools),att:fB(B*k*(f.kvLora+f.rope)*dtB(wl.kvDt)),idx:fB(B*pools*(f.idxD+4))})); }
-    else if(mod.kind==="gdn"||mod.kind==="kda"){ const sb=wl.stateDt==="bf16"?2:4, st=l.Hv*l.dk*l.dv*sb, kvTok=f.n>0?derive(m).kvTokElems*dtB(wl.kvDt):0;
-      R.push(t("arch.read.lin",{st:V(fB(st)),dt:wl.stateDt.toUpperCase(),rw:fB(2*st*B),i:fI(8/(2*sb)),n:kvTok>0?fN(st/kvTok):"—"})); }
-    else if(mod.kind==="moe"){ const cov=Infer.cover(e.k,e.E,B), hit=e.E*cov, rows=B*e.k/Math.max(1,hit), need=ridgeOf(hw,g,wl.eDt)*dtB(wl.eDt)/2;
-      R.push(t("arch.read.moe",{b:fInt(B),hit:fInt(hit),e:e.E,pct:pc(cov),rows:fI(rows),w:V(fB(hit*fx.expert)),need:fInt(need),bneed:fInt(need*e.E/e.k)})); }
-    else if(mod.kind==="dense"){ R.push(t("arch.read.dense",{w:V(fB(fx.weights)),i:fI(a.I),bs:fInt(ridgeOf(hw,g,wl.wDt)*dtB(wl.wDt)/2)})); }
+    else if(mod.kind==="mla"){ const lat=f.kvLora+f.rope; R.push(t("arch.read.mla",{lat,kv:V(fB(fx.kvTok)),h:f.H,i:fI(x.absorbI)})); }
+    else if(mod.kind==="dsa") R.push(t(n>f.topk?"arch.read.dsa":"arch.read.dsaShort",{n:fInt(n),k:fInt(f.topk),pools:fInt(x.pools),att:fB(B*x.attB),idx:fB(B*x.idxB)}));
+    else if(mod.kind==="gdn"||mod.kind==="kda") R.push(t("arch.read.lin",{st:V(fB(x.st)),dt:wl.stateDt.toUpperCase(),rw:fB(x.rwB),i:fI(x.I),n:x.vsKv!=null?fN(x.vsKv):"—"}));
+    else if(mod.kind==="moe") R.push(t("arch.read.moe",{b:fInt(B),hit:fInt(x.hit),e:e.E,pct:pc(x.cov),rows:fI(x.rows),w:V(fB(x.hit*fx.expert)),need:fInt(x.need),bneed:fInt(x.needB)}));
+    else if(mod.kind==="dense") R.push(t("arch.read.dense",{w:V(fB(fx.weights)),i:fI(a.I),bs:fInt(x.Bstar)}));
   } else if(wl.phase==="prefill") R.push(t("arch.read.prefill."+mod.kind,{c:fInt(Math.min(n,Arch.chunkOf(wl,hw))),n:fInt(n),k:fInt(f.topk||0)}));
   else R.push(t("arch.read.train."+mod.kind,{s:fInt(wl.S)}));
   if(edited&&sameKinds()){ const dkv = fx.kvTok!=null&&fx0.kvTok!=null ? t("arch.read.dKv",{a:fB(fx0.kvTok),b:fB(fx.kvTok)}) : fx.state!=null&&fx0.state!=null ? t("arch.read.dState",{a:fB(fx0.state),b:fB(fx.state)}) : fx.weights!=null&&fx0.weights!=null ? t("arch.read.dW",{a:fB(fx0.weights),b:fB(fx.weights)}) : "";

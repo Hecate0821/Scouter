@@ -4,7 +4,7 @@ const SEQS = { "1k1k":[1024,1024,t("tradeoff.seq.1k1k")],"1k8k":[1024,8192,t("tr
 /* DeepInfer 的形状：prefill 取放得下的最小 EP（从 2 起翻倍），decode 取拓扑里能拿到的最宽 EP（最多 64），attention 全 DP，PD 分离 */
 function diConfig(mk, topoKey, hwKey){
   const m=mk===S.modelKey?S.model:MODELS[mk], hw=HW[hwKey||S.hw], G=TOPO[topoKey].gpus; if(!m.moe.E) return null;
-  const w=Common.derive(m).total*Common.dtB(m.wDefault); let p=2; while(w/p>0.6*hw.mem*1e9 && p<64) p*=2;
+  const p=Infer.fitShards(m,hw);
   const N=Math.min(64,G), f8=m.wDefault==="fp8";
   return { eng:"DeepInfer", id:"deepinfer", label:t("tradeoff.di.label",{p,n:N}), pd:{N:Math.min(p,G)},
     src:t("tradeoff.di.src",{p,n:N,ib:N>TOPO[topoKey].domain?t("tradeoff.di.srcIb"):""}),
@@ -17,7 +17,7 @@ function toConfigs(topoKey, hwKey){
   const di=diConfig(S.modelKey,topoKey,hwKey); if(di) L.push(di);
   return L;
 }
-const toShort = cf => cf.eng+" "+cf.label.split(/[，：（(]/)[0];
+const toShort = cf => cf.eng+" "+t("common.fmt.presetShort",{s:cf.label});
 /* 一条 Pareto 曲线：每个 DP rank 的并发从 1 扫到显存 / 引擎上限 */
 function toCurve(cf, isl, osl, hwKey, topoKey){
   const {m,g}=ctx(), hw=HW[hwKey||S.hw], topo=TOPO[topoKey||S.topo];
@@ -70,7 +70,7 @@ function renderInferTO(){
   $("i-to-ctx-lede").textContent=t("tradeoff.ctx.lede",{target:TO.target});
   /* 怎么选 */
   const di=curves.find(cu=>cu.cf.eng==="DeepInfer"), b1=di&&di.fit?di.pts[0].r:null;
-  const diNote = !di ? t("tradeoff.rules.diDense") : !b1 ? t("tradeoff.rules.diNoFit") : (()=>{ const mm=b1.mem, nonExp=mm.wAttn+mm.wLin+mm.wMoeRep+mm.wDense+mm.wEmb, tW=nonExp/(hw.hbm*1e9*g.etaM);
+  const diNote = !di ? t("tradeoff.rules.diDense") : !b1 ? t("tradeoff.rules.diNoFit") : (()=>{ const mm=b1.mem, nonExp=mm.wAttn+mm.wLin+mm.wMoeRep+mm.wDense+mm.wEmb, tW=Common.memT(nonExp,hw,g);
     return t("tradeoff.rules.diPremise",{model:esc(m.short),bytes:fB(nonExp),read:fT(tW),step:fT(b1.stepT),u:fN(di.pts[0].u),verdict:tW>0.01?t("tradeoff.rules.diBad"):t("tradeoff.rules.diOk")}); })();
   $("i-to-rules").innerHTML=[
     t("tradeoff.rules.fit",{model:esc(m.short),bytes:fB(Common.derive(m).total*Common.dtB(m.wDefault)),dt:m.wDefault.toUpperCase(),mem:hw.mem}),

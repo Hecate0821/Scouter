@@ -2,7 +2,7 @@
    不另写公式：推理走 Infer.step 的参考画像（ENGINES.ref：各引擎都默认开的优化，单卡、不补齐 CUDA graph），
    训练走 Train.run（Megatron 默认、单卡、不重算）；再按算子的 group / key / mod 归到模块上，除以该算子覆盖的层数。 */
 const Arch = (function(){
-const { derive, layerPlan, dtB, peakKey, peakOf, TOPO } = Common;
+const { derive, layerPlan, dtB, peakKey, peakOf, ridge, TOPO } = Common;
 
 const ORDER = ["full", "swa", "lin", "moe", "dense"];
 const isMlp = id => id==="moe" || id==="dense";
@@ -22,17 +22,17 @@ function defaults(m){
 }
 const chunkOf = (wl, hw) => wl.C>0 ? wl.C : (hw.mem>=160 ? 16384 : 8192);
 
+/* 在默认配置上改出参考画像：单卡、引擎中立（ref），不补齐 CUDA graph、不算负载不均、不开前缀缓存和 FP8 dispatch、没有 host 同步 */
 function infCfg(wl, over){
-  return Object.assign({ engine:"ref", phase:"decode", N:1, dpA:1, B:wl.B, n:wl.n, C:8192, P:8192, p:0,
-    wDt:wl.eDt, eAct:"", dDt:wl.wDt, kvDt:wl.kvDt, stateDt:wl.stateDt, specK:0, specMethod:"mtp", accept:0, graph:false,
-    imb:1, redundant:0, dcp:1, prefixCache:false, moePar:"tp", dispFp8:false, tbo:false, hostSyncUs:0,
-    memFrac:0.9, reserveGB:4, bi:false, biFactor:1, implEff:1, reqPerChunk:1 }, over||{});
+  return Object.assign({}, Infer.BASE, { engine:"ref", N:1, dpA:1, B:wl.B, n:wl.n, P:8192, moePar:"tp",
+    wDt:wl.eDt, dDt:wl.wDt, kvDt:wl.kvDt, stateDt:wl.stateDt, graph:false, imb:1, prefixCache:false, dispFp8:false, hostSyncUs:0,
+    memFrac:0.9, reserveGB:4, biFactor:1 }, over||{});
 }
+/* 训练：Megatron 默认，单卡、一条长 S 的序列，不切并行、不卸载、不重算 */
 function trnCfg(wl){
-  return { fw:"megatron", N:1, tp:1, cp:1, pp:1, vpp:1, ep:1, etp:1, dispatcher:"alltoall", cpType:"p2p", linCP:"headwise",
-    tok:wl.S, S:wl.S, Gtok:wl.S, prec:wl.prec, recompute:"selective", rcModules:[], offload:false, overlapOffload:false, cpuAdamGBs:30,
-    overlapGrad:true, overlapParam:true, epOverlap:false, sharedOverlap:false, tpOverlap:false, reshard:false, imb:1, hostSyncUs:0,
-    workspaceGB:0, cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0 };
+  return Object.assign({}, Train.BASE, { fw:"megatron", N:1, tp:1, cp:1, pp:1, vpp:1, ep:1, etp:1,
+    tok:wl.S, S:wl.S, Gtok:wl.S, prec:wl.prec, recompute:"selective", rcModules:[], offload:false, overlapOffload:false,
+    reshard:false, imb:1, hostSyncUs:0, workspaceGB:0 });
 }
 
 /* 算子 → 模块：attention 的投影是全局层和滑窗层共用的（同一个 op 覆盖 full.n 层），核心按 mod 分开 */
@@ -48,7 +48,7 @@ function addOp(acc, ids, o, x, scale){
   for(const id of ids){ const a=acc[id]; if(!a) continue;
     a.flops+=x.flops*k; a.bytes+=x.bytes*k; a.t+=x.t*k; a.tc+=(x.tc||0)*k; a.tm+=(x.tm||0)*k; a.tf+=(x.tf||0)*k;
     a.byBound[x.bound in a.byBound ? x.bound : "memory"] += x.t*k;
-    const prev=a.ops.find(p=>p.key===o.key && p.name===o.name);
+    const prev=a.ops.find(p=>p.key===o.key && Msg.id(p.name)===Msg.id(o.name));
     if(prev){ prev.flops+=x.flops*k; prev.bytes+=x.bytes*k; prev.t+=x.t*k; }
     else a.ops.push({ key:o.key, name:o.name, flops:x.flops*k, bytes:x.bytes*k, t:x.t*k, bound:x.bound }); }
 }
@@ -109,7 +109,7 @@ function facts(m, wl){
 /* roofline 的屋顶：用到的峰值（BF16 注意力核心 + 权重精度的 GEMM；训练按训练精度） */
 function peaks(hw, wl){
   const ks = new Set(wl.phase==="train" ? ["bf16", peakKey(wl.prec)] : ["bf16", peakKey(wl.wDt), peakKey(wl.eDt)]);
-  return ["bf16","fp8","fp4"].filter(k=>ks.has(k)).map(k=>({ k, v: peakOf(hw, k==="fp4"?"nvfp4":k) }));
+  return ["bf16","fp8","fp4"].filter(k=>ks.has(k)).map(k=>({ k, v: peakOf(hw, k) }));
 }
 /* 一个模块主要的 GEMM 精度（读数里的 ridge 用它）：注意力核心按 BF16；MLP 按 expert / dense 权重精度，训练按训练精度 */
 function peakKeyFor(id, wl){
@@ -117,5 +117,30 @@ function peakKeyFor(id, wl){
   return peakKey(wl.phase==="train" ? wl.prec : id==="moe" ? wl.eDt : wl.wDt);
 }
 
-return { ORDER, present, defaults, chunkOf, measure, facts, peaks, peakKeyFor, isMlp };
+/* 一步里这个模块处理的行数：decode 是 B 条序列各一个 token，prefill 是一个 chunk，训练是一条长 S 的序列 */
+const rowsOf = (wl, hw) => wl.phase==="decode" ? wl.B : wl.phase==="prefill" ? chunkOf(wl,hw) : wl.S;
+
+/* 机制量：示意图和读数用的都从这里取，同一个量只算一次。B 是一步的行数（默认 rowsOf），n 是上下文长度；
+   DSA、线性注意力给的是每条序列的量。need / Bstar：GEMM 进入算力区所需的每个 expert 行数 / batch（ridge × 每参数字节 / 2） */
+function explain(m, hw, g, wl, id, B){
+  B = B ?? rowsOf(wl, hw);
+  const f=m.full, l=m.lin, e=m.moe, n=Math.max(1,wl.n), kvb=dtB(wl.kvDt), x={ B, n };
+  if(id==="full" || id==="swa"){
+    x.kvTok = facts(m, wl)[id].kvTok;
+    if(id==="swa" || f.kind==="gqa") return Object.assign(x, { groups:f.Hq/f.Hkv, keys: id==="swa" ? Math.min(n,f.W) : n });
+    const lat=f.kvLora+f.rope;
+    Object.assign(x, { lat, absorbI:2*f.H*(lat+f.kvLora)/(lat*kvb), allB:n*lat*kvb });
+    if(f.kind!=="dsa") return x;
+    const k=Math.min(n,f.topk), pools=Math.ceil(n/(f.kpool||1));
+    return Object.assign(x, { k, pools, keep:Math.min(1,f.topk/n), idxB:pools*(f.idxD+4), attB:k*lat*kvb, idxF:2*f.idxH*f.idxD*pools, attF:2*f.H*(lat+f.kvLora)*k });
+  }
+  if(id==="lin"){ const sb=wl.stateDt==="bf16"?2:4, st=l.Hv*l.dk*l.dv*sb, kvTokFull=f.n>0?derive(m).kvTokElems*kvb:0;
+    return Object.assign(x, { sb, st, rwB:2*st*B, I:8/(2*sb), kvTokFull, vsKv:kvTokFull>0?st/kvTokFull:null, kvEq:n*2*(l.Hk*l.dk)*kvb }); }
+  if(id==="moe"){ const cov=Infer.cover(e.k,e.E,B), hit=e.E*cov, eb=dtB(wl.eDt), need=ridge(peakOf(hw,wl.eDt),hw,g)*eb/2;
+    return Object.assign(x, { cov, hit, rows:B*e.k/Math.max(1,hit), per:3*(e.Dlat||m.D)*e.F*eb, need, needB:need*e.E/e.k }); }
+  const F=m.dense.F, wb=dtB(wl.wDt), rI=ridge(peakOf(hw,wl.wDt),hw,g);
+  return Object.assign(x, { F, wB:3*m.D*F*wb, I:2*B*3*m.D*F/(3*m.D*F*wb + B*(m.D*2+3*F*2)), ridge:rI, Bstar:rI*wb/2 });
+}
+
+return { ORDER, present, defaults, chunkOf, rowsOf, measure, facts, explain, peaks, peakKeyFor, isMlp };
 })();

@@ -74,19 +74,19 @@ function buildEditor(){
   else { for(const [a,b] of [["Hq",32],["Hkv",4],["dh",128]]) if(fk[a]==null) fk[a]=b; }
   if(k==="dsa"){ for(const [a,b] of [["topk",2048],["idxH",32],["idxD",128],["kpool",4]]) if(fk[a]==null) fk[a]=b; }
   const L=k=>t("arch.editor."+k);
-  const F=[[L("basic")],["D","hidden D"],["L",L("L")],["V",L("V")],
+  const F=[[L("basic")],["D",L("D")],["L",L("L")],["V",L("V")],
     [L("full")],["full.n",L("n")],["full.kind",L("kind"),"selA"],
     ...(k==="gqa"?[["full.Hq",L("Hq")],["full.Hkv",L("Hkv")],["full.dh","head_dim"]]
        :[["full.H",L("H")],["full.qLora","q_lora_rank"],["full.kvLora","kv_lora_rank"],["full.nope","qk_nope_dim"],["full.rope","qk_rope_dim"],["full.vh","v_head_dim"]]),
     ...(k==="dsa"?[["full.topk","DSA top-k"],["full.idxH",L("idxH")],["full.idxD",L("idxD")],["full.kpool",L("kpool")]]:[]),
     [L("lin")],["lin.n",L("n")],["lin.kind",L("kind"),"selL"],["lin.Hk",L("Hk")],["lin.Hv",L("Hv")],["lin.dk",L("dk")],["lin.dv",L("dv")],
     ["MoE"],["moe.E",L("E")],["moe.k","top-k"],["moe.F","moe_intermediate F"],["moe.Fs",L("Fs")],["moe.Dlat",L("Dlat")],
-    ["dense.n",L("denseN")],["dense.F","dense intermediate"]];
+    ["dense.n",L("denseN")],["dense.F",L("denseF")]];
   let h="";
   for(const f of F){
     if(f.length===1){ h+='<h3>'+esc(f[0])+'</h3>'; continue; }
     if(f[2]==="selA") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(L("dsaOpt"))+'</option></select></label>';
-    else if(f[2]==="selL") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="GDN">Gated DeltaNet</option><option value="KDA">KDA</option></select></label>';
+    else if(f[2]==="selL") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="GDN">'+esc(t("arch.mod.lin.gdn"))+'</option><option value="KDA">KDA</option></select></label>';
     else h+='<label class="ctl"><span>'+esc(f[1])+'</span><input type="number" min="0" step="1" data-bind="model.'+f[0]+'"></label>';
   }
   $("model-editor").innerHTML=h; syncInputs();
@@ -103,5 +103,5 @@ function table(el, head, rows, numCols){ const nc=new Set(numCols||[]);
   el.innerHTML='<thead><tr>'+head.map((h,i)=>'<th'+(nc.has(i)?' style="text-align:right"':'')+'>'+h+'</th>').join("")+'</tr></thead><tbody>'+
     rows.map(r=>'<tr'+(r.cls?' class="'+r.cls+'"':'')+'>'+(r.cells||r).map((c,i)=>'<td'+(nc.has(i)?' class="num"':'')+'>'+c+'</td>').join("")+'</tr>').join("")+'</tbody>'; }
 const sw = c => '<span class="sw" style="display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:'+c+'"></span>';
-function roofSeries(hw,g,peaks,x0,x1){ const bw=hw.hbm*1e9*g.etaM, xs=logspace(x0,x1,200);
-  return peaks.map((p,i)=>({pts:xs.map(I=>[I,Math.min(p.v*g.etaC,bw*I)]),color:css("ink"),w:i?1.2:1.8,dash:i?"6 4":null})); }
+function roofSeries(hw,g,peaks,x0,x1){ const xs=logspace(x0,x1,200);
+  return peaks.map((p,i)=>({pts:xs.map(I=>[I,Common.attainable(I,p.v,hw,g)]),color:css("ink"),w:i?1.2:1.8,dash:i?"6 4":null})); }

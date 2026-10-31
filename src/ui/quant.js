@@ -3,7 +3,7 @@ const QC = { bf16:css("c-lm"), fp8:css("c-attn"), mxfp8:css("c-lin"), w4a16:css(
 const QE2E = { bf16:{wDt:"bf16",eAct:"",dDt:"bf16"}, fp8:{wDt:"fp8",eAct:"",dDt:"fp8"}, mxfp8:{wDt:"mxfp8",eAct:"",dDt:"mxfp8"},
   w4a16:{wDt:"mxfp4",eAct:"bf16",dDt:"bf16"}, w4a8:{wDt:"mxfp4",eAct:"mxfp8",dDt:"mxfp8"}, mxfp4:{wDt:"mxfp4",eAct:"",dDt:"bf16"}, nvfp4:{wDt:"nvfp4",eAct:"",dDt:"bf16"} };
 const QTRN = ["bf16","fp8","mxfp8","nvfp4"];
-const DTN = { bf16:"BF16", fp8:"FP8 block", mxfp8:"MXFP8", mxfp4:"MXFP4", nvfp4:"NVFP4" };
+const DTN = { bf16:"BF16", fp8:t("common.dt.fp8Block"), mxfp8:"MXFP8", mxfp4:"MXFP4", nvfp4:"NVFP4" };
 const qOpt = (over) => Object.assign({ fuse:S.q.fuse, align:1, floor:false, BM:S.q.BM, deqRate:S.q.deqRate }, over||{});   // 单个 GEMM 按纯 roofline，不计 kernel 最短时间
 const qTopo = h => /^GB/.test(h) ? "nvl64" : (S.topo==="nvl64" ? "hgx8" : S.topo);
 function qShape(){ const m=S.model, e=m.moe, De=e.Dlat||m.D, F=e.F||m.dense.F;   // dense 模型：gate_up / down 取 dense FFN
@@ -22,7 +22,7 @@ function qTrainE2E(hw, prec){ const {m,g}=ctx(), topo=TOPO[qTopo(S.q.hw)];
 function qCheck(key, hw){
   const g=S.glob, Q=Quant, o=qOpt();
   if(key==="peaks"){ const B=HW.B200, B3=HW.B300; return t("quant.check.peaks", {bf16:B.bf16/1000, fp8:B.fp8/1000, fp4:B.fp4/1000, fp4B300:B3.fp4/1000}); }
-  if(key==="castBW"){ const bw=HW.B200.hbm*g.etaM/1000; return t("quant.check.castBW", {eta:g.etaM, bw:bw.toFixed(1), t:fT(16384*16384*(2+1+1/32)/(bw*1e12))}); }
+  if(key==="castBW"){ const B=HW.B200; return t("quant.check.castBW", {eta:g.etaM, bw:(B.hbm*g.etaM/1000).toFixed(1), t:fT(Common.memT(16384*16384*(2+1+1/32),B,g))}); }
   if(key==="w4a8"){ const sh=[[4096,6144],[6144,2048]], r=[];
     for(const [N,K] of sh) for(const M of [256,4096]){ const a=Q.gemm(HW.B200,g,"w4a16",M,N,K,o), b=Q.gemm(HW.B200,g,"w4a8",M,N,K,o); r.push(a.t/b.t); }
     const qw={moe:{E:256,k:8,F:512,Dlat:0},D:2048}, sep=qOpt({fuse:"separate",align:"auto"});
@@ -36,7 +36,7 @@ function qCheck(key, hw){
       dn=Q.trainGemm(HW.B200,g,"nvfp4",M,N,K,{nMicro:1}), hn=Q.trainGemm(HW.B200,g,"nvfp4hp",M,N,K,{nMicro:1});
     return t("quant.check.mem", {mx:fB(d.extra), mxHp:fB(h.extra), pct:((h.extra/d.extra-1)*100).toFixed(0), nv:fB(dn.extra), nvHp:fB(hn.extra)}); }
   if(key==="trainRecipe"){ const {m}=ctx(), e=m.moe, De=e.Dlat||m.D, F=e.F||m.dense.F, M=8192, tg=k=>Q.trainGemm(HW.B200,g,k,M,2*F,De,{nMicro:4,tokFused:false}).t, b=tg("bf16");
-    return t("quant.check.trainRecipe", {part:e.E?"expert":"dense FFN", mx:fX(b/tg("mxfp8")), hpU:fX(b/tg("nvfp4hp")), hpF:fX(b/Q.trainGemm(HW.B200,g,"nvfp4hp",M,2*F,De,{nMicro:4,tokFused:true}).t)}); }
+    return t("quant.check.trainRecipe", {part:t(e.E?"quant.check.partExpert":"quant.check.partDense"), mx:fX(b/tg("mxfp8")), hpU:fX(b/tg("nvfp4hp")), hpF:fX(b/Q.trainGemm(HW.B200,g,"nvfp4hp",M,2*F,De,{nMicro:4,tokFused:true}).t)}); }
   if(key==="moeTrain"){ const D=5120, F=8192, M=16384, tg=k=>Q.trainGemm(HW.B200,g,k,M,2*F,D,{nMicro:1}).t+Q.trainGemm(HW.B200,g,k,M,D,F,{nMicro:1}).t;
     return t("quant.check.moeTrain", {mx:fX(tg("bf16")/tg("mxfp8"))}); }
   return "";
@@ -66,7 +66,7 @@ function renderQuantInfer(){
   kpis($("q-kpis"),[
     [t("quant.infer.kpi.time"),fT(x.t),x.tQ>0?t("quant.infer.kpi.timeQ", {t:fT(x.tQ)}):x.tDeq>0?t("quant.infer.kpi.timeDeq", {t:fT(x.tDeq)}):""],
     [t("quant.infer.kpi.vsBf16"),fX(b.t/x.t),"BF16 "+fT(b.t),b.t<x.t],
-    [t("quant.infer.kpi.bound"),x.bound,"I = "+fI(x.I)+" FLOP/B"],
+    [t("quant.infer.kpi.bound"),t("common.pill."+x.bound),"I = "+fI(x.I)+" FLOP/B"],
     [t("quant.infer.kpi.knee"),isFinite(Ms[cur])?fInt(Ms[cur]):"∞","BF16 "+fInt(Ms.bf16)],
     [t("quant.infer.kpi.wBytes"),fB(x.wB),t("quant.infer.kpi.wScale", {b:fB(x.wScale)})],
     [t("quant.infer.kpi.aBytes"),fB(x.aB+x.qB),x.qB?t("quant.infer.kpi.aQ", {b:fB(x.qB)}):""]]);
@@ -132,9 +132,9 @@ function renderQuantTrain(){
   const {q,hw,g,Q}=qHead(), N=q.N, K=q.K;
   const Mt=Math.max(16,q.Mt), TR={}, to={nMicro:q.nMicro,tokFused:q.tokFused};
   Q.RORDER.forEach(k=>TR[k]=Q.trainGemm(hw,g,k,Mt,N,K,to));
-  const ideal=k=>{ const R=Q.RECIPES[k], rf=peakOf(hw,R.f)/peakOf(hw,"bf16"), rb=peakOf(hw,R.b)/peakOf(hw,"bf16"); return (1/rf+2/rb)/3; };
+  const ideal=k=>Q.idealSpeedup(hw,Q.RECIPES[k].f,Q.RECIPES[k].b);
   table($("q-train"),[t("quant.train.head.recipe"),"fprop","dgrad","wgrad",t("quant.train.head.qKernels"),t("quant.train.head.total"),t("quant.train.head.vsBf16"),t("quant.train.head.peakOnly"),t("quant.train.head.saved"),t("quant.train.head.who")],
-    Q.RORDER.map(k=>{ const r=TR[k]; return {cls:k===q.recipe?"hl":"",cells:[esc(r.R.name),fT(r.fprop),fT(r.dgrad),fT(r.wgrad),r.tq?fT(r.tq):"—",fT(r.t),fX(TR.bf16.t/r.t),fX(1/ideal(k)),fB(r.extra),esc(r.R.who)]}; }),[1,2,3,4,5,6,7,8]);
+    Q.RORDER.map(k=>{ const r=TR[k]; return {cls:k===q.recipe?"hl":"",cells:[esc(r.R.name),fT(r.fprop),fT(r.dgrad),fT(r.wgrad),r.tq?fT(r.tq):"—",fT(r.t),fX(TR.bf16.t/r.t),fX(ideal(k)),fB(r.extra),esc(r.R.who)]}; }),[1,2,3,4,5,6,7,8]);
   const tr=TR[q.recipe];
   stackBar($("q-tbar"),$("q-tbarlist"),[{label:t("quant.train.bar.fprop", {dt:DTN[tr.R.f]}),v:tr.fprop,color:css("c-attn")},{label:t("quant.train.bar.dgrad", {dt:DTN[tr.R.b]}),v:tr.dgrad,color:css("c-moe")},{label:t("quant.train.bar.wgrad", {dt:DTN[tr.R.b]}),v:tr.wgrad,color:css("c-lin")},
     ...tr.q.map((z,i)=>({label:z[0],v:z[1],color:[css("c-cp"),css("c-a2a"),css("c-ar"),css("c-dp"),css("muted")][i%5]}))],tr.t,fT);
@@ -146,7 +146,7 @@ function renderQuantTrain(){
     QTRN.map(k=>{ const r=TE[k]; return {cls:k===q.recipe?"hl":"",cells:[esc(Train.PREC[k].name),fT(r.stepT),fN(r.tokPerGpu),fX(tb.stepT/r.stepT),fB(r.mem.qW),fB(r.mem.used)+(r.mem.used>r.mem.total?' <span class="tag">'+t("quant.train.e2e.over")+'</span>':"")]}; }),[1,2,3,4,5]);
   // 解析
   const A=[], best=Q.RORDER.filter(k=>k!=="bf16").sort((a,b)=>TR[a].t-TR[b].t)[0], mx=TR.mxfp8, tt=TR.mxfp8tt, wq=r=>(r.q.find(z=>z[2]==="w")||[0,0])[1];
-  A.push(t("quant.train.an.gemm", {M:fInt(Mt), best:esc(Q.RECIPES[best].name), x:V(fX(TR.bf16.t/TR[best].t)), ideal:V(fX(1/ideal(best))),
+  A.push(t("quant.train.an.gemm", {M:fInt(Mt), best:esc(Q.RECIPES[best].name), x:V(fX(TR.bf16.t/TR[best].t)), ideal:V(fX(ideal(best))),
     cacheTe:fB(mx.wCache), cacheTt:fB(tt.wCache), nMicro:q.nMicro, dt:fT(wq(mx)-wq(tt))}));
   const bestT=QTRN.filter(k=>k!=="bf16").sort((a,b)=>TE[a].stepT-TE[b].stepT)[0];
   A.push(t("quant.train.an.e2e", {best:esc(Train.PREC[bestT].name), x:V(fX(tb.stepT/TE[bestT].stepT))}));
@@ -161,7 +161,7 @@ function renderFormats(){
   table($("q-formats"),[t("quant.formats.table.head.fmt"),t("quant.formats.table.head.elem"),t("quant.formats.table.head.block"),t("quant.formats.table.head.blockScale"),t("quant.formats.table.head.second"),
     t("quant.formats.table.head.bits"),t("quant.formats.table.head.range"),t("quant.formats.table.head.cost"),m.moe.E?t("quant.formats.table.head.wMoe"):t("quant.formats.table.head.wDense")],[
     [t("quant.formats.table.tensorFp8.name"),"E4M3",t("quant.formats.table.tensorFp8.block"),"FP32","—","8",t("quant.formats.table.bins", {n:binE4.toFixed(1)}),t("quant.formats.table.tensorFp8.cost"),fB(wAll*1)],
-    ["block FP8","E4M3",t("quant.formats.table.blockFp8.block"),t("quant.formats.table.blockFp8.scale"),"—",t("quant.formats.table.blockFp8.bits", {w:bits("fp8"), a:bits("fp8a")}),t("quant.formats.table.bins", {n:binE4.toFixed(1)}),t("quant.formats.table.blockFp8.cost"),fB(wAll*Common.dtB("fp8"))],
+    [t("common.dt.blockFp8"),"E4M3",t("quant.formats.table.blockFp8.block"),t("quant.formats.table.blockFp8.scale"),"—",t("quant.formats.table.blockFp8.bits", {w:bits("fp8"), a:bits("fp8a")}),t("quant.formats.table.bins", {n:binE4.toFixed(1)}),t("quant.formats.table.blockFp8.cost"),fB(wAll*Common.dtB("fp8"))],
     ["MXFP8","E4M3",t("quant.formats.table.mxfp8.block"),"E8M0","—",bits("mxfp8"),t("quant.formats.table.bins", {n:binE4.toFixed(1)}),t("quant.formats.table.mxfp8.cost"),fB(wAll*Common.dtB("mxfp8"))],
     ["MXFP4","E2M1","1×32","E8M0","—",bits("mxfp4"),t("quant.formats.table.bins", {n:binE2.toFixed(1)}),t("quant.formats.table.mxfp4.cost"),fB(wAll*Common.dtB("mxfp4"))],
     ["NVFP4","E2M1",t("quant.formats.table.nvfp4.block"),"E4M3",t("quant.formats.table.nvfp4.second"),bits("nvfp4"),t("quant.formats.table.bins", {n:binE2.toFixed(1)}),t("quant.formats.table.nvfp4.cost"),fB(wAll*Common.dtB("nvfp4"))]],[5,8]);

@@ -1,52 +1,31 @@
 /* ---------- 和实测对照：数据点库里能复现的匿名实测，按同样的设置喂给 Train.run / Par ---------- */
-/* 每个数据集一个 replay：pts 选出能复现的点，run 返回本页的预测（秒），meas 是实测（秒），rel = 只看组内相对快慢 */
-const CALIB_BASE = { N:8, fw:"torchtitan", tp:1, pp:1, vpp:1, cp:8, ep:8, etp:1, linCP:"state", prec:"bf16", recompute:"none", cpLB:false, dispatcher:"standard", imb:1, etaA:273/989,
-  offload:false, hsdp:1, gradDt:"fp32", reshard:true, hostSyncUs:30, mokF:0.25, workspaceGB:6, cpuAdamGBs:30, rcModules:[] };
-const CALIB_BE = { local:"standard", nccl_a2a:"standard", deepep_legacy:"deepep", deepep_v2:"deepep" };
+/* 每个数据集的显示：名字、颜色、点的标签；怎么复现（筛点、实测字段、预测）在计算核心的 Calib.SETS 里。rel = 只看组内相对快慢 */
 const BE_NAME = { local:t("calib.be.local"), nccl_a2a:"NCCL a2a", deepep_legacy:"DeepEP legacy", deepep_v2:"DeepEP v2" };
 /* 每个点的标签 = what（排序按它）+ 可选的 tail（序列长度等） */
 const CALIB = [
   { set:"cp_attention", col:"s1", name:t("calib.set.cpAttention.name"),
     note:t("calib.set.cpAttention.note"),
-    pts:()=>DB.where("cp_attention",{model:"qwen35",head_chunks:1}),
-    what:p=>p.method==="single"?t("calib.label.single"):"CP"+p.cp+" "+Par.CP[p.method].name, tail:p=>fK(p.seq),
-    meas:p=>p.fb_ms/1e3,
-    run:(p,run)=>{ const C=p.cp, r=run({S:p.seq,tok:p.seq/C,Gtok:p.seq*8/C,cp:C,cpType:C>1?p.method:"allgather"}), o=r.par.coreFullOp;
-      return (o.fwd.t+o.dgrad.t)/o.layers+(r.par.cpFull?r.par.docs*r.par.cpFull.exposed:0); } },
+    what:p=>p.method==="single"?t("calib.label.single"):"CP"+p.cp+" "+Par.CP[p.method].name, tail:p=>fK(p.seq), },
   { set:"cp_full_model", col:"s2", name:t("calib.set.cpFullModel.name"),
     note:t("calib.set.cpFullModel.note"),
-    pts:()=>DB.where("cp_full_model",{model:"qwen35"}),
-    what:p=>"CP"+p.cp+" "+Par.CP[p.method].name, tail:p=>fK(p.seq),
-    meas:p=>p.fb_s,
-    run:(p,run)=>{ const r=run({S:p.seq,tok:p.seq/p.cp,Gtok:p.seq*8/p.cp,cp:p.cp,cpType:p.method,recompute:"full",ep:p.cp}); return r.stepT-r.tOpt; } },
+    what:p=>"CP"+p.cp+" "+Par.CP[p.method].name, tail:p=>fK(p.seq), },
   { set:"efsdp_full_model", col:"s3", name:t("calib.set.efsdpFullModel.name"), rel:true,
     note:t("calib.set.efsdpFullModel.note"),
-    pts:()=>DB.set("efsdp_full_model"),
-    what:p=>BE_NAME[p.backend]+" EP"+p.ep, tail:p=>fK(p.seq),
-    meas:p=>p.step_s,
-    run:(p,run)=>{ const r=run({S:p.seq,tok:p.seq/8,Gtok:p.seq,cpType:"allgather",recompute:"full",ep:p.ep,dispatcher:CALIB_BE[p.backend]}); return r.stepT-r.tOpt; } },
+    what:p=>BE_NAME[p.backend]+" EP"+p.ep, tail:p=>fK(p.seq), },
   { set:"efsdp_comm", col:"s4", name:t("calib.set.efsdpComm.name"),
     note:t("calib.set.efsdpComm.note"),
-    pts:()=>DB.set("efsdp_comm"),
-    what:p=>BE_NAME[p.backend]+" EP"+p.ep, tail:p=>t("calib.label.perGpu",{n:fK(p.seq/8)}),
-    meas:p=>p.s,
-    run:(p,run,g)=>{ const m=MODELS.qwen35, hw=HW.H200, n=p.seq/8, De=derive(m).De;
-      const o=Par.epLayer("deepep",{n,K:8,Z:256,E:p.ep,De,hw,topo:TOPO.hgx8,g,ac:false,prec:"bf16",imb:1,syncUs:30});
-      return o.tw+o.tAlpha+o.tSync+4*n*8*De*2/(hw.hbm*1e9*g.etaM); } },
+    what:p=>BE_NAME[p.backend]+" EP"+p.ep, tail:p=>t("calib.label.perGpu",{n:fK(p.seq/8)}), },
   { set:"h200_kernels", col:"s5", name:t("calib.set.h200Kernels.name"),
     note:t("calib.set.h200Kernels.note"),
-    pts:()=>DB.set("h200_kernels"),
-    what:p=>p.op==="bf16_gemm"?"GEMM "+[p.m,p.n,p.k].map(fK).join("×"):t("calib.label.copy",{bytes:fB(p.rw_bytes)}),
-    meas:p=>p.ms/1e3,
-    run:(p,run,g)=>{ const hw=HW.H200; return p.op==="bf16_gemm" ? 2*p.m*p.n*p.k/(hw.bf16*1e12*g.etaC) : p.rw_bytes/(hw.hbm*1e9*g.etaM); } },
+    what:p=>p.op==="bf16_gemm"?"GEMM "+[p.m,p.n,p.k].map(fK).join("×"):t("calib.label.copy",{bytes:fB(p.rw_bytes)}), },
 ];
 let calibCache = null, calibSel = "cp_attention";
 function calibReplay(g){
   const key=JSON.stringify(g); if(calibCache && calibCache.key===key) return calibCache.out;
-  const run=o=>Train.run(MODELS.qwen35,HW.H200,TOPO.hgx8,Object.assign({},CALIB_BASE,o),g);
-  const out=CALIB.map(c=>({ c, meta:DB.meta(c.set), rows:c.pts().map(p=>{ let pred=null; try{ pred=c.run(p,run,g); }catch(e){}
-    const meas=c.meas(p), what=c.what(p); return { p, what, label:c.tail?t("calib.label.pair",{what,tail:c.tail(p)}):what, meas, pred, ratio:isFinite(pred)&&pred>0&&meas>0 ? pred/meas : null }; }).filter(x=>x.ratio!=null)
-    .sort((a,b)=>a.what.localeCompare(b.what)||a.meas-b.meas) }));
+  const out=CALIB.map(c=>{ const K=Calib.SETS[c.set], pts=K.where?DB.where(c.set,K.where):DB.set(c.set);
+    return { c, meta:DB.meta(c.set), rows:pts.map(p=>{ let pred=null; try{ pred=K.predict(p,g); }catch(e){}
+    const meas=K.meas(p), what=c.what(p); return { p, what, label:c.tail?t("calib.label.pair",{what,tail:c.tail(p)}):what, meas, pred, ratio:isFinite(pred)&&pred>0&&meas>0 ? pred/meas : null }; }).filter(x=>x.ratio!=null)
+    .sort((a,b)=>a.what.localeCompare(b.what)||a.meas-b.meas) }; });
   calibCache={key,out}; return out;
 }
 function quantile(a,q){ const s=[...a].sort((x,y)=>x-y), i=(s.length-1)*q, lo=Math.floor(i); return s.length ? s[lo]+(s[Math.ceil(i)]-s[lo])*(i-lo) : NaN; }

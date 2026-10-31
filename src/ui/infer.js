@@ -39,15 +39,15 @@ function renderInfer(){
   if(dec) kpis($("i-kpis"),[
     ["TPOT",fT(r.tpot),r.specK?t("infer.kpi.tpotFootSpec",{step:fT(r.stepT),tok:(1+c.accept).toFixed(1)}):t("infer.kpi.tpotFoot",{step:fT(r.stepT)})],
     [t("infer.kpi.thr"),fN(r.tokPerGpu)+" tok/s/GPU",t("infer.kpi.thrFoot",{v:fN(r.tokPerGpu*topo.gpus)})],
-    ["CUDA graph",r.graph?t("infer.kpi.graphPad",{rows:r.rowsG}):t("infer.kpi.graphEager"),r.graph?t("infer.kpi.graphFoot",{rows:r.rowsR,pct:pct(r.rowsG-r.rowsR,r.rowsR)}):t("infer.kpi.eagerFoot",{n:r.nKern,us:g.launchUs}),!r.graph&&c.graph],
+    [t("infer.kpi.graph"),r.graph?t("infer.kpi.graphPad",{rows:r.rowsG}):t("infer.kpi.graphEager"),r.graph?t("infer.kpi.graphFoot",{rows:r.rowsR,pct:pct(r.rowsG-r.rowsR,r.rowsR)}):t("infer.kpi.eagerFoot",{n:r.nKern,us:g.launchUs}),!r.graph&&c.graph],
     [t("infer.kpi.fit"),t("infer.kpi.fitVal",{n:fInt(r.mem.Bmax)}),t("infer.kpi.fitFoot",{n:fInt(c.n)}),r.mem.Bmax<r.Breq],
-    [t("infer.kpi.wPer"),fB(wPer),"expert "+fB(r.mem.wExp),r.mem.avail<=0],
+    [t("infer.kpi.wPer"),fB(wPer),t("infer.kpi.wPerFoot",{b:fB(r.mem.wExp)}),r.mem.avail<=0],
     [t("infer.kpi.perSeq"),fB(r.mem.perSeq),r.mem.statePer>0?t("infer.kpi.perSeqFootState",{kv:fB(r.mem.kvTok*c.n),state:fB(r.mem.statePer),slots:r.mem.slots}):t("infer.kpi.perSeqFoot",{kv:fB(r.mem.kvTok*c.n)})]]);
   else kpis($("i-kpis"),[
     ["TTFT",fT(r.ttft),t("infer.kpi.ttftFoot",{n:r.chunks.length})],
     [t("infer.kpi.firstChunk"),fT(r.chunks[0]?r.chunks[0].t:r.stepT),t("infer.kpi.firstChunkFoot",{last:fT(r.chunks.length?r.chunks[r.chunks.length-1].t:0)})],
     [t("infer.kpi.prefillThr"),fN(r.tokPerGpu)+" tok/s/GPU",t("infer.kpi.prefillThrFoot")],
-    ["prefill graph",r.graph?t("infer.kpi.prefillGraphOn"):t("infer.kpi.prefillGraphOff"),E.prefillGraph(m)?"":t("infer.kpi.prefillGraphNone")],
+    [t("infer.kpi.prefillGraph"),r.graph?t("infer.kpi.prefillGraphOn"):t("infer.kpi.prefillGraphOff"),E.prefillGraph(m)?"":t("infer.kpi.prefillGraphNone")],
     [t("infer.kpi.wPer"),fB(wPer),"",r.mem.avail<=0]]);
   // 时间分解
   const items=[];
@@ -57,7 +57,7 @@ function renderInfer(){
   if(tboC>0) items.push({label:t("infer.bar.tbo"),v:Math.max(0,tboC-r.tComp*0.5),color:css("c-a2a"),tag:pill("comm")});
   if(r.exposedOverlap>0) items.push({label:t("infer.bar.exposed"),v:r.exposedOverlap,color:css("c-a2a"),tag:pill("comm")});
   const base=r.stepT-(r.draftT||0)-(r.commitT||0), dpSync=(c.engine==="vllm"||c.engine==="titan")&&r.dpA>1?g.dpSyncUs*1e-6:0;
-  if(r.graph) items.push({label:"graph replay",v:g.graphLaunchUs*1e-6,color:css("c-free"),tag:pill("launch")});
+  if(r.graph) items.push({label:t("infer.bar.graph"),v:g.graphLaunchUs*1e-6,color:css("c-free"),tag:pill("launch")});
   const cpuExtra=base-dpSync-r.gpu-(r.graph?g.graphLaunchUs*1e-6:0);
   if(cpuExtra>1e-9) items.push({label:t("infer.bar.cpu",{n:r.nKern}),v:cpuExtra,color:css("c-free"),tag:pill("launch")});
   if(dpSync) items.push({label:t("infer.bar.dpSync"),v:dpSync,color:css("c-free"),tag:pill("launch")});
@@ -76,8 +76,8 @@ function renderInfer(){
   const pks=[{v:peakOf(hw,"bf16"),n:"BF16"}]; if(dtB(c.wDt)<2) pks.push({v:peakOf(hw,c.wDt),n:c.wDt.toUpperCase()}); else if(dtB(c.dDt)<2) pks.push({v:peakOf(hw,c.dDt),n:"FP8"});
   const top=new Set([...r.ops].sort((a,b)=>b.t-a.t).slice(0,10));
   plot($("i-roof"),{h:380,x0:0.05,x1:20000,y0:1e9,y1:Math.max(...pks.map(p=>p.v))*3,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("infer.roof.xl"),yl:t("infer.roof.yl"),
-    series:roofSeries(hw,g,pks,0.05,20000),points:r.ops.filter(o=>o.flops>0).map(o=>({x:o.I,y:o.flops/o.t,color:GROUPC[o.group],label:top.has(o)?o.name.replace(/（.*?）/g,""):null})),
-    vlines:pks.map((p,i)=>({x:p.v*g.etaC/(hw.hbm*1e9*g.etaM),color:css("muted"),label:t("infer.roof.knee",{name:p.n,i:fI(p.v*g.etaC/(hw.hbm*1e9*g.etaM))}),dy:i*14}))});
+    series:roofSeries(hw,g,pks,0.05,20000),points:r.ops.filter(o=>o.flops>0).map(o=>({x:o.I,y:o.flops/o.t,color:GROUPC[o.group],label:top.has(o)?shortName(o.name):null})),
+    vlines:pks.map((p,i)=>({x:Common.ridge(p.v,hw,g),color:css("muted"),label:t("infer.roof.knee",{name:p.n,i:fI(Common.ridge(p.v,hw,g))}),dy:i*14}))});
   $("i-roof-legend").innerHTML='<span><i></i>'+t("infer.roof.legendBf16")+'</span>'+(pks[1]?'<span><i class="d"></i>'+t("infer.roof.legendPeak",{name:pks[1].n})+'</span>':'')+
     Object.entries({attn:t("infer.roof.group.attn"),lin:t("infer.roof.group.lin"),moe:t("infer.roof.group.moe"),lm:t("infer.roof.group.lm"),misc:t("infer.roof.group.misc")}).map(([k,v])=>'<span><span class="sw" style="background:'+GROUPC[k]+'"></span>'+v+'</span>').join("")+'<span>'+t("infer.roof.legendFloor")+'</span>';
   // 换引擎
@@ -113,21 +113,21 @@ function renderInfer(){
     [t("infer.diff.sharedOverlap"),e=>({graph:t("infer.diff.shared.graph"),small:t("infer.diff.shared.small"),none:t("infer.diff.shared.none")})[P(e).sharedOverlap]],
     [t("infer.diff.nKern"),e=>fInt(runs[e].nKern)],
     ...(dec?[[t("infer.diff.step"),e=>fT(runs[e].stepT)],["TPOT",e=>fT(runs[e].tpot)],["tok/s/GPU",e=>fN(runs[e].tokPerGpu)],[t("infer.diff.bmax"),e=>fInt(runs[e].mem.Bmax)]]
-      :[["TTFT",e=>fT(runs[e].ttft)],["prefill tok/s/GPU",e=>fN(runs[e].tokPerGpu)]])];
+      :[["TTFT",e=>fT(runs[e].ttft)],[t("infer.diff.prefillThr"),e=>fN(runs[e].tokPerGpu)]])];
   table($("i-diff"),[""].concat(engs.map(e=>e===c.engine?t("infer.diff.headCur",{engine:ENGN[e]}):ENGN[e])),R.map(row=>[row[0]].concat(engs.map(e=>row[1](e)))));
   // 显存
   const M=r.mem, tot=M.total, Bm = dec ? r.Breq*r.dpA/r.dpA : 1;
   const kvU=Math.min(Bm,Math.max(0,M.Bmax))*M.kvTok*c.n, stU=Math.min(Bm,Math.max(0,M.Bmax))*M.statePer;
   stackBar($("i-mem"),$("i-memlist"),[
     {label:t("infer.mem.wAttn"),v:M.wAttn,color:css("c-attn")},{label:t("infer.mem.wLin"),v:M.wLin,color:css("c-lin")},{label:t("infer.mem.wExp"),v:M.wExp,color:css("c-moe")},
-    {label:t("infer.mem.wMoeRep"),v:M.wMoeRep,color:css("c-e")},{label:"dense FFN",v:M.wDense,color:css("c-e")},{label:"embedding + lm_head",v:M.wEmb,color:css("c-lm")},{label:t("infer.mem.wMtp"),v:M.wMtp,color:css("c-cp")},{label:specName(c)+" drafter",v:M.wDraft||0,color:css("c-cp")},
+    {label:t("infer.mem.wMoeRep"),v:M.wMoeRep,color:css("c-e")},{label:t("infer.mem.wDense"),v:M.wDense,color:css("c-e")},{label:t("infer.mem.wEmb"),v:M.wEmb,color:css("c-lm")},{label:t("infer.mem.wMtp"),v:M.wMtp,color:css("c-cp")},{label:specName(c)+" drafter",v:M.wDraft||0,color:css("c-cp")},
     {label:t("infer.mem.kv",{b:Bm,n:fInt(c.n)}),v:kvU,color:css("c-kv")},{label:t("infer.mem.state",{b:Bm,slots:M.slots}),v:stU,color:css("c-st")},
     {label:t("infer.mem.reserve"),v:c.reserveGB*1e9,color:css("c-act")},{label:t("infer.mem.free"),v:Math.max(0,M.avail-kvU-stU),color:css("soft")},{label:t("infer.mem.outside"),v:tot*(1-c.memFrac),color:css("c-free")}],tot,fB);
   // 解析
   const ops=[...r.ops].sort((a,b)=>b.t-a.t), memT=sum(r.ops.filter(o=>o.bound==="memory"),o=>o.t), launchT=sum(r.ops.filter(o=>o.bound==="launch"),o=>o.t), commT=sum(r.comm.filter(x=>!x.overlap),x=>x.t);
   const moeO=r.ops.find(o=>o.key==="moe"), kvO=r.ops.filter(o=>o.scalesWith==="real"), kvBytes=sum(kvO,o=>o.bytes);
   const A=[];
-  A.push(t("infer.analysis.slowest",{list:ops.slice(0,3).map(o=>esc(o.name.replace(/（.*?）/g,""))+" "+V(fT(o.t))+" "+pill(o.bound)).join(t("infer.analysis.listSep"))}));
+  A.push(t("infer.analysis.slowest",{list:ops.slice(0,3).map(o=>esc(shortName(o.name))+" "+V(fT(o.t))+" "+pill(o.bound)).join(t("infer.analysis.listSep"))}));
   A.push(t("infer.analysis.shares",{mem:V(pct(memT,r.stepT)),launch:V(pct(launchT,r.stepT)),comm:V(pct(commT,r.stepT))}));
   if(moeO&&dec) A.push(t("infer.analysis.moe",{rows:fInt(r.Tg),touched:V(fI(moeO.touched)),cover:pct(moeO.cover,1),bytes:V(fB(moeO.bytes/moeO.layers))}));
   if(dec&&kvO.length) A.push(t("infer.analysis.kv",{bytes:V(fB(kvBytes)),time:V(fT(sum(kvO,o=>o.t)))})+(m.lin.n>0&&r.specK>0?t("infer.analysis.kvSpec",{x:(E.stateVerify(m,r.w)/E.stateDecode(m)).toFixed(1),engine:ENGN[c.engine]}):""));

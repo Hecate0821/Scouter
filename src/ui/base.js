@@ -1,3 +1,16 @@
+/* 计算核心给出的是消息（src/engine/msg.js），在这里接上当前语言的 t() */
+Msg.render = m => t(m.key, m.p);
+
+/* 数据点库里的文字是内容，原文在 data/*.json；当前语言在 locales/<语言>/data.js 里给了译文的字段，启动时换进去（key 的写法见那个文件） */
+function localizeData(){
+  const tr = (rec, id) => { for(const k of Object.keys(rec)){ const v=rec[k], key="data."+id+"."+k;
+    if(typeof v==="string"){ if(I18N.has(key)) rec[k]=t(key); }
+    else if(Array.isArray(v)) v.forEach((x,i)=>{ if(typeof x==="string" && I18N.has(key+"."+i)) v[i]=t(key+"."+i); }); } };
+  for(const [id,s] of Object.entries(DB.sets)){ tr(s,id); for(const [k,mt] of Object.entries(s.metrics||{})) if(I18N.has("data."+id+".metrics."+k)) mt.label=t("data."+id+".metrics."+k); }
+  for(const id of Object.keys(DB.sets)) for(const p of DB.set(id)) tr(p,p.id);
+}
+localizeData();
+
 /* ---------- 格式化 ---------- */
 function fT(s){ if(!isFinite(s)) return "∞"; const a=Math.abs(s);
   if(a===0) return "0"; if(a<1e-3) return (s*1e6).toFixed(a<1e-5?1:0)+" µs"; if(a<1) return (s*1e3).toFixed(a<1e-2?2:1)+" ms";
@@ -11,6 +24,8 @@ function fI(x){ if(!isFinite(x)) return "∞"; return x>=100?Math.round(x).toStr
 function fInt(x){ return isFinite(x)?Math.round(x).toLocaleString("en-US"):"∞"; }
 const pct = (a,b) => b>0 ? (a/b*100).toFixed(a/b<0.1?1:0)+"%" : "—";
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+/* 名字的短写（图上的标注）：怎么缩由语言包决定（locales/<语言>/common.js 的 fmt.shortName） */
+const shortName = s => t("common.fmt.shortName", {s});
 const css = n => "var(--"+n+")";
 
 /* ---------- 画图 ---------- */
@@ -63,13 +78,14 @@ function stackBar(barEl, listEl, items, total, fmt){
   barEl.innerHTML=items.filter(x=>x.v>0).map(x=>'<span style="width:'+(x.v/T*100)+'%;background:'+x.color+'" title="'+esc(x.label)+'"></span>').join("");
   listEl.innerHTML=items.filter(x=>x.v>0).map(x=>'<div class="lab"><span class="sw" style="background:'+x.color+'"></span><span>'+esc(x.label)+(x.tag?' '+x.tag:'')+'</span></div><div class="num">'+fmt(x.v)+'</div><div class="num">'+pct(x.v,T)+'</div>').join("");
 }
-const pill = b => '<span class="pill '+b+'">'+b+'</span>';
+const pill = b => '<span class="pill '+b+'">'+esc(t("common.pill."+b))+'</span>';
 
 
 const { MODELS, HW, TOPO, derive, dtB, peakOf } = Common;
 const $ = id => document.getElementById(id);
 const qa = s => Array.from(document.querySelectorAll(s));
-const clone = o => JSON.parse(JSON.stringify(o));
+/* 深拷贝纯数据（模型、配置）；计算核心的消息原样保留 */
+const clone = o => o===null || typeof o!=="object" || o instanceof Msg ? o : Array.isArray(o) ? o.map(clone) : Object.fromEntries(Object.entries(o).map(([k,v])=>[k,clone(v)]));
 const sum = (a,f) => a.reduce((s,x)=>s+(f?f(x):x),0);
 
 const GROUPC = { attn:css("c-attn"), lin:css("c-lin"), moe:css("c-moe"), lm:css("c-lm"), misc:css("muted") };

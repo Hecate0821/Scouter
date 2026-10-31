@@ -79,6 +79,8 @@ function legendInto(id, items){ const el=$(id); if(!el) return;
 
 /* 甘特图：groups [{label, lanes, segs:[{lane,t0,t1,cat,label}]}] */
 const LANE_NAME = { cpu:"CPU", sm:t("common.gantt.sm"), nvl:"NVLink", ib:"IB" };
+/* 放不下就截断（按每字 6.4px 估）；标签可能是计算核心的消息，先渲染成文字 */
+const fitLabel = (s,w) => s.length*6.4>w-8 ? s.slice(0,Math.max(2,Math.floor((w-14)/6.4)))+"…" : s;
 function gantt(svgId, groups){
   const svg=$(svgId), W=680, laneH=20, gapG=16, m={l:92,r:12,t:10,b:28};
   let H=m.t+m.b; groups.forEach(gr=>{ H+=(gr.label?16:0)+gr.lanes.length*(laneH+3)+gapG; });
@@ -93,7 +95,7 @@ function gantt(svgId, groups){
     for(const sg of gr.segs){ if(!(sg.lane in ly) || sg.t1-sg.t0<=0) continue;
       const x0=X(sg.t0), w=Math.max(1.5, X(sg.t1)-x0-2);
       s+='<rect x="'+(x0+1)+'" y="'+(ly[sg.lane]+1)+'" width="'+w+'" height="'+(laneH-2)+'" rx="3" style="fill:'+css(CAT[sg.cat]||"c-oth")+'" '+tipAttr(sg.label,[{v:fT(sg.t1-sg.t0),l:LANE_NAME[sg.lane]||sg.lane}])+'/>';
-      if(w>70) s+='<text x="'+(x0+5)+'" y="'+(ly[sg.lane]+laneH/2+4)+'" style="fill:var(--panel);font-size:10.5px;pointer-events:none">'+esc(sg.label.length*6.4>w-8 ? sg.label.slice(0,Math.max(2,Math.floor((w-14)/6.4)))+"…" : sg.label)+'</text>'; }
+      if(w>70) s+='<text x="'+(x0+5)+'" y="'+(ly[sg.lane]+laneH/2+4)+'" style="fill:var(--panel);font-size:10.5px;pointer-events:none">'+esc(fitLabel(String(sg.label),w))+'</text>'; }
     y+=gapG; }
   svg.innerHTML=s; bindTips(svg);
 }
@@ -105,4 +107,4 @@ function layout(seq, t0){
     segs.push({lane,label,t0:t,t1:t+dur,cat}); lastStart=t; t+=dur; }
   return { segs, end:t };
 }
-const GANTT_LEGEND = [["attention","attn"],[t("common.gantt.proj"),"proj"],[t("common.gantt.lin"),"lin"],["MoE GEMM","moe"],[t("common.gantt.ep"),"ep"],[t("common.gantt.cp"),"cp"],[t("common.gantt.tp"),"tp"],["FSDP","fsdp"],[t("common.gantt.sync"),"sync"],[t("common.gantt.oth"),"oth"]];
+const GANTT_LEGEND = [[t("common.gantt.attn"),"attn"],[t("common.gantt.proj"),"proj"],[t("common.gantt.lin"),"lin"],[t("common.gantt.moe"),"moe"],[t("common.gantt.ep"),"ep"],[t("common.gantt.cp"),"cp"],[t("common.gantt.tp"),"tp"],["FSDP","fsdp"],[t("common.gantt.sync"),"sync"],[t("common.gantt.oth"),"oth"]];

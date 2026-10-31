@@ -61,6 +61,7 @@ I18N.add("zh", "quant", {
   "formats.b2.tbl.row8.c3": "<a href=\"#train/quant\">低精度训练</a>",
   "formats.b2.tbl.row9.c2": "训练后量化 / 量化感知训练。QAT 前向做 fake quant（量化再反量化），反向用 STE 直通",
   "formats.b2.tbl.row9.c3": "<a href=\"#rl/qat\">低精度训练与 QAT</a>",
+  "formats.b2.tbl.row10.c1": "high_precision / dequantized",
   "formats.b2.tbl.row10.c2": "低精度前向配 BF16 反向时，反向用原始 BF16 值，还是用前向那份量化值反量化回来",
   "formats.b2.tbl.row10.c3": "<a href=\"#rl/qat\">低精度训练与 QAT</a>",
   /* src/ui/quant.js 渲染的文字 */
@@ -69,6 +70,8 @@ I18N.add("zh", "quant", {
   "check.w4a8": "同形状 kernel 本页 {range}（FP8 峰值是 BF16 的 2 倍，再加反量化），实测只有 1.4–1.8×：W4A8 kernel 离 FP8 峰值更远。Qwen3.6 形状一层 MoE（激活单独量化）T = 64 / 1024：{t64} / {t1024}，方向和端到端慢 3–8% 一致",
   "check.fuse": "当前模型、GB300 TP4、NVFP4 expert：并发 1 / 16 / 128 融合后快 {r}",
   "check.mem": "按副本数算：MXFP8 {mx} → {mxHp}（{pct}%，方向一致）；NVFP4 默认 {nv} → {nvHp}：方向相反，TE 默认路径的峰值来自 RHT / 2D 量化的临时 buffer，这里没建模",
+  "check.partExpert": "expert",
+  "check.partDense": "dense FFN",
   "check.trainRecipe": "当前模型 {part} gate_up、M=8192：MXFP8 {mx}，NVFP4 + BF16 反向（per-token 未融合）{hpU}，融合后 {hpF}（相对 BF16 的速度）",
   "check.moeTrain": "Llama4 Scout expert（D 5120、F 8192，每 expert 16K 行）只算 grouped GEMM：MXFP8 {mx}；实测 1.40× 里还有 attention、a2a 等没加速的部分",
   "head.schemeOpt": "{short}：{name}",

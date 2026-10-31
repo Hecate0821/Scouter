@@ -1,17 +1,17 @@
 /* 量化核心：只描述量化本身带来的差别。单个 GEMM 的权重 / scale / 激活字节，激活量化 kernel，W4A16 的反量化，
    MoE grouped GEMM 的每 expert 行数与对齐补齐，训练三遍 GEMM 的精度与转置副本。统一按 Blackwell（SM100 / SM103）的块缩放 MMA 算。 */
 const Quant = (function(){
-const { dtB, peakOf, roof } = Common;
+const { dtB, peakOf, roof, memT } = Common;
 
 /* 推理方案：w / a 是 Common.DT 里的格式；pk 是 MMA 实际跑在 HW 表的哪一列峰值上（取两个操作数里精度高的那个） */
 const SCHEMES = {
-  bf16:  { name:t("engine_quant.scheme.bf16"), short:"W16A16", w:"bf16",  a:"bf16",  pk:"bf16" },
-  fp8:   { name:t("engine_quant.scheme.fp8"), short:"W8A8 block", w:"fp8", a:"fp8a", pk:"fp8" },
-  mxfp8: { name:t("engine_quant.scheme.mxfp8"), short:"W8A8 MX", w:"mxfp8", a:"mxfp8", pk:"fp8" },
-  w4a16: { name:t("engine_quant.scheme.w4a16"), short:"W4A16", w:"mxfp4", a:"bf16",  pk:"bf16", deq:true },
-  w4a8:  { name:t("engine_quant.scheme.w4a8"), short:"W4A8", w:"mxfp4", a:"mxfp8", pk:"fp8" },
-  mxfp4: { name:t("engine_quant.scheme.mxfp4"), short:"W4A4 MX", w:"mxfp4", a:"mxfp4", pk:"fp4" },
-  nvfp4: { name:t("engine_quant.scheme.nvfp4"), short:"W4A4 NV", w:"nvfp4", a:"nvfp4", pk:"fp4", tok:true }
+  bf16:  { name:Msg.of("engine_quant.scheme.bf16"), short:"W16A16", w:"bf16",  a:"bf16",  pk:"bf16" },
+  fp8:   { name:Msg.of("engine_quant.scheme.fp8"), short:"W8A8 block", w:"fp8", a:"fp8a", pk:"fp8" },
+  mxfp8: { name:Msg.of("engine_quant.scheme.mxfp8"), short:"W8A8 MX", w:"mxfp8", a:"mxfp8", pk:"fp8" },
+  w4a16: { name:Msg.of("engine_quant.scheme.w4a16"), short:"W4A16", w:"mxfp4", a:"bf16",  pk:"bf16", deq:true },
+  w4a8:  { name:Msg.of("engine_quant.scheme.w4a8"), short:"W4A8", w:"mxfp4", a:"mxfp8", pk:"fp8" },
+  mxfp4: { name:Msg.of("engine_quant.scheme.mxfp4"), short:"W4A4 MX", w:"mxfp4", a:"mxfp4", pk:"fp4" },
+  nvfp4: { name:Msg.of("engine_quant.scheme.nvfp4"), short:"W4A4 NV", w:"nvfp4", a:"nvfp4", pk:"fp4", tok:true }
 };
 const ORDER = ["bf16","fp8","mxfp8","w4a16","w4a8","mxfp4","nvfp4"];
 
@@ -70,15 +70,15 @@ function moeLayer(hw, g, m, key, T, ep, o){
 /* 训练配方：f 前向，b 反向（dgrad + wgrad）；w2d 权重方块（一份 qdata 两个方向共用）；
    hp：反向用原始 BF16 操作数（orig）或前向量化值反量化后的 BF16（deq）；tok：NVFP4 激活按 token 的 FP32 scale；rht：wgrad 输入做随机 Hadamard */
 const RECIPES = {
-  bf16:    { name:t("engine_quant.recipe.bf16.name"), f:"bf16", b:"bf16", who:t("engine_quant.recipe.bf16.who") },
-  fp8:     { name:t("engine_quant.recipe.fp8.name"), f:"fp8", b:"fp8", w2d:true, who:t("engine_quant.recipe.fp8.who") },
-  mxfp8:   { name:t("engine_quant.recipe.mxfp8.name"), f:"mxfp8", b:"mxfp8", w2d:false, who:t("engine_quant.recipe.mxfp8.who") },
-  mxfp8tt: { name:t("engine_quant.recipe.mxfp8tt.name"), f:"mxfp8", b:"mxfp8", w2d:true, who:t("engine_quant.recipe.mxfp8tt.who") },
-  nvfp4:   { name:t("engine_quant.recipe.nvfp4.name"), f:"nvfp4", b:"nvfp4", w2d:true, rht:true, who:t("engine_quant.recipe.nvfp4.who") },
+  bf16:    { name:Msg.of("engine_quant.recipe.bf16.name"), f:"bf16", b:"bf16", who:Msg.of("engine_quant.recipe.bf16.who") },
+  fp8:     { name:Msg.of("engine_quant.recipe.fp8.name"), f:"fp8", b:"fp8", w2d:true, who:Msg.of("engine_quant.recipe.fp8.who") },
+  mxfp8:   { name:Msg.of("engine_quant.recipe.mxfp8.name"), f:"mxfp8", b:"mxfp8", w2d:false, who:Msg.of("engine_quant.recipe.mxfp8.who") },
+  mxfp8tt: { name:Msg.of("engine_quant.recipe.mxfp8tt.name"), f:"mxfp8", b:"mxfp8", w2d:true, who:Msg.of("engine_quant.recipe.mxfp8tt.who") },
+  nvfp4:   { name:Msg.of("engine_quant.recipe.nvfp4.name"), f:"nvfp4", b:"nvfp4", w2d:true, rht:true, who:Msg.of("engine_quant.recipe.nvfp4.who") },
   // 下面三种是 RL 的配方（前向低精度、反向 BF16），只在 RL · 低精度训练与 QAT 一节用
-  mxfp8hp: { name:t("engine_quant.recipe.mxfp8hp.name"), f:"mxfp8", b:"bf16", hp:"orig", who:t("engine_quant.recipe.mxfp8hp.who") },
-  nvfp4hp: { name:t("engine_quant.recipe.nvfp4hp.name"), f:"nvfp4", b:"bf16", hp:"orig", tok:true, who:t("engine_quant.recipe.nvfp4hp.who") },
-  nvfp4dq: { name:t("engine_quant.recipe.nvfp4dq.name"), f:"nvfp4", b:"bf16", hp:"deq", tok:true, who:t("engine_quant.recipe.nvfp4dq.who") }
+  mxfp8hp: { name:Msg.of("engine_quant.recipe.mxfp8hp.name"), f:"mxfp8", b:"bf16", hp:"orig", who:Msg.of("engine_quant.recipe.mxfp8hp.who") },
+  nvfp4hp: { name:Msg.of("engine_quant.recipe.nvfp4hp.name"), f:"nvfp4", b:"bf16", hp:"orig", tok:true, who:Msg.of("engine_quant.recipe.nvfp4hp.who") },
+  nvfp4dq: { name:Msg.of("engine_quant.recipe.nvfp4dq.name"), f:"nvfp4", b:"bf16", hp:"deq", tok:true, who:Msg.of("engine_quant.recipe.nvfp4dq.who") }
 };
 const RORDER = ["bf16","fp8","mxfp8","mxfp8tt","nvfp4"];   // 后训练页只列 Megatron / TE / torchtitan 的默认配方
 
@@ -93,14 +93,14 @@ function trainGemm(hw, g, key, M, N, K, o){
   const nm = Math.max(1,o.nMicro);
   if(fq){
     // X：一次读 BF16，写行方向（fprop）；反向低精度时同一个 kernel 再写列方向（wgrad）
-    q.push([bq ? t("engine_quant.q.xRowCol") : t("engine_quant.q.xRow"), pass(M*K*(5 + (R.rht&&bq?32:0)), M*K*(2 + bf + (bq?bb:0)), pkA), "x"]);
+    q.push([bq ? Msg.of("engine_quant.q.xRowCol") : Msg.of("engine_quant.q.xRow"), pass(M*K*(5 + (R.rht&&bq?32:0)), M*K*(2 + bf + (bq?bb:0)), pkA), "x"]);
     // W：1D 块反向要从 BF16 再量化一份列方向；2D 块一份 qdata，两种 scale 布局
     const wq = N*K*(2 + bf + (bq && !R.w2d ? bb : 0));
-    q.push([bq ? (R.w2d ? t("engine_quant.q.w2d", {n:nm}) : t("engine_quant.q.w1dRowCol", {n:nm})) : t("engine_quant.q.wRow", {n:nm}), pass(5*N*K, wq, pkA)/nm, "w"]);
-    if(R.tok && !o.tokFused) q.push([t("engine_quant.q.tokScale"), pass(2*M*K+2*M*N, 2*M*K*2 + 2*M*N*2, pkA), "tok"]);
+    q.push([bq ? (R.w2d ? Msg.of("engine_quant.q.w2d", {n:nm}) : Msg.of("engine_quant.q.w1dRowCol", {n:nm})) : Msg.of("engine_quant.q.wRow", {n:nm}), pass(5*N*K, wq, pkA)/nm, "w"]);
+    if(R.tok && !o.tokFused) q.push([Msg.of("engine_quant.q.tokScale"), pass(2*M*K+2*M*N, 2*M*K*2 + 2*M*N*2, pkA), "tok"]);
   }
-  if(bq) q.push([R.rht ? t("engine_quant.q.dyRht") : t("engine_quant.q.dy"), pass(M*N*(5 + (R.rht?32:0)), M*N*(2 + 2*bb), pkA), "dy"]);
-  if(R.hp==="deq") q.push([t("engine_quant.q.deq"), pass(M*K+N*K, M*K*(bf+2) + N*K*(bf+2)/nm, pkA), "deq"]);
+  if(bq) q.push([R.rht ? Msg.of("engine_quant.q.dyRht") : Msg.of("engine_quant.q.dy"), pass(M*N*(5 + (R.rht?32:0)), M*N*(2 + 2*bb), pkA), "dy"]);
+  if(R.hp==="deq") q.push([Msg.of("engine_quant.q.deq"), pass(M*K+N*K, M*K*(bf+2) + N*K*(bf+2)/nm, pkA), "deq"]);
   const tq = q.reduce((s,x)=>s+x[1],0);
   // 反向要用到的东西：保存的激活 + 低精度权重缓存
   const saveX = !fq ? M*K*2 : bq ? M*K*bb : R.hp==="deq" ? M*K*bf : M*K*2;
@@ -108,5 +108,10 @@ function trainGemm(hw, g, key, M, N, K, o){
   return { R, fprop, dgrad, wgrad, q, tq, t:fprop+dgrad+wgrad+tq, saveX, wCache, extra:saveX+wCache };
 }
 
-return { SCHEMES, ORDER, RECIPES, RORDER, gemm, crossover, poisson, autoAlign, moeLayer, trainGemm };
+/* 训练三遍 GEMM（fprop 一遍、dgrad + wgrad 两遍）只看峰值能快多少：fprop 用格式 f，反向用格式 b */
+const idealSpeedup = (hw, f, b) => { const pk = k => peakOf(hw,k)/peakOf(hw,"bf16"); return 3/(1/pk(f)+2/pk(b)); };
+/* QAT 的 fake quant：读 BF16 权重、写回量化再反量化的 BF16（N×K 各 2+2 字节），按 micro-batch 摊；至少一个 kernel */
+const fakeQuantT = (hw, g, N, K, nMicro) => Math.max(g.kernelUs*1e-6, memT(N*K*(2+2), hw, g))/Math.max(1, nMicro);
+
+return { SCHEMES, ORDER, RECIPES, RORDER, gemm, crossover, poisson, autoAlign, moeLayer, trainGemm, idealSpeedup, fakeQuantT };
 })();

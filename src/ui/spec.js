@@ -22,7 +22,7 @@ const TRTLLM_SPEC = "https://nvidia.github.io/TensorRT-LLM/features/speculative-
 function renderSpec(){
   const {m,hw}=ctx(), c=S.inf, sn=specNow(), {k,a,method}=sn, P=Infer.ENGINES[c.engine], capped=isFinite(P.specCap), nm=Infer.SPEC[method].name;
   const r=specRun(method,k,a), base=specRun(method,0,a,{B:r.Breq}), tau=tauOf(a,k), verify=r.stepT-r.draftT-r.commitT;
-  const capW=Infer.specCapWarn(P), warn=r.warn.filter(w=>w!==capW);      // 并发上限在正文里交代
+  const capW=Infer.specCapWarn(P), warn=r.warn.filter(w=>Msg.id(w)!==Msg.id(capW));      // 并发上限在正文里交代
   if(r.mem.avail<=0) warn.push(t("spec.warn.noFit",{w:fB(r.mem.weights)}));
   else if(r.Breq>r.mem.Bmax) warn.push(t("spec.warn.bOver",{b:r.Breq,bmax:r.mem.Bmax,n:fInt(c.n)}));
   setWarn(warn);
@@ -71,7 +71,7 @@ function renderSpec(){
   $("s-cost-lede").innerHTML=t("spec.cost.lede",{a:V(a.toFixed(2)),b:r.Breq})+t("spec.cost.real")+trend+
     (capped?t("spec.cost.capped",{engine:ENGN[c.engine],cap:P.specCap}):t("spec.cost.uncapped"));
   legendInto("s-vs-legend",SPEC_ORDER.map(mt=>({name:Infer.SPEC[mt].name,col:SPECC[mt],line:true})).concat([{name:t("spec.vs.offShort"),col:"muted",line:true}]));
-  table($("s-ledger"),[t("spec.ledger.method",{a:a.toFixed(2),b:r.Breq}),"k",t("spec.ledger.width"),"draft",t("spec.ledger.verify"),t("spec.ledger.commit"),t("spec.ledger.step"),"τ","TPOT",t("spec.ledger.speed"),"tok/s/GPU",t("spec.ledger.draftW"),t("spec.ledger.bmax")],
+  table($("s-ledger"),[t("spec.ledger.method",{a:a.toFixed(2),b:r.Breq}),"k",t("spec.ledger.width"),t("spec.ledger.draft"),t("spec.ledger.verify"),t("spec.ledger.commit"),t("spec.ledger.step"),"τ","TPOT",t("spec.ledger.speed"),"tok/s/GPU",t("spec.ledger.draftW"),t("spec.ledger.bmax")],
     SPEC_ORDER.map(mt=>{ const kk=SPEC_K[mt], x=specRun(mt,kk,a);
       return {cls:mt===method?"hl":"",cells:[sw(css(SPECC[mt]))+Infer.SPEC[mt].name,kk,kk+1,fT(x.draftT),fT(x.stepT-x.draftT-x.commitT),x.commitT?fT(x.commitT):"—",fT(x.stepT),tauOf(a,kk).toFixed(2),fT(x.tpot),fX(base.tpot/x.tpot),fN(x.tokPerGpu),fB(x.mem.wDraft||x.mem.wMtp||0),fInt(x.mem.Bmax)]}; }),[1,2,3,4,5,6,7,8,9,10,11,12]);
   // 引擎支持、公开数字、RL

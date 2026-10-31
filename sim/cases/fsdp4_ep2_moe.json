@@ -1,0 +1,48 @@
+{
+ "name": "fsdp4_ep2_moe",
+ "about": "FSDP2 over 4 ranks, EP2 all-to-all, experts FSDP-sharded over the other 2",
+ "model": {
+  "name": "sim moe",
+  "short": "sim-moe",
+  "family": "sim",
+  "D": 256,
+  "L": 4,
+  "V": 1024,
+  "mtp": 0,
+  "full": {
+   "n": 4,
+   "kind": "gqa",
+   "Hq": 8,
+   "Hkv": 2,
+   "dh": 32,
+   "gate": true
+  },
+  "lin": {
+   "n": 0,
+   "kind": "GDN",
+   "Hk": 0,
+   "Hv": 0,
+   "dk": 0,
+   "dv": 0,
+   "conv": 4
+  },
+  "moe": {
+   "E": 8,
+   "k": 2,
+   "F": 128,
+   "Fs": 128,
+   "sharedGate": true,
+   "Dlat": 0
+  },
+  "dense": {
+   "n": 1,
+   "F": 512
+  },
+  "wDefault": "bf16"
+ },
+ "layout": {
+  "N": 4,
+  "ep": 2
+ },
+ "tok": 512
+}

@@ -1,0 +1,48 @@
+{
+ "name": "fsdp2_tp2_dense",
+ "about": "FSDP2 \u00d7 TP2 with sequence parallelism, dense model",
+ "model": {
+  "name": "sim dense",
+  "short": "sim-dense",
+  "family": "sim",
+  "D": 256,
+  "L": 4,
+  "V": 1024,
+  "mtp": 0,
+  "full": {
+   "n": 4,
+   "kind": "gqa",
+   "Hq": 8,
+   "Hkv": 2,
+   "dh": 32,
+   "gate": true
+  },
+  "lin": {
+   "n": 0,
+   "kind": "GDN",
+   "Hk": 0,
+   "Hv": 0,
+   "dk": 0,
+   "dv": 0,
+   "conv": 4
+  },
+  "moe": {
+   "E": 0,
+   "k": 0,
+   "F": 0,
+   "Fs": 0,
+   "sharedGate": false,
+   "Dlat": 0
+  },
+  "dense": {
+   "n": 4,
+   "F": 512
+  },
+  "wDefault": "bf16"
+ },
+ "layout": {
+  "N": 4,
+  "tp": 2
+ },
+ "tok": 512
+}
