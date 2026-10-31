@@ -5,13 +5,13 @@ const { dtB, peakOf, roof } = Common;
 
 /* 推理方案：w / a 是 Common.DT 里的格式；pk 是 MMA 实际跑在 HW 表的哪一列峰值上（取两个操作数里精度高的那个） */
 const SCHEMES = {
-  bf16:  { name:"BF16", short:"W16A16", w:"bf16",  a:"bf16",  pk:"bf16" },
-  fp8:   { name:"block FP8：W 128×128 / A 1×128，FP32 scale", short:"W8A8 block", w:"fp8", a:"fp8a", pk:"fp8" },
-  mxfp8: { name:"MXFP8：1×32，E8M0", short:"W8A8 MX", w:"mxfp8", a:"mxfp8", pk:"fp8" },
-  w4a16: { name:"MXFP4 权重 + BF16 激活", short:"W4A16", w:"mxfp4", a:"bf16",  pk:"bf16", deq:true },
-  w4a8:  { name:"MXFP4 权重 + MXFP8 激活", short:"W4A8", w:"mxfp4", a:"mxfp8", pk:"fp8" },
-  mxfp4: { name:"MXFP4 W4A4：1×32，E8M0", short:"W4A4 MX", w:"mxfp4", a:"mxfp4", pk:"fp4" },
-  nvfp4: { name:"NVFP4 W4A4：1×16 E4M3 + 每 token FP32", short:"W4A4 NV", w:"nvfp4", a:"nvfp4", pk:"fp4", tok:true }
+  bf16:  { name:t("engine_quant.scheme.bf16"), short:"W16A16", w:"bf16",  a:"bf16",  pk:"bf16" },
+  fp8:   { name:t("engine_quant.scheme.fp8"), short:"W8A8 block", w:"fp8", a:"fp8a", pk:"fp8" },
+  mxfp8: { name:t("engine_quant.scheme.mxfp8"), short:"W8A8 MX", w:"mxfp8", a:"mxfp8", pk:"fp8" },
+  w4a16: { name:t("engine_quant.scheme.w4a16"), short:"W4A16", w:"mxfp4", a:"bf16",  pk:"bf16", deq:true },
+  w4a8:  { name:t("engine_quant.scheme.w4a8"), short:"W4A8", w:"mxfp4", a:"mxfp8", pk:"fp8" },
+  mxfp4: { name:t("engine_quant.scheme.mxfp4"), short:"W4A4 MX", w:"mxfp4", a:"mxfp4", pk:"fp4" },
+  nvfp4: { name:t("engine_quant.scheme.nvfp4"), short:"W4A4 NV", w:"nvfp4", a:"nvfp4", pk:"fp4", tok:true }
 };
 const ORDER = ["bf16","fp8","mxfp8","w4a16","w4a8","mxfp4","nvfp4"];
 
@@ -70,15 +70,15 @@ function moeLayer(hw, g, m, key, T, ep, o){
 /* 训练配方：f 前向，b 反向（dgrad + wgrad）；w2d 权重方块（一份 qdata 两个方向共用）；
    hp：反向用原始 BF16 操作数（orig）或前向量化值反量化后的 BF16（deq）；tok：NVFP4 激活按 token 的 FP32 scale；rht：wgrad 输入做随机 Hadamard */
 const RECIPES = {
-  bf16:    { name:"BF16", f:"bf16", b:"bf16", who:"基线" },
-  fp8:     { name:"block FP8（权重 128×128，激活 1×128）", f:"fp8", b:"fp8", w2d:true, who:"Megatron --fp8-recipe blockwise（DeepSeek-V3 的配方）" },
-  mxfp8:   { name:"MXFP8，TE 默认", f:"mxfp8", b:"mxfp8", w2d:false, who:"Megatron --fp8-recipe mxfp8；Miles" },
-  mxfp8tt: { name:"MXFP8，torchtitan 32×32 权重", f:"mxfp8", b:"mxfp8", w2d:true, who:"torchtitan / torchao mxfp8_rceil" },
-  nvfp4:   { name:"NVFP4，TE 预训练默认", f:"nvfp4", b:"nvfp4", w2d:true, rht:true, who:"TE NVFP4BlockScaling 默认（2D 权重、RHT、随机舍入）" },
+  bf16:    { name:t("engine_quant.recipe.bf16.name"), f:"bf16", b:"bf16", who:t("engine_quant.recipe.bf16.who") },
+  fp8:     { name:t("engine_quant.recipe.fp8.name"), f:"fp8", b:"fp8", w2d:true, who:t("engine_quant.recipe.fp8.who") },
+  mxfp8:   { name:t("engine_quant.recipe.mxfp8.name"), f:"mxfp8", b:"mxfp8", w2d:false, who:t("engine_quant.recipe.mxfp8.who") },
+  mxfp8tt: { name:t("engine_quant.recipe.mxfp8tt.name"), f:"mxfp8", b:"mxfp8", w2d:true, who:t("engine_quant.recipe.mxfp8tt.who") },
+  nvfp4:   { name:t("engine_quant.recipe.nvfp4.name"), f:"nvfp4", b:"nvfp4", w2d:true, rht:true, who:t("engine_quant.recipe.nvfp4.who") },
   // 下面三种是 RL 的配方（前向低精度、反向 BF16），只在 RL · 低精度训练与 QAT 一节用
-  mxfp8hp: { name:"MXFP8 前向 + BF16 反向", f:"mxfp8", b:"bf16", hp:"orig", who:"NVTE_BACKWARD_OVERRIDE=high_precision" },
-  nvfp4hp: { name:"NVFP4 前向 + BF16 反向", f:"nvfp4", b:"bf16", hp:"orig", tok:true, who:"Miles --train-nvfp4 脚本默认" },
-  nvfp4dq: { name:"NVFP4 前向 + 反量化 BF16 反向", f:"nvfp4", b:"bf16", hp:"deq", tok:true, who:"The 4-bitter Lesson 的最终配方" }
+  mxfp8hp: { name:t("engine_quant.recipe.mxfp8hp.name"), f:"mxfp8", b:"bf16", hp:"orig", who:t("engine_quant.recipe.mxfp8hp.who") },
+  nvfp4hp: { name:t("engine_quant.recipe.nvfp4hp.name"), f:"nvfp4", b:"bf16", hp:"orig", tok:true, who:t("engine_quant.recipe.nvfp4hp.who") },
+  nvfp4dq: { name:t("engine_quant.recipe.nvfp4dq.name"), f:"nvfp4", b:"bf16", hp:"deq", tok:true, who:t("engine_quant.recipe.nvfp4dq.who") }
 };
 const RORDER = ["bf16","fp8","mxfp8","mxfp8tt","nvfp4"];   // 后训练页只列 Megatron / TE / torchtitan 的默认配方
 
@@ -89,18 +89,18 @@ function trainGemm(hw, g, key, M, N, K, o){
   const fprop = pass(2*M*N*K, N*K*bf + M*K*bf + M*N*2, peakOf(hw,R.f));
   const dgrad = pass(2*M*N*K, N*K*bb + M*N*bb + M*K*2, peakOf(hw,R.b));
   const wgrad = pass(2*M*N*K, M*N*bb + M*K*bb + N*K*4*2, peakOf(hw,R.b));
-  const q = [];   // [名字, 时间]
+  const q = [];   // [名字, 时间, 种类]：种类 x / w / tok / dy / deq 供界面按种类取，不按名字匹配
   const nm = Math.max(1,o.nMicro);
   if(fq){
     // X：一次读 BF16，写行方向（fprop）；反向低精度时同一个 kernel 再写列方向（wgrad）
-    q.push(["X 量化（行"+(bq?" + 列":"")+"）", pass(M*K*(5 + (R.rht&&bq?32:0)), M*K*(2 + bf + (bq?bb:0)), pkA)]);
+    q.push([bq ? t("engine_quant.q.xRowCol") : t("engine_quant.q.xRow"), pass(M*K*(5 + (R.rht&&bq?32:0)), M*K*(2 + bf + (bq?bb:0)), pkA), "x"]);
     // W：1D 块反向要从 BF16 再量化一份列方向；2D 块一份 qdata，两种 scale 布局
     const wq = N*K*(2 + bf + (bq && !R.w2d ? bb : 0));
-    q.push(["W 量化（"+(bq ? (R.w2d?"2D 一份":"1D 行 + 列两份") : "行方向一份")+"，按 "+nm+" 个 micro-batch 摊）", pass(5*N*K, wq, pkA)/nm]);
-    if(R.tok && !o.tokFused) q.push(["按 token FP32 scale（单独的 PyTorch op：先缩放 X，再缩放 Y）", pass(2*M*K+2*M*N, 2*M*K*2 + 2*M*N*2, pkA)]);
+    q.push([bq ? (R.w2d ? t("engine_quant.q.w2d", {n:nm}) : t("engine_quant.q.w1dRowCol", {n:nm})) : t("engine_quant.q.wRow", {n:nm}), pass(5*N*K, wq, pkA)/nm, "w"]);
+    if(R.tok && !o.tokFused) q.push([t("engine_quant.q.tokScale"), pass(2*M*K+2*M*N, 2*M*K*2 + 2*M*N*2, pkA), "tok"]);
   }
-  if(bq) q.push(["dY 量化（行 + 列"+(R.rht?"，列方向做 16×16 RHT":"")+"）", pass(M*N*(5 + (R.rht?32:0)), M*N*(2 + 2*bb), pkA)]);
-  if(R.hp==="deq") q.push(["反量化回 BF16（X 与 W）", pass(M*K+N*K, M*K*(bf+2) + N*K*(bf+2)/nm, pkA)]);
+  if(bq) q.push([R.rht ? t("engine_quant.q.dyRht") : t("engine_quant.q.dy"), pass(M*N*(5 + (R.rht?32:0)), M*N*(2 + 2*bb), pkA), "dy"]);
+  if(R.hp==="deq") q.push([t("engine_quant.q.deq"), pass(M*K+N*K, M*K*(bf+2) + N*K*(bf+2)/nm, pkA), "deq"]);
   const tq = q.reduce((s,x)=>s+x[1],0);
   // 反向要用到的东西：保存的激活 + 低精度权重缓存
   const saveX = !fq ? M*K*2 : bq ? M*K*bb : R.hp==="deq" ? M*K*bf : M*K*2;
