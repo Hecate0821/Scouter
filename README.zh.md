@@ -1,18 +1,5 @@
 # Scouter：MoE 训推 Roofline 实验台
 
-```text
-   .--.    ______________________________
-  |    |==|                              |
-  | () |  |  FLOP/s          __________  |
-  |    |  |                 /            |
-  |    |  |               /    ridge     |
-  |    |  |             /                |
-  |    |  |___________/__________________|
-  |    |==|                              |
-   '--'   |______________________________|
-                S C O U T E R
-```
-
 选一个模型和一种 GPU，Scouter 按 kernel 推算一步 decode、一次 chunked prefill 或一个后训练 step，再把每个 attention 模块、MLP 模块放到 roofline 上，看改架构会把它推到哪里。
 
 **在线：** https://hecate0821.github.io/Scouter/ · English: [README.md](README.md)

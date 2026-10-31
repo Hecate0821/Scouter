@@ -1,18 +1,5 @@
 # Scouter
 
-```text
-   .--.    ______________________________
-  |    |==|                              |
-  | () |  |  FLOP/s          __________  |
-  |    |  |                 /            |
-  |    |  |               /    ridge     |
-  |    |  |             /                |
-  |    |  |___________/__________________|
-  |    |==|                              |
-   '--'   |______________________________|
-                S C O U T E R
-```
-
 An interactive roofline lab for MoE training and inference. Pick a model and a GPU, and Scouter estimates a decode step, a chunked prefill or a post-training step kernel by kernel. It then shows where each attention and MLP module sits on the roofline, and how changing the architecture moves it.
 
 **Live:** https://hecate0821.github.io/Scouter/ · 中文说明：[README.zh.md](README.zh.md)
