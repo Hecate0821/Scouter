@@ -279,7 +279,7 @@ I18N.add("zh", "rl", {
   "lowprec.ws.who.mxfp8": "Miles 的 MXFP8 配方（v0.1.3 起 trainer 直接给出 rollout 权重）",
   "lowprec.ws.fmt.nvfp4": "NVFP4（只量化 routed expert）",
   "lowprec.ws.who.nvfp4": "Miles 的 NVFP4 rollout",
-  "lowprec.ws.fmt.int4": "INT4 W4A16（只量化 routed expert，group 128）",
+  "lowprec.ws.fmt.int4": "INT4 W4A16（只量化 routed expert，每 32 个一个 BF16 scale，和 Kimi-K2-Thinking 一样）",
   "lowprec.ws.who.int4": "slime / Miles 的 INT4 QAT",
   "lowprec.ws.lede": "按当前模型（{params} 参数）算一次全量同步要搬的字节，链路按 {hw} 每卡 IB {ib} GB/s（rollout 在另一组机器上；共置时走 NVLink / CUDA IPC，快近一个数量级）。低精度 rollout 的权重还要先在训练侧量化一遍；字节省下来，转换本身可能成为新的瓶颈。连续两步之间权重变化很小，delta 同步只传变了的部分。",
   "lowprec.ws.head.fmt": "rollout 权重格式",

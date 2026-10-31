@@ -17,7 +17,8 @@
 // parameter; --pick a,b.c keeps only those fields; --over.<key> v1,v2 and --where.<key> v are lists and filters. Every other
 // --key value overrides the run's default config. Values are parsed as JSON when they can be, otherwise kept as strings.
 //   --json '{...}'   the whole query as one JSON object (or "-" to read it from stdin); flags given after it still apply
-//   --file.<key> p   read the JSON file p into <key> (for example --file.trace for a torch profiler export)
+//   --file.<key> p   read the JSON file p (or p.gz) into <key> (for example --file.trace for a torch profiler export;
+//                    a trace too big to load whole: uv run --no-project tools/reduce_trace.py trace.json.gz > kernels.json first)
 //   --lang zh        render messages as text with locales/zh (default: messages stay { key, p })
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm");
@@ -37,7 +38,7 @@ for(let i = 0; i < args.length; i += 2){
   if(k === "json") q = Object.assign(q, JSON.parse(raw === "-" ? fs.readFileSync(0, "utf8") : raw));
   else if(k === "lang") lang = raw;
   else if(k === "pick") q.pick = raw.split(",");
-  else if(k.startsWith("file.")) set(q, k.slice(5), JSON.parse(fs.readFileSync(raw, "utf8")));
+  else if(k.startsWith("file.")) set(q, k.slice(5), JSON.parse((raw.endsWith(".gz") ? require("zlib").gunzipSync(fs.readFileSync(raw)) : fs.readFileSync(raw)).toString("utf8")));
   else if(k.startsWith("over.")) set(q, k, String(raw).split(",").map(parse));
   else set(q, k, parse(raw));
 }

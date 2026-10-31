@@ -28,6 +28,7 @@ I18N.add("zh", "engine_quant", {
   "q.wRow": "W 量化（行方向一份，按 {n} 个 micro-batch 摊）",
   "q.w1dRowCol": "W 量化（1D 行 + 列两份，按 {n} 个 micro-batch 摊）",
   "q.w2d": "W 量化（2D 一份，按 {n} 个 micro-batch 摊）",
+  "q.w2dT": "W 量化（2D，另写一份转置给 Hopper 的 K-major 操作数，按 {n} 个 micro-batch 摊）",
   "q.tokScale": "按 token FP32 scale（单独的 PyTorch op：先缩放 X，再缩放 Y）",
   "q.dy": "dY 量化（行 + 列）",
   "q.dyRht": "dY 量化（行 + 列，列方向做 16×16 RHT）",

@@ -8,7 +8,7 @@ function linFlops(kind, K, V){ const C=64;
   return kind==="KDA" ? { f:6*K*V+3.5*C*K+4*C*V+0.5*C*C, b:16*K*V+9*C*K+10*C*V+4*C*C }
                       : { f:6*K*V+7.25*C*K+4*C*V+0.5*C*C, b:16*K*V+18*C*K+10*C*V+4*C*C }; }
 
-/* GEMM 精度配方：f 是前向，b 是 dgrad / wgrad；w2d 表示权重用方块，一份量化同时给两个方向用 */
+/* GEMM 精度配方：f 是前向，b 是 dgrad / wgrad；w2d 表示权重用方块，一份量化同时给两个方向用（Hopper 上仍要另存一份转置，见 Quant.RECIPES） */
 const PREC = {
   bf16:   { f:"bf16",  b:"bf16",  name:"BF16" },
   fp8:    { f:"fp8",   b:"fp8",   w2d:true, name:Msg.of("engine_train.prec.fp8") },
@@ -32,6 +32,8 @@ function run(m, hw, topo, c, g){
   const S=c.S, wbF=dtB(PR.f), wbB=dtB(PR.b), pkF=peakOf(hw,PR.f), pkB=peakOf(hw,PR.b), pkA=peakOf(hw,"bf16");
   const pkAt = c.etaA>0 ? pkA*c.etaA/g.etaC : pkA;          // attention 核心单独给效率（0 = 和 GEMM 一样用 η_c）
   if(fq && PR.f!=="fp8" && hw.sm<100) warn.push(Msg.of("engine_train.warn.needBlackwell",{prec:PR.name}));
+  // TE 不支持优化器 CPU offload 和 --fp8-param-gather 一起开（slime 的 FP8 笔记）：端到端 FP8 要么关 offload，要么参数按 BF16 gather
+  if(mg && fq && c.offload) warn.push(Msg.of("engine_train.warn.fp8Offload",{prec:PR.name}));
   // 低精度时每个 GEMM 输入多一次量化：读 bf16，写行方向一份（反向也低精度时再写列方向一份，wgrad 用）
   const qF = fq ? 2 + wbF + (bq?wbB:0) : 0, qB = bq ? 2 + 2*wbB : 0;
   const ops=[], comm=[];
@@ -113,7 +115,7 @@ function run(m, hw, topo, c, g){
   if(l.n>0){
     const Hv=l.Hv/tp, lf=linFlops(l.kind,l.dk,l.dv), byTok=Hv*(l.kind==="KDA"?8200:5500);
     op("norm",Msg.of("engine_train.op.normAttn"),"misc",l.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
-    op("lproj",Msg.of("engine_train.op.lproj"),"lin",l.n,...gemm(Tc,D,d.linIn,tp));
+    op("lproj",Msg.of("engine_train.op.lproj"),"lin",l.n,...gemm(Tc,D,d.linIn+(d.linFa+d.linFb)/D,tp));   // KDA 的低秩 f 门按等量 FLOPs 并进宽度
     op("lconv",Msg.of("engine_train.op.lconv"),"lin",l.n,...elem(2*l.conv*d.linConvDim/tp+20*Hv*l.dk,(d.linConvDim+2*Hv*l.dk)*2*2/tp,Tc,3));
     op("lcore",Msg.of("engine_train.op.lcore",{kind:l.kind,impl:mg?"FLA":"attn_gym"}),"lin",l.n,{fl:Hv*lf.f*Tc,by:byTok*Tc,pk:pkA,k:5},{fl:Hv*lf.b*Tc,by:2.5*byTok*Tc,pk:pkA,k:8},null);
     op("lnorm",Msg.of("engine_train.op.lnorm"),"lin",l.n,...elem(10*Hv*l.dv,3*Hv*l.dv*2,Tc,2));
@@ -330,10 +332,11 @@ function run(m, hw, topo, c, g){
   const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650) + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
   const rowAct = e.k*imb*(De*2 + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4);
   const moeAct = (2*D*2 + e.E*4*3)/sp + (sel.has("moe")?0:rowAct)/1 + (e.Dlat?(D+e.Dlat)*2:0) + (e.Fs>0&&!sel.has("shared_experts")?3*e.Fs*2/tp:0);
+  const denseAct = 2*D*2+3*m.dense.F*2/tp;
   let perTokLayers;
   if(rcFull){ perTokLayers = (m.L/pp)*D*2/sp; }
-  else perTokLayers = (f.n*attnAct + l.n*(sel.has("gdn")?D*2/sp:linAct) + d.nMoe*moeAct + m.dense.n*(2*D*2+3*m.dense.F*2/tp))/pp;
-  const oneLayerWS = Math.max(attnAct,linAct)+moeAct;          // 重算时一层的工作集
+  else perTokLayers = (f.n*attnAct + l.n*(sel.has("gdn")?D*2/sp:linAct) + d.nMoe*moeAct + m.dense.n*denseAct)/pp;
+  const oneLayerWS = Math.max(attnAct,linAct) + Math.max(d.nMoe>0?moeAct:0, m.dense.n>0?denseAct:0);   // 重算时一层的工作集（MoE 层或 dense 层里大的那个）
   const inflight = pp>1 ? Math.min(microsPerStep,pp)*(vpp>1?1+(pp-1)/(pp*vpp):1) : 1;
   const act = perTokLayers*Tc*inflight + (rcFull?oneLayerWS*Tc:0);
   const logits = Tc*m.V/tp*(mg?6:6/8);
@@ -347,10 +350,12 @@ function run(m, hw, topo, c, g){
     paramsGPU = 0;
     states = c.offload ? 0 : Pshard*16;
     gathered = 2*(Pdense/tp/pp/(m.L/pp) + Pexp/ep/pp/(m.L/pp))*2*2;    // 当前 + 预取 block 的 bf16 参数与梯度
+    // reshard 关掉（reshard_after_forward=False）时前向 gather 的 BF16 参数一直留到反向：本 stage 所有层的整份参数（对照 PopSoda2002/FSDP_memory_estimator 的 SHARD_GRAD_OP）
+    if(fsdp && !fsdp.reshard) gathered += (Pdense/tp/pp + Pexp/ep/pp)*2;
   }
   const work = c.workspaceGB*1e9;
   // 低精度权重缓存：前向一份；反向也低精度且权重是 1D 块时再从 BF16 量化一份列方向（2D 块共用一份）
-  const qW = fq ? (mg ? PlD+PlE : Pdense/(tp*pp)+Pexp/(ep*pp))*(wbF + (bq&&!PR.w2d?wbB:0)) : 0;
+  const qW = fq ? (mg ? PlD+PlE : Pdense/(tp*pp)+Pexp/(ep*pp))*(wbF + (bq&&(!PR.w2d||hw.sm<100)?wbB:0)) : 0;
   const used = paramsGPU + states + gathered + act + logits + a2aBuf + cpBuf + work + qW;
   const mem = { paramsGPU, states, gathered, act, logits, a2aBuf, cpBuf, work, qW, used, total:hw.mem*1e9, perTokLayers, inflight };
 

@@ -67,7 +67,9 @@ function moeLayer(hw, g, m, key, T, ep, o){
     bound: tG===r.tf ? "launch" : r.tc+tDeq>=r.tm ? "compute" : "memory" };
 }
 
-/* 训练配方：f 前向，b 反向（dgrad + wgrad）；w2d 权重方块（一份 qdata 两个方向共用）；
+/* 训练配方：f 前向，b 反向（dgrad + wgrad）；w2d 权重方块（两个方向的量化值相同，Blackwell 上一份 qdata 两个方向共用；
+   Hopper 的 FP8 wgmma 两个操作数都只能 K-major，TE 的方块量化 kernel 仍另写一份转置——transformer_engine/common/transpose/
+   quantize_transpose_square_blockwise.cu 的 output_t，slime 的 FP8 笔记也提到这份多出来的权重）；
    hp：反向用原始 BF16 操作数（orig）或前向量化值反量化后的 BF16（deq）；tok：NVFP4 激活按 token 的 FP32 scale；rht：wgrad 输入做随机 Hadamard */
 const RECIPES = {
   bf16:    { name:Msg.of("engine_quant.recipe.bf16.name"), f:"bf16", b:"bf16", who:Msg.of("engine_quant.recipe.bf16.who") },
@@ -94,9 +96,9 @@ function trainGemm(hw, g, key, M, N, K, o){
   if(fq){
     // X：一次读 BF16，写行方向（fprop）；反向低精度时同一个 kernel 再写列方向（wgrad）
     q.push([bq ? Msg.of("engine_quant.q.xRowCol") : Msg.of("engine_quant.q.xRow"), pass(M*K*(5 + (R.rht&&bq?32:0)), M*K*(2 + bf + (bq?bb:0)), pkA), "x"]);
-    // W：1D 块反向要从 BF16 再量化一份列方向；2D 块一份 qdata，两种 scale 布局
-    const wq = N*K*(2 + bf + (bq && !R.w2d ? bb : 0));
-    q.push([bq ? (R.w2d ? Msg.of("engine_quant.q.w2d", {n:nm}) : Msg.of("engine_quant.q.w1dRowCol", {n:nm})) : Msg.of("engine_quant.q.wRow", {n:nm}), pass(5*N*K, wq, pkA)/nm, "w"]);
+    // W：1D 块反向要从 BF16 再量化一份列方向；2D 块在 Blackwell 上一份 qdata、两种 scale 布局，Hopper 上同一个 kernel 再写一份转置
+    const w2 = bq && (!R.w2d || hw.sm<100), wq = N*K*(2 + bf + (w2 ? bb : 0));
+    q.push([bq ? (!R.w2d ? Msg.of("engine_quant.q.w1dRowCol", {n:nm}) : w2 ? Msg.of("engine_quant.q.w2dT", {n:nm}) : Msg.of("engine_quant.q.w2d", {n:nm})) : Msg.of("engine_quant.q.wRow", {n:nm}), pass(5*N*K, wq, pkA)/nm, "w"]);
     if(R.tok && !o.tokFused) q.push([Msg.of("engine_quant.q.tokScale"), pass(2*M*K+2*M*N, 2*M*K*2 + 2*M*N*2, pkA), "tok"]);
   }
   if(bq) q.push([R.rht ? Msg.of("engine_quant.q.dyRht") : Msg.of("engine_quant.q.dy"), pass(M*N*(5 + (R.rht?32:0)), M*N*(2 + 2*bb), pkA), "dy"]);
@@ -104,7 +106,7 @@ function trainGemm(hw, g, key, M, N, K, o){
   const tq = q.reduce((s,x)=>s+x[1],0);
   // 反向要用到的东西：保存的激活 + 低精度权重缓存
   const saveX = !fq ? M*K*2 : bq ? M*K*bb : R.hp==="deq" ? M*K*bf : M*K*2;
-  const wCache = !fq ? 0 : N*K*(bf + (bq && !R.w2d ? bb : 0));
+  const wCache = !fq ? 0 : N*K*(bf + (bq && (!R.w2d || hw.sm<100) ? bb : 0));
   return { R, fprop, dgrad, wgrad, q, tq, t:fprop+dgrad+wgrad+tq, saveX, wCache, extra:saveX+wCache };
 }
 

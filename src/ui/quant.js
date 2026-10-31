@@ -1,7 +1,7 @@
 /* ================= 低精度：推理、训练各一节；格式放附录，RL 组合放 RL 页 ================= */
 const QC = { bf16:css("c-lm"), fp8:css("c-attn"), mxfp8:css("c-lin"), w4a16:css("c-ar"), w4a8:css("c-cp"), mxfp4:css("c-moe"), nvfp4:css("c-a2a") };
 const QE2E = { bf16:{wDt:"bf16",eAct:"",dDt:"bf16"}, fp8:{wDt:"fp8",eAct:"",dDt:"fp8"}, mxfp8:{wDt:"mxfp8",eAct:"",dDt:"mxfp8"},
-  w4a16:{wDt:"mxfp4",eAct:"bf16",dDt:"bf16"}, w4a8:{wDt:"mxfp4",eAct:"mxfp8",dDt:"mxfp8"}, mxfp4:{wDt:"mxfp4",eAct:"",dDt:"bf16"}, nvfp4:{wDt:"nvfp4",eAct:"",dDt:"bf16"} };
+  w4a16:{wDt:"mxfp4",eAct:"bf16",dDt:"bf16"}, w4a8:{wDt:"mxfp4",eAct:"mxfp8",dDt:"mxfp8"}, mxfp4:{wDt:"mxfp4",eAct:"mxfp4",dDt:"bf16"}, nvfp4:{wDt:"nvfp4",eAct:"nvfp4",dDt:"bf16"} };
 const QTRN = ["bf16","fp8","mxfp8","nvfp4"];
 const DTN = { bf16:"BF16", fp8:t("common.dt.fp8Block"), mxfp8:"MXFP8", mxfp4:"MXFP4", nvfp4:"NVFP4" };
 const qOpt = (over) => Object.assign({ fuse:S.q.fuse, align:1, floor:false, BM:S.q.BM, deqRate:S.q.deqRate }, over||{});   // 单个 GEMM 按纯 roofline，不计 kernel 最短时间

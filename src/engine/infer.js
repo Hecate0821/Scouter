@@ -1,7 +1,7 @@
 /* 推理核心：只描述 serving 引擎真正发出的 kernel 序列（paged KV、状态缓存、CUDA graph 补齐、采样、MTP 验证、DP-attention / EP 通信）。
    与训练核心不共享算子表。每条口径对应的仓库路径见 UI 的“口径与来源”。 */
 const Infer = (function(){
-const { dtB, peakOf, derive, qoW, link, agT, arT, a2aT, roof, gK } = Common;
+const { dtB, peakOf, derive, qoW, capKeys, link, agT, arT, a2aT, roof, gK } = Common;
 
 function range(a,b,s){ const r=[]; for(let x=a;x<=b;x+=s) r.push(x); return r; }
 /* 引擎画像：来自三个引擎的默认值（research/inference_engines.md Part IV） */
@@ -52,13 +52,17 @@ for(const k of ["aproj","aout","aqa","aqb","agp","akvb","auk","auv","aidxp","lpr
 const cover = (k,E,T) => 1-Math.pow(1-k/E, Math.max(0,T));
 /* 开投机时并发被引擎默认上限截住的警告；投机页按这句原文把它从警告栏里去掉（正文里交代） */
 const specCapWarn = P => Msg.of("engine_infer.warn.specCap", { engine:P.name, cap:P.specCap });
+/* expert GEMM 的激活精度。没指定（eAct 为空）时按 SGLang 的默认：MXFP4 权重在 Blackwell 上跑 MXFP8 激活（W4A8：
+   FlashInfer trtllm_fp4_block_scale_moe / DeepGEMM fp8_fp4，mxfp4.py），MMA 是 FP8 档；Hopper 没有 FP4 MMA，FP4 权重
+   走 W4A16（FlashInfer CUTLASS / Marlin），MMA 是 BF16 档；其余跟权重精度相同（NVFP4 在 Blackwell 上是 W4A4） */
+const eActOf = (c, hw) => c.eAct==="same" ? c.wDt : c.eAct || (c.wDt==="mxfp4" && hw.sm>=100 ? "mxfp8" : (c.wDt==="mxfp4"||c.wDt==="nvfp4") && hw.sm<100 ? "bf16" : c.wDt);
 
 /* 一次 forward（decode 或 prefill chunk）的逐算子时间 */
 function step(m, hw, topo, c, g){
   const d=derive(m), P=ENGINES[c.engine], f=m.full, l=m.lin, e=m.moe, D=m.D;
   const N=c.N, dpA=Math.max(1,c.dpA), tpA=N/dpA, dec=c.phase==="decode";
   const wbE=dtB(c.wDt), wbD=dtB(c.dDt), kvb=dtB(c.kvDt), sb=c.stateDt==="bf16"?2:4;
-  const pkD=peakOf(hw,c.dAct||c.dDt), pkE=peakOf(hw,c.eAct||c.wDt), pkA=peakOf(hw,"bf16");   // eAct / dAct：expert / 其余线性层的激活精度（W4A16 / W4A8 时 MMA 跑在激活的峰值上）
+  const pkD=peakOf(hw,c.dAct||c.dDt), pkE=peakOf(hw,eActOf(c,hw)), pkA=peakOf(hw,"bf16");   // eAct / dAct：expert / 其余线性层的激活精度（W4A16 / W4A8 时 MMA 跑在激活的峰值上）
   const slow=(c.bi?c.biFactor:1)/(c.implEff||1);
   const specK = dec ? (c.specK||0) : 0, w = specK>0 ? specK+1 : 1;
   const warn=[];
@@ -97,7 +101,8 @@ function step(m, hw, topo, c, g){
     if(!fused) op("norm",Msg.of("engine_infer.op.norm"),"misc",boundaries,8*rowsG*D,3*rowsG*D*2,pkA,1);
   } else op("norm",Msg.of("engine_infer.op.norm"),"misc",boundaries,8*rowsG*D,3*rowsG*D*2,pkA,1);
   if(m.mhc) op("mhc",Msg.of("engine_infer.op.mhc"),"misc",m.L*2,4*m.mhc*rowsG*D,2*m.mhc*rowsG*D*2,pkA,2);
-  if(m.attnRes) op("attnres",Msg.of("engine_infer.op.attnres"),"misc",m.L,2*(m.attnRes/2+1)*rowsG*D,(m.attnRes/2+1)*rowsG*D*2,pkA,1);
+  // AttnRes：每层两次（attention 前、MLP 前；SGLang kimi_k3.py 的 attn_res / mlp_res_proj），读 bank 里之前各块的快照和当前流，写一行
+  if(m.attnRes) op("attnres",Msg.of("engine_infer.op.attnres"),"misc",m.L*2,2*(m.attnRes/2+1)*rowsG*D,(m.attnRes/2+2)*rowsG*D*2,pkA,1);
 
   /* ---- 全注意力层 ---- */
   let kvTokRank=0, idxTok=0;
@@ -112,7 +117,7 @@ function step(m, hw, topo, c, g){
       const core=(layers,keyCap,tag)=>{ const cx=Math.min(ctx,keyCap);
         const mod = keyCap<Infinity ? "swa" : "full";     // 架构页按层类型拆模块用
         if(dec) op("acore",Msg.of("engine_infer.op.acoreDecode",{kernel:P.kernels.gqa,layers:tag}),"attn",layers, 4*Hl*f.dh*cx*Breq*w, Breq*cx*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1,{scalesWith:"real",mod});
-        else op("acore",Msg.of("engine_infer.op.acorePrefill",{layers:tag}),"attn",layers, 4*Hl*f.dh*rowsR*Math.min(ctx+rowsR/2,keyCap), (cx+rowsR)*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1,{mod}); };
+        else op("acore",Msg.of("engine_infer.op.acorePrefill",{layers:tag}),"attn",layers, 4*Hl*f.dh*rowsR*capKeys(ctx,rowsR,keyCap), (cx+rowsR)*kvTokRank + rowsR*Hl*f.dh*2*2, pkA,1,{mod}); };
       core(nGlob, Infinity, nSwa?Msg.of("engine_infer.op.layersGlobal"):"");
       if(nSwa) core(nSwa, f.W, Msg.of("engine_infer.op.layersSwa",{w:f.W}));
       if(f.gate) op("agate",f.gateHead?Msg.of("engine_infer.op.agateHead"):Msg.of("engine_infer.op.agate"),"attn",f.n,2*rowsG*Hl*f.dh,3*rowsG*Hl*f.dh*2,pkA,1);
@@ -136,7 +141,7 @@ function step(m, hw, topo, c, g){
       const absorb = dec || f.kind==="dsa" && !!P.dsaAbsorbPrefill;
       if(absorb){
         op("auk",Msg.of("engine_infer.op.auk"),"attn",f.n,2*rowsG*Hl*f.nope*f.kvLora, Hl*f.nope*f.kvLora*2 + rowsG*Hl*(f.nope+f.kvLora)*2, pkA,1);
-        const nKV = f.kind==="dsa" ? Math.min(dec?ctx:ctx+rowsR/2, f.topk+3) : (dec?ctx:ctx+rowsR/2);
+        const nKV = f.kind==="dsa" ? (dec ? Math.min(ctx, f.topk+3) : capKeys(ctx, rowsR, f.topk+3)) : (dec?ctx:ctx+rowsR/2);
         const tag = f.kind==="dsa" ? Msg.of("engine_infer.op.acoreDsa",{kernel:P.kernels.dsa}) : Msg.of("engine_infer.op.acoreMla",{kernel:P.kernels.mla});
         if(dec) op("acore",tag,"attn",f.n, 2*Hl*(lat+f.kvLora)*nKV*Breq*w, Breq*nKV*kvTokRank*(f.kind==="dsa"?1:1) + rowsR*Hl*(lat+f.kvLora)*2, pkA,2,{scalesWith:"real"});
         else op("acore",tag,"attn",f.n, 2*Hl*(lat+f.kvLora)*nKV*rowsR, (ctx+rowsR)*kvTokRank, pkA,2);
@@ -147,7 +152,7 @@ function step(m, hw, topo, c, g){
         const reexp = P.mlaReexpand && ctx>0;
         const expTok = rowsR + (reexp?ctx:0);
         op("akvb",reexp?Msg.of("engine_infer.op.akvbReexp"):Msg.of("engine_infer.op.akvb"),"attn",f.n,2*expTok*f.kvLora*Hl*(f.nope+f.vh), f.kvLora*Hl*(f.nope+f.vh)*wbD + expTok*(f.kvLora + Hl*(f.nope+f.vh))*2, pkD,1);
-        const nKV = f.kind==="dsa" && ctx+rowsR>f.topk ? Math.min(ctx+rowsR/2,f.topk) : ctx+rowsR/2;
+        const nKV = f.kind==="dsa" ? capKeys(ctx, rowsR, f.topk) : ctx+rowsR/2;
         op("acore",f.kind==="dsa"&&ctx+rowsR>f.topk?Msg.of("engine_infer.op.acoreSparsePrefill"):Msg.of("engine_infer.op.acoreMhaPrefill",{qk:dq,v:f.vh}),"attn",f.n, 2*Hl*(dq+f.vh)*rowsR*nKV, expTok*Hl*(dq+f.vh)*2 + rowsR*Hl*(dq+f.vh)*2, pkA,1);
       }
       if(f.gate) op("agate",Msg.of("engine_infer.op.agate"),"attn",f.n,2*rowsG*Hl*f.vh,3*rowsG*Hl*f.vh*2,pkA,1);
@@ -159,7 +164,8 @@ function step(m, hw, topo, c, g){
   let Sl=0, Cl=0;
   if(l.n>0){
     const Hv=l.Hv/tpA; Sl = Hv*l.dk*l.dv*sb; Cl = d.linConvDim/tpA*(l.conv-1)*2;
-    op("lproj",Msg.of("engine_infer.op.lproj"),"lin",l.n,2*rowsG*D*d.linIn/tpA, D*d.linIn/tpA*wbD + rowsG*(D+d.linIn/tpA)*2, pkD, l.kind==="KDA"?2:1);
+    const wIn = D*d.linIn/tpA + d.linFa + d.linFb/tpA;   // KDA 的 f_a 每个 rank 都有一份
+    op("lproj",Msg.of("engine_infer.op.lproj"),"lin",l.n,2*rowsG*wIn, wIn*wbD + rowsG*(D+d.linIn/tpA)*2, pkD, l.kind==="KDA"?2:1);
     if(dec){
       const mult = specK>0 ? P.stateVerify(m,w) : P.stateDecode(m);
       op("lconv",Msg.of("engine_infer.op.lconvDecode"),"lin",l.n,2*l.conv*rowsR*d.linConvDim/tpA, Breq*Cl*2 + rowsR*d.linConvDim/tpA*2*2, pkA,1,{scalesWith:"real"});
@@ -185,8 +191,8 @@ function step(m, hw, topo, c, g){
   const Eloc=(e.E+(c.redundant||0))/N, cv=cover(e.k,e.E,Tg);
   const touched = moePar==="tp" ? e.E*cv : Eloc*cv;   // tp：每卡持有全部 expert 的 F/N 切片
   const wSlice = moePar==="tp" ? 3*De*e.F/N : 3*De*e.F;
-  const rowsExp = Tg*e.k/N*(c.imb||1);
-  const eA = c.eAct || (c.wDt==="bf16"?"bf16":c.wDt);
+  const rowsExp = Tg*e.k/N*(moePar==="tp" ? 1 : c.imb||1);   // tp：每卡都有全部 expert 的切片，负载天然均衡
+  const eA = eActOf(c,hw);
   if(c.qSep && eA!=="bf16") op("moeq",Msg.of("engine_infer.op.moeq"),"moe",nMoe,4*Tloc*De, Tloc*De*(2+dtB(eA)), pkA,1);
   // Blackwell 上 FP4 MoE（TRT-LLM-gen）的 hidden 维按 256 补零（vLLM PR 39510）：补出来的部分照样算、照样读
   const dPad = (c.wDt==="nvfp4"||c.wDt==="mxfp4") && hw.sm>=100 ? Math.ceil(De/256)*256/De : 1;
@@ -195,8 +201,12 @@ function step(m, hw, topo, c, g){
     op("shared",e.sharedGate?Msg.of("engine_infer.op.sharedGate"):Msg.of("engine_infer.op.shared"),"moe",nMoe,6*Tloc*D*Fl, 3*D*Fl*wbD + Tloc*(D+3*Fl)*2, pkD,2,
       {overlap: (P.sharedOverlap==="graph"&&graph&&dec) || (P.sharedOverlap==="small"&&Tloc<=256) ? "moe" : false}); }
   if(e.Dlat){
-    if(tpA>1) cm("latar",Msg.of("engine_infer.comm.latar",{dim:e.Dlat}),nMoe,arT(Tloc*e.Dlat*2,tpA,lkA,g,"oneshot"),Tloc*e.Dlat*2*(tpA-1)/tpA);
-    op("latu",Msg.of("engine_infer.op.latu",{dim:e.Dlat}),"moe",nMoe,2*Tloc*e.Dlat*D, e.Dlat*D*2 + Tloc*(D+e.Dlat)*2, pkA,2);
+    // 算法和层边界的 AR 一样按消息大小选：大消息（prefill）用 one-shot 要读 N−1 份整消息，会比 two-shot 慢好几倍
+    if(tpA>1){ const lb=Tloc*e.Dlat*2; cm("latar",Msg.of("engine_infer.comm.latar",{dim:e.Dlat}),nMoe,arT(lb,tpA,lkA,g,lb<=512*1024?"oneshot":"twoshot"),lb*(tpA-1)/tpA); }
+    // SGLang K3 在 TP8、不超过 12 行时把复制的 latent up 换成按列切的 GEMV + multicast all-gather（k3_ar_fusion.gemm_ag_up_proj）
+    const latAg = c.engine==="sglang" && m.family==="kimi" && fused && tpA===8 && hw.sm>=100 && Tloc<=12, lw = latAg ? tpA : 1;
+    op("latu",Msg.of("engine_infer.op.latu",{dim:e.Dlat}),"moe",nMoe,2*Tloc*e.Dlat*D/lw, e.Dlat*D*2/lw + Tloc*(D+e.Dlat)*2, pkA,2);
+    if(latAg) cm("latag",Msg.of("engine_infer.comm.latag"),nMoe,agT(Tloc*D*2,tpA,lkA,g),Tloc*D*2*(tpA-1)/tpA);
   }
   if(m.dense.n>0) op("dense",Msg.of("engine_infer.op.dense"),"moe",m.dense.n,6*rowsG*D*m.dense.F/tpA, 3*D*m.dense.F/tpA*wbD + rowsG*(D+3*m.dense.F/tpA)*2, pkD,2);
   // MoE 通信
@@ -298,15 +308,16 @@ function prefill(m, hw, topo, c, g){
 
 /* 闭环压测（SGLang bench_serving 那种：并发 conc 固定，每条 isl 输入、osl 输出）的稳态估计。
    decode：conc 条请求一起 decode，上下文取 isl + osl/2。每条请求从开始到结束的这段时间里，其余 conc − 1 个槽位各换进一条新请求，
-   它们的 prefill 插在 decode 之间，所以平均 TPOT = decode 的 TPOT + (conc − 1) × 单条 prefill 时间 / osl。
+   它们的 prefill 插在 decode 之间，所以平均 TPOT = decode 的 TPOT + (conc − 1) × 单条 prefill 时间 / (osl − 1)
+   （TPOT 按 bench_serving / genai-bench 的口径：(E2E − TTFT) / (osl − 1)）。
    ttft0 是空载时单条 prompt 的 prefill（不含排队、HTTP、分词这些引擎外的时间）；tokPerGpu 按 cookbook 的口径：(输入 + 输出) / 时间 / 卡数。 */
 function serve(m, hw, topo, c, g){
   const isl=c.isl, osl=c.osl, B=Math.max(1,c.conc);
   const d = decode(m,hw,topo,Object.assign({},c,{phase:"decode",B,n:isl+osl/2}),g);
   const pf = prefill(m,hw,topo,Object.assign({},c,{P:isl,C:Math.min(c.C,isl),p:0,reqPerChunk:1}),g);
-  const interf = (B-1)*pf.ttft/osl, tpot = d.tpot + interf;
+  const dec = Math.max(1, osl-1), interf = (B-1)*pf.ttft/dec, tpot = d.tpot + interf;
   return { tpot, tpotDecode:d.tpot, interf, ttft0:pf.ttft, stepT:d.stepT, draftT:d.draftT, tokPerStep:d.tokPerStep, N:d.N,
-    tokPerGpu: B*(isl+osl)/(pf.ttft+osl*tpot)/d.N, outTokPerS: B/tpot, Breq:d.Breq, graph:d.graph, mem:d.mem, warn:d.warn.concat(pf.warn) };
+    tokPerGpu: B*(isl+osl)/(pf.ttft+dec*tpot)/d.N, outTokPerS: B/tpot, Breq:d.Breq, graph:d.graph, mem:d.mem, warn:d.warn.concat(pf.warn) };
 }
 
 /* 显存：权重 + KV 池 + 线性注意力状态槽 + 预留 */
@@ -343,5 +354,5 @@ const BASE = Common.freeze({ engine:"sglang", phase:"decode", N:1, dpA:1, B:64, 
 /* 最少切几份放得下权重：每卡权重不超过显存的 60%，取 2 的幂（2–64） */
 function fitShards(m, hw){ const w=derive(m).total*dtB(m.wDefault); let p=2; while(w/p>0.6*hw.mem*1e9 && p<64) p*=2; return p; }
 
-return { ENGINES, SPEC, BASE, fitShards, step, decode, prefill, serve, memory, cover, specCapWarn };
+return { ENGINES, SPEC, BASE, fitShards, step, decode, prefill, serve, memory, cover, eActOf, specCapWarn };
 })();

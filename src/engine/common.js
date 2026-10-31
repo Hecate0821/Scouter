@@ -41,7 +41,9 @@ const MODELS = {
     note:Msg.of("engine_common.model.qwen38_27b.note") }
 };
 
-/* 规格表 dense 数值（TFLOP/s、GB/s、GB）；nvl / ib / host 为单 GPU 单向带宽 */
+/* 规格表 dense 数值（TFLOP/s、GB/s、GB）；nvl / ib / host 为单 GPU 单向带宽。
+   mem 取单卡 HBM 规格：B300 / GB300 按 Blackwell Ultra 的 288 GB；NVIDIA 的整机页面写 HGX B300 每 8 卡 2.1 TB（每卡约 262 GB）、
+   GB300 NVL72 每 72 卡 20 TB（每卡约 278 GB），按整机数字算显存会更紧 */
 const HW = {
   H100:{ name:"H100 SXM", sm:90, bf16:989, fp8:1979, fp4:1979, hbm:3350, mem:80, nvl:450, ib:50, host:25 },
   H200:{ name:"H200", sm:90, bf16:989, fp8:1979, fp4:1979, hbm:4800, mem:141, nvl:450, ib:50, host:25 },
@@ -103,7 +105,11 @@ function gK(g, cls, dt, hw){
 /* GQA 的 q + 输出门宽度：门按元素（Qwen）是 Hq·dh，按头（Muse Spark）是 Hq */
 const qoW = f => f.Hq*f.dh + (f.gate ? (f.gateHead ? f.Hq : f.Hq*f.dh) : 0);
 /* 滑窗层每个 query 平均看到的 key 数（整段长 S 的 causal）；全注意力是 S/2 */
-const swaKeys = (S, W) => S>W ? W - W*W/(2*S) : S/2;
+/* 带上限的 causal attention 里每个 query 平均看到的 key 数：前面已有 ctx 个 token，本块 C 个 query，每个 query 看 min(K, 位置) 个
+   （K 是滑窗宽度或 DSA 的 top-k）。块跨过 K 时不能用 min(ctx + C/2, K)：那样把还没到 K 的 query 也算成 K（k 窗口 2048、
+   C = 4096 时多算 33%；思路见 MatthewBonanni/attn-viz costs.js）。swaKeys 是整段从头算（ctx = 0）的情形，训练用 */
+const capKeys = (ctx, C, K) => ctx>=K ? K : ctx+C<=K ? ctx+C/2 : ((K*K - ctx*ctx)/2 + (ctx+C-K)*K)/C;
+const swaKeys = (S, W) => capKeys(0, S, W);
 
 /* 参数量：按层类型拆开，推理和训练都从这里取 */
 function derive(m){
@@ -126,10 +132,13 @@ function derive(m){
   r.pIdx = r.pIdx||0;
   r.pAttn = r.pQKV + r.pO + r.pAttnRep + r.pIdx;
   if(l.n>0){
-    const inW = 2*l.Hk*l.dk + 2*l.Hv*l.dv + (l.kind==="KDA" ? l.Hk*l.dk + 2*l.Hv : 2*l.Hv); // q,k,v,z/gate + β,α (KDA: f 门低秩近似成 H·dk)
-    r.linIn = inW; r.pLin = D*inW + l.Hv*l.dv*D;
+    // in_proj：q,k,v,输出门（满秩 H·dv）+ 每头的 β（GDN 另有 α）。KDA 没有 α，逐通道的 f 门是低秩的：
+    // f_a D→dk（TP 各 rank 复制）再 f_b dk→H·dk（SGLang kimi_k3.py 的 f_a_proj / f_b_proj；k3-inference-calculator 同样这么算）
+    const inW = 2*l.Hk*l.dk + 2*l.Hv*l.dv + (l.kind==="KDA" ? l.Hv : 2*l.Hv);
+    r.linIn = inW; r.linFa = l.kind==="KDA" ? D*l.dk : 0; r.linFb = l.kind==="KDA" ? l.dk*l.Hk*l.dk : 0;
+    r.pLin = D*inW + r.linFa + r.linFb + l.Hv*l.dv*D;
     r.linState = l.Hv*l.dk*l.dv; r.linConvDim = 2*l.Hk*l.dk + l.Hv*l.dv;
-  } else { r.linIn=0; r.pLin=0; r.linState=0; r.linConvDim=0; }
+  } else { r.linIn=0; r.linFa=0; r.linFb=0; r.pLin=0; r.linState=0; r.linConvDim=0; }
   r.pExpert = 3*r.De*e.F;
   r.pRouted = e.E*r.pExpert;
   r.pShared = 3*D*e.Fs + (e.sharedGate? D : 0);
@@ -182,5 +191,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, capKeys, swaKeys, link, agT, arT, a2aT, roof };
 })();

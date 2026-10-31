@@ -58,6 +58,7 @@ node tools/scouter.js kernels                                    # measured H200
 node tools/scouter.js eff                                        # the per-kernel-class efficiency table and the point behind each cell
 node tools/scouter.js calib  --set h200_kernels --basis ideal    # the model replaying measured points
 node tools/scouter.js calib  --set cookbook_tpot                 # SGLang cookbook benchmark rows against serve
+node tools/scouter.js calib  --set k3calc_flops --basis ideal    # k3-inference-calculator's per-module FLOPs against infer
 node tools/scouter.js serve  --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   # closed-loop benchmark estimate
 node tools/scouter.js trace  --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   # a profiler trace by kernel category
 echo '{"model":"kimik3","hw":"GB300","topo":"nvl64","B":256}' | node tools/scouter.js infer --json -
@@ -96,19 +97,26 @@ printed as the string `"Infinity"`.
 | `infer` | `stepT`, `tComp`, `tComm`, `ops[]` (`key`, `name`, `group`, `layers`, `flops`, `bytes`, `t`, `tc`, `tm`, `tf`, `bound`, `I`), `comm[]`, `warn[]`, `query.cfg` (the full config used). |
 | `train` | `stepT`, `mfu`, `tokPerGpu`, `ops[]` (`fwd` / `dgrad` / `wgrad` each with time), `comm[]`, `mem`, `warn[]`, `query.cfg`. |
 | `module` | `measure.mods.<full\|lin\|moe\|dense>` with `t`, `flops`, `bytes`, `byBound` and `ops[]` for one layer; `modules`; `facts`. |
-| `serve` | A closed-loop benchmark of `conc` requests with `isl` input and `osl` output tokens: `tpot` (decode step plus the prefills of the other requests spread over the output, `tpotDecode` + `interf`), `ttft0` (unloaded prefill), `tokPerGpu` (input + output tokens per second per GPU, the SGLang cookbook convention), `outTokPerS`, `N`, `mem`, `warn[]`. |
+| `serve` | A closed-loop benchmark of `conc` requests with `isl` input and `osl` output tokens: `tpot` (decode step plus the prefills of the other requests spread over the `osl − 1` decode steps, `tpotDecode` + `interf`; TPOT is (E2E − TTFT) / (osl − 1) as in bench_serving and genai-bench), `ttft0` (unloaded prefill), `tokPerGpu` (input + output tokens per second per GPU, the SGLang cookbook convention), `outTokPerS`, `N`, `mem`, `warn[]`. |
 | `sweep` | `rows[]`: the varied keys plus the picked fields. `run` can be `roofline`, `infer`, `train`, `module` or `serve`. |
 | `sets` | Per set: `origin`, `stage`, `confidence`, `asOf`, hardware, size, dims, metrics, and the `calib` sets that use it. |
 | `points` | `meta` (title, origin, stage, hardware, conditions) and `points[]`. Public points carry `src` and `url`. |
 | `kernels` | `points[]` (`op`, `I`, `TFLOPs`, `GBs`, and the SOL efficiencies `etaC` = FLOPs / time / peak and `etaM` = bytes / time / HBM peak), `measured` (the best of each), `profile` (how the set was measured), and the `ideal` and `modeled` rooflines. `--set` picks another kernel set (for example one made by `tools/import_ncu.py`); `points` with `hw` and `dtype` passes points directly. |
 | `eff` | `reference` (`etaC`, `etaM`) and `table[]`: one cell per kernel class (`gemm`, `attn`), kind (`c` compute, `m` memory), precision and SM version, with `eta`, its ratio to the reference, and the `evidence` point it comes from. |
 | `calib` | `rows[]` (`p`, `meas`, `pred`, `ratio`) and `median` of predicted / measured; `data` is the data set the rows come from. |
-| `trace` | Per kernel category (`gemm`, `attn`, `lin`, `moe`, `comm`, `samp`, `elem`, `other`): measured and predicted seconds per step, their ratio and the top kernels; `total`; and `unmatched`, the most expensive kernels no rule recognized. The trace is a torch profiler / Chrome trace (`{traceEvents}`, GPU kernel events only) or a list `[{name, us, calls}]`; `steps` is how many steps it covers. |
+| `trace` | Per kernel category (`gemm`, `attn`, `lin`, `moe`, `comm`, `samp`, `elem`, `other`): measured and predicted seconds per step, their ratio and the top kernels; `total`; `ranks`; `overlap` (time two kernels on one stream overlapped, as with PDL, counted once); `gpu` (`busy` = union of kernel time, `wall`, `idle`, and the model's `step`); `comm` (`floor` = each comm kernel's fastest 10% of calls × its calls, `wait` = measured − floor, the time spent waiting for slower ranks); and `unmatched`, the most expensive kernels no rule recognized. The trace is a torch profiler / Chrome trace (`{traceEvents}`, GPU kernel events only; merged multi-rank traces are split by `args.source_idx`, a `[TPxx]` pid, or pid, and averaged per rank) or a list `[{name, us, calls}]`; `steps` is how many steps it covers. The prediction per category includes ops that overlap on another stream, because their kernels are in the trace too. |
 
 Calibration sets (`catalog.calib`): the anonymized `cp_attention`, `cp_full_model`, `efsdp_full_model`, `efsdp_comm` and
-`h200_kernels`, and the public `cookbook_tpot` / `cookbook_ttft`.
+`h200_kernels`, the public `cookbook_tpot` / `cookbook_ttft`, and `k3calc_step` / `k3calc_flops` / `k3calc_bytes`.
 The cookbook sets replay the SGLang cookbook benchmark rows marked `calib: true` (`tools/import_cookbook.py` documents which
-rows and why) through `serve`.
+rows and why) through `serve`. Rows with `num_prompts` under twice the concurrency are one burst, not a steady state, and are
+not calibrated. Accept lengths measured on the random dataset are upper bounds: random prompts make outputs loop, and
+bench_serving reports a cumulative server-side average.
+The `k3calc_*` sets compare against [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator)
+(Apache-2.0), an analytical lower bound for Kimi K3 on SGLang (100% efficiency, all-reduce link bytes at 1×, routed-expert
+weights only for the experts certain to be hit). `tools/k3calc_snippet.js` runs its own page; `tools/import_k3calc.py` stores
+the result. Compare the step at `--basis ideal`. FLOPs and bytes are compared only for modules where both sides count the same
+thing (`flops_same`, `bytes_same`); the KDA recurrence (8 FLOP per state element here, 1 there) and elementwise ops are not.
 
 ## Efficiency knobs
 
@@ -121,6 +129,18 @@ These are fields of `g` (`--g.<key>`), with `Common.G0` as the default and `Comm
 | `gapUs` | 0.45 (ideal 0) | Idle time between kernels inside a CUDA graph, in µs. The config field `pdl: true` (programmatic dependent launch) removes it. |
 
 In the inference config, NVFP4 / MXFP4 MoE weights on SM100 and later pad the expert hidden size to a multiple of 256.
+`eAct` (expert activation precision) defaults to what SGLang does: MXFP4 runs W4A8 at the FP8 peak on Blackwell (the FlashInfer
+TRT-LLM path) and W4A16 at the BF16 peak on Hopper (Marlin); NVFP4 on Hopper runs W4A16; everything else matches the weights.
+`eAct: "same"` forces W4A4 / W8A8. Causal attention against a capped key set (sliding window, DSA top-k) counts keys with
+`Common.capKeys`. On SGLang, Kimi K3 at TP8 on Blackwell with at most 12 tokens per rank splits the latent up projection by
+column and all-gathers it (`latag`), as `gemm_ag.py` does.
+
+Context parallelism with load balancing (`cpLB`, zigzag) assumes a balanced split. ring-flash-attention measures zigzag at
+about 90% of single-GPU flash-attention ÷ 8 (forward + backward, CP8, 8K tokens per GPU), so balanced CP here is 9–17% optimistic
+on the attention core; the unbalanced ring (52–54%) matches. Miles' FSDP backend runs CP through ring-flash-attention's HF
+adapter, which is the all-gather path on contiguous chunks with no zigzag: model it as `cpType: "allgather"`, `cpLB: false`.
+Training memory: with `reshard: false` (torchtitan) the BF16 parameters gathered in the forward pass stay until the backward
+pass; on Hopper, FP8 recipes keep a second, transposed copy of each quantized weight (the FP8 wgmma reads both operands K-major).
 
 `warn[]` entries with `bad: true` mean the configuration cannot run, for example because it doesn't fit in memory. Names and
 warnings are messages `{ key, p }`; their text is in `locales/<lang>/engine_*.js`.
@@ -132,5 +152,7 @@ warnings are messages `{ key, p }`; their text is in `locales/<lang>/engine_*.js
 - Data goes into `data/public/*.json` (with `src` and `url`) or `data/anon/*.json`. Rebuild with `uv run --no-project tools/build_db.py`.
   - `tools/import_cookbook.py --ref <sha>` regenerates `data/public/sglang_cookbook.json` from the SGLang cookbook at that commit.
   - `tools/import_ncu.py report.csv --name ... --hw ...` turns an Nsight Compute raw CSV into an anonymized kernel set.
+  - `tools/import_k3calc.py lines.txt --ref <sha>` stores k3-inference-calculator results printed by `tools/k3calc_snippet.js`.
+  - `tools/reduce_trace.py trace.json.gz` shrinks a profiler trace too large to load (hundreds of MB) to its GPU kernel events.
 - A new `Common.KEFF` cell must name a data point (`ref: "<set>:<id>"`) whose measured efficiency matches it; `tests/plane.js` checks.
 - Run `cd tests && npm install && npm test` before you push. It runs the engine, data-plane, FLOPs parity, collective, i18n, shell and regression checks.

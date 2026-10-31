@@ -8,7 +8,10 @@ benchmarks 文件只有 hw / strategy / quant 这些选项名，部署形状（�
 每条的 notes 里，由下面的 DEPLOY 手工对上，每条注明出处。对不上的行照样导入，calib 记为 false，只作数据展示。
 
 tok/s/GPU 的口径是 (输入 + 输出) token / 时间 / 卡数（GLM-5.3-Flash GB300 c=1：2000 / (0.205 + 999 × 0.002) / 4 ≈ 227）。
-并发 1 的行用这个关系反推卡数，和 DEPLOY 的卡数对不上就报错。
+并发 1 的行用这个关系反推卡数，和 DEPLOY 的卡数对不上就报错。TPOT 按 bench_serving / genai-bench 的口径是 (E2E − TTFT) / (osl − 1)。
+num_prompts 不到并发两倍的行是一波突发（GLM-5.3-Flash 的 c80 是 80 条请求、80 并发：全体一起排队 prefill，不是稳态），calib 记为 false。
+接受长度在 random 数据集上偏高（随机 token 的 prompt 容易让输出进入循环，草稿更容易猜中；jhinpan/sglang-amd-cookbook 的 Kimi K3 记录里
+random 上 3.8，真实 prompt 上 2.33–2.94），而且 bench_serving 报的是服务端从启动以来的累计平均，不重置时会混进前面几格：当作上限看。
 
 用法：
   uv run --no-project tools/import_cookbook.py                  # 取 sglang main 的当前 commit
@@ -124,7 +127,7 @@ def rows_of(model, path, ref, src):
             r = {"id": "-".join([model, m["hw"], m["strategy"]] + [str(m[k]) for k in ("quant", "kvDsaPair", "spec") if k in m] + ["%d-%d-c%d" % (isl, osl, c)]),
                  "src": "SGLang cookbook", "url": "https://github.com/%s/blob/%s/%s%s-benchmarks.jsx" % (REPO, ref, DIR, path),
                  "model": model, "hw": HW.get(m["hw"], m["hw"].upper()), "strategy": m["strategy"], "quant": quant,
-                 "isl": isl, "osl": osl, "conc": c, "ttft_ms": s["ttft_ms"], "tpot_ms": s["tpot_ms"], "tok_s_gpu": s["tokens_per_sec_per_gpu"],
+                 "isl": isl, "osl": osl, "conc": c, "num_prompts": w.get("num_prompts"), "ttft_ms": s["ttft_ms"], "tpot_ms": s["tpot_ms"], "tok_s_gpu": s["tokens_per_sec_per_gpu"],
                  "stat": e.get("latencyPercentile", "Mean").lower(), "sglang": e.get("sglang_version"), "calib": False, "confidence": "reported"}
             if d:
                 acc = d.get("acc")
@@ -132,10 +135,11 @@ def rows_of(model, path, ref, src):
                 N = d["N"]
                 r.update(topo=TOPO.get(m["hw"], "hgx8"), N=N, moePar=d["moePar"], kvDt=d["kvDt"], dcp=d.get("dcp", 1), spec=d["spec"],
                          specK=d.get("specK", 0), acc_len=acc, acc_sim=d.get("sim", False), **QUANT[quant])
-                r["calib"] = bool(d["calib"] and m["hw"] in HW and (d["spec"] == "none" or acc))
+                burst = w.get("num_prompts") is not None and w["num_prompts"] < 2 * c   # 一波突发，不是闭环稳态
+                r["calib"] = bool(d["calib"] and m["hw"] in HW and (d["spec"] == "none" or acc) and not burst)
                 if r["acc_sim"]: r["confidence"] = "derived"      # 接受长度是模拟的：只说明吞吐机制
                 if c == 1:   # 用 tok/s/GPU 的口径反推卡数
-                    n = (isl + osl) / (s["ttft_ms"] / 1e3 + osl * s["tpot_ms"] / 1e3) / s["tokens_per_sec_per_gpu"]
+                    n = (isl + osl) / (s["ttft_ms"] / 1e3 + (osl - 1) * s["tpot_ms"] / 1e3) / s["tokens_per_sec_per_gpu"]
                     if abs(n - N) / N > 0.08: raise SystemExit("%s：按 tok/s/GPU 反推是 %.2f 卡，DEPLOY 写的是 %d" % (r["id"], n, N))
             out.append(r)
     return out

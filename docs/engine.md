@@ -9,14 +9,14 @@
 | 文件 | 全局 | 内容 |
 |---|---|---|
 | `msg.js` | `Msg` | 消息：`Msg.of(key, 参数)`；`.invalid()` 标出“这个配置跑不起来”；`Msg.id` 比较两条消息 |
-| `common.js` | `Common` | 数据类型与峰值（`dtB`、`peakOf`）、roofline 公式（`compT`、`memT`、`ridge`、`attainable`、`linkRidge`、`roof`）、默认效率 `G0`、理想屋顶 `IDEAL`（效率 1、固定开销 0）和口径表 `BASIS`、模型 / GPU / 拓扑表（`MODELS`、`HW`、`TOPO`）、参数量 `derive`、层排布 `layerPlan`、链路与集合通信时间；按 kernel 类别的效率表 `KEFF`、`etaK`、`gK` |
+| `common.js` | `Common` | 数据类型与峰值（`dtB`、`peakOf`）、带上限的因果 key 数 `capKeys`（滑窗、DSA top-k）、roofline 公式（`compT`、`memT`、`ridge`、`attainable`、`linkRidge`、`roof`）、默认效率 `G0`、理想屋顶 `IDEAL`（效率 1、固定开销 0）和口径表 `BASIS`、模型 / GPU / 拓扑表（`MODELS`、`HW`、`TOPO`）、参数量 `derive`、层排布 `layerPlan`、链路与集合通信时间；按 kernel 类别的效率表 `KEFF`、`etaK`、`gK` |
 | `par.js` | `Par` | CP / EP / FSDP 一层的通信与时间（`cpLayer`、`epLayer`、`fsdpDet`），一次集合通信的记录 `xc` |
 | `infer.js` | `Infer` | 推理引擎画像 `ENGINES`、默认配置 `BASE`、`step` / `decode` / `prefill` / `memory`，闭环压测 `serve` |
 | `train.js` | `Train` | 训练一步 `run`、默认配置 `BASE`、精度配方 `PREC` |
 | `quant.js` | `Quant` | 低精度 GEMM、一层 MoE、训练的三个 GEMM、理想加速比 |
 | `arch.js` | `Arch` | 架构页：模块划分 `present`、每个模块一层的 `measure`、`facts`、示意图和读数用的机制量 `explain` |
-| `calib.js` | `Calib` | 和实测对照：每个数据集筛哪些点、实测是哪个字段、预测怎么算（`SETS`；`set` 字段指向别的数据集，比如 cookbook 的两个视图都读 `sglang_cookbook`），公开数据的 replay（`mokRatio`），cookbook 行到推理配置的映射 `serveCfg` |
-| `trace.js` | `Trace` | 实测 trace 对照：kernel 名按正则归类（`CAT`、`catOf`），本页算子归到同样的类别（`OPCAT`），`kernelsOf` 汇总 trace，`compare` 逐类比每步时间 |
+| `calib.js` | `Calib` | 和实测对照：每个数据集筛哪些点、实测是哪个字段、预测怎么算（`SETS`；`set` 字段指向别的数据集，比如 cookbook 的两个视图都读 `sglang_cookbook`），公开数据的 replay（`mokRatio`），cookbook 行到推理配置的映射 `serveCfg`，k3-inference-calculator 的场景到推理配置的映射 `k3Cfg` 和按模块汇总 `k3Group` |
+| `trace.js` | `Trace` | 实测 trace 对照：kernel 名按正则归类（`CAT`、`catOf`），本页算子归到同样的类别（`OPCAT`），`scan` / `kernelsOf` 汇总 trace（按 rank 平均、每条 stream 取独占时间、kernel 并集与首尾跨度、通信下限），`compare` 逐类比每步时间 |
 
 ## 接口约定
 

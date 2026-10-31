@@ -25,7 +25,7 @@ PUBLIC = {
  "quant_evidence": dict(file="quant_evidence.json", stage="quant", title="量化：公开的 PR、博客与文档",
    conditions="权重 = 时效（半衰期 12 个月；只知道读取日期时 × 0.7）× 硬件匹配 × 来源类型。"),
  "inference_public": dict(file="inference.json", stage="infer", title="推理：公开的服务数字", conditions="各家公布的口径不同，只作量级参考。"),
- "training_public": dict(file="training.json", stage="train", title="训练：公开的 EP 后端数字", conditions="公布方自己的模型和集群。"),
+ "training_public": dict(file="training.json", stage="train", title="训练：公开的 EP 后端与 CP 数字", conditions="公布方自己的模型和集群。"),
  "spec_public": dict(file="spec.json", stage="infer", title="投机解码：公开数字", conditions="模型、温度、数据集和并发各不相同，只看量级和方向。"),
  "determinism_public": dict(file="determinism.json", stage="rl", title="确定性推理与训推逐位一致：公开数字",
    conditions="模型、硬件和测法各不相同；开销是各家相对自己基线的数字，只看量级。"),
@@ -35,6 +35,9 @@ PUBLIC = {
  "sglang_cookbook": dict(file="sglang_cookbook.json", stage="infer", title="推理：SGLang cookbook 的公开测速",
    conditions="sgl-project/sglang 文档里各模型的 benchmarks 文件（tools/import_cookbook.py 钉在一个 commit 上导入）：随机 token 输入、ignore_eos、"
    "并发固定的闭环压测；TTFT / TPOT 是均值，tok/s/GPU 含输入 token。接受长度由 SGLANG_SIMULATE_ACC_LEN 定死的行只说明吞吐机制。"),
+ "k3_calculator": dict(file="k3_calculator.json", stage="infer", confidence="derived", title="推理：k3-inference-calculator 的解析下限（Kimi K3）",
+   conditions="ByronHsu/k3-inference-calculator（Apache-2.0）在它自己网页里跑出的结果（tools/k3calc_snippet.js、tools/import_k3calc.py）："
+   "TP8，效率 100%、集合通信无启动延迟，expert 权重只算确定的最少 expert 数，是下限不是预测。每个场景一行步长下限，再按模块给 FLOPs、HBM 字节。"),
  "releases": dict(file="releases.json", stage="meta", title="过去一年的发布与博客",
    conditions="LMSYS 博客，SGLang / vLLM / slime / Miles / AReaL 的 GitHub release；只摘和推理、训练、低精度、投机解码、RL 相关的要点。"),
 }

@@ -128,7 +128,7 @@
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.C"></span><input type="number" min="256" step="256" data-bind="inf.C"></label>
     </div>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.wDt"></span><select data-bind="inf.wDt" data-i18n-attr="aria-label=infer.rack.attr.inf.wDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
-    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.eAct"></span><select data-bind="inf.eAct" data-i18n-attr="aria-label=infer.rack.attr.inf.eAct.aria-label"><option value="" data-i18n="infer.rack.opt.inf.eAct.empty"></option><option value="bf16" data-i18n="infer.rack.opt.inf.eAct.bf16"></option><option value="mxfp8" data-i18n="infer.rack.opt.inf.eAct.mxfp8"></option></select></label>
+    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.eAct"></span><select data-bind="inf.eAct" data-i18n-attr="aria-label=infer.rack.attr.inf.eAct.aria-label"><option value="" data-i18n="infer.rack.opt.inf.eAct.empty"></option><option value="bf16" data-i18n="infer.rack.opt.inf.eAct.bf16"></option><option value="mxfp8" data-i18n="infer.rack.opt.inf.eAct.mxfp8"></option><option value="same" data-i18n="infer.rack.opt.inf.eAct.same"></option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dDt"></span><select data-bind="inf.dDt" data-i18n-attr="aria-label=infer.rack.attr.inf.dDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option></select></label>
     <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.stateDt"></span><select data-bind="inf.stateDt" data-i18n-attr="aria-label=infer.rack.attr.inf.stateDt.aria-label"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
@@ -757,9 +757,14 @@
     <div class="tbl" style="max-height:420px;overflow:auto"><table id="i-calib-pts"></table></div>
     <p class="hint" data-i18n-html="calib.inf.read"></p>
   </div>
+  <div class="block" id="i-k3" data-src="both"><h2 data-i18n="calib.k3.h2"></h2>
+    <p class="lede" data-i18n-html="calib.k3.lede"></p>
+    <div class="tbl"><table id="i-k3-tbl"></table></div>
+    <p class="hint" data-i18n-html="calib.k3.read"></p>
+  </div>
   <div class="block" id="i-trace" data-src="both"><h2 data-i18n="calib.trace.h2"></h2>
     <p class="lede" data-i18n-html="calib.trace.lede"></p>
-    <div class="legend"><label><span data-i18n="calib.trace.file"></span> <input type="file" id="i-trace-file" accept=".json,application/json"></label>
+    <div class="legend"><label><span data-i18n="calib.trace.file"></span> <input type="file" id="i-trace-file" accept=".json,.gz,application/json,application/gzip"></label>
       <label><span data-i18n="calib.trace.steps"></span> <input type="number" id="i-trace-steps" min="1" step="1" value="1" style="width:80px"></label></div>
     <p class="hint" id="i-trace-msg"></p>
     <div class="tbl"><table id="i-trace-tbl"></table></div>

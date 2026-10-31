@@ -93,11 +93,16 @@ const NAMES = { comm: ["ncclDevKernel_AllReduce_Sum_bf16_RING_LL", "cross_device
   attn: ["flash_fwd_splitkv_kernel", "fmha_v2_flash_attention_fp16", "flashmla::sparse_decode", "BatchPrefillWithPagedKVCacheKernel"],
   gemm: ["nvjet_tst_128x256_64x4_2x1_v_bz_coopB_TNN", "sm90_xmma_gemm_bf16bf16_bf16f32_f32_tn_n", "deep_gemm::fp8_gemm_kernel", "cutlass_80_tensorop_bf16_s16816gemm"],
   samp: ["sampling_from_probs_kernel", "softmax_warp_forward"], elem: ["rms_norm_kernel", "rotary_embedding_kernel", "act_and_mul_kernel", "vectorized_elementwise_kernel"] };
+// names that used to land in the wrong bucket: "combine" / "dispatch" / "gemm" inside attention, mHC and MoE kernel names, AMD and trtllm-gen names
+const NAMES2 = { attn: ["flash_fwd_splitkv_combine_kernel", "_fwd_grouped_kernel_stage1", "_fwd_kernel_stage2", "_sparse_decode_gathered_kernel"],
+  elem: ["mhc_post_combine_norm_prefill_kernel", "mhc_pre_gemm_sqrsum_kernel", "void alloc_decode_kernel<int>"], comm: ["rcclGenericKernel", "all_reduce_mhc_kernel"],
+  moe: ["bmm_E4m3_E2m1E2m1_Fp32_t128x8x512", "finalizeKernel", "activationDeepSeek"], lin: ["recompute_w_u_fwd_kernel"], gemm: ["Cijk_Ailk_Bljk_BBS_BH_MT128x128x64"] };
+for (const [c, ns] of Object.entries(NAMES2)) for (const nm of ns) { const got = P.Trace.catOf(nm); if (got !== c) problems.push(`trace: "${nm}" is ${got}, expected ${c}`); }
 for (const [c, ns] of Object.entries(NAMES)) for (const nm of ns) { const got = P.Trace.catOf(nm); if (got !== c) problems.push(`trace: "${nm}" is ${got}, expected ${c}`); }
 {
   const q = { model: "glm53f", hw: "B200", N: 8, B: 32 }, r = S.infer(q), steps = 10, NAME = Object.fromEntries(Object.entries(NAMES).map(([c, ns]) => [c, ns[0]]));
-  const evs = r.ops.filter(o => o.overlap !== "moe").map(o => ({ ph: "X", cat: "kernel", name: NAME[P.Trace.opCat(o.key)], dur: o.t * 1e6 * steps }))
-    .concat(r.comm.filter(x => !x.overlap).map(x => ({ ph: "X", cat: "kernel", name: NAME.comm, dur: x.t * 1e6 * steps })), [{ ph: "X", cat: "cpu_op", name: "aten::mm", dur: 1e6 }]);
+  const evs = r.ops.map(o => ({ ph: "X", cat: "kernel", name: NAME[P.Trace.opCat(o.key)], dur: o.t * 1e6 * steps }))
+    .concat(r.comm.map(x => ({ ph: "X", cat: "kernel", name: NAME.comm, dur: x.t * 1e6 * steps })), [{ ph: "X", cat: "cpu_op", name: "aten::mm", dur: 1e6 }]);
   const tr = bad("trace", S.trace(Object.assign({ trace: { traceEvents: evs }, steps }, q)));
   for (const row of tr.rows) if (Math.abs(row.ratio - 1) > 1e-9) problems.push(`trace round trip ${row.cat}: ratio ${row.ratio}`);
   const list = bad("trace list", S.trace(Object.assign({ trace: [{ name: "fused_moe_kernel", us: 500, calls: 4 }, { name: "mystery_kernel", us: 100 }], steps: 2 }, q)));
@@ -107,11 +112,23 @@ for (const [c, ns] of Object.entries(NAMES)) for (const nm of ns) { const got = 
   const viaCli = cli(["trace", "--model", "glm53f", "--hw", "B200", "--N", "8", "--B", "32", "--steps", "10", "--file.trace", f, "--pick", "total.ratio"]);
   if (Math.abs(viaCli["total.ratio"] - 1) > 1e-9) problems.push("cli trace: --file.trace did not round-trip");
   fs.unlinkSync(f); n += 3;
+  // two merged ranks (combine_traces' args.source_idx), PDL overlap on one stream, and a slow rank's all-reduce: averaged per rank,
+  // the overlap goes to the earlier kernel, and the comm floor is the fastest calls
+  const ev = (src, tid, ts, dur, name) => ({ ph: "X", cat: "kernel", pid: 10000 * src, tid, ts, dur, name, args: { source_idx: src } });
+  const mr = S.trace(Object.assign({ trace: { traceEvents: [ev(0, 7, 0, 10, "nvjet_a"), ev(0, 7, 8, 10, "nvjet_b"), ev(0, 8, 30, 5, "ncclDevKernel_AllReduce"),
+    ev(1, 7, 0, 10, "nvjet_a"), ev(1, 7, 10, 10, "nvjet_b"), ev(1, 8, 30, 50, "ncclDevKernel_AllReduce")] }, steps: 1 }, q));
+  const near = (a, b) => Math.abs(a - b) < 1e-12, gm = mr.rows.find(x => x.cat === "gemm").meas;
+  if (mr.ranks !== 2 || !near(gm, 19e-6) || !near(mr.overlap, 1e-6) || !near(mr.comm.floor, 5e-6) || !near(mr.comm.wait, 22.5e-6) || !near(mr.gpu.busy, 46.5e-6) || !near(mr.gpu.wall, 57.5e-6))
+    problems.push(`trace: ranks / PDL overlap / comm floor wrong (${JSON.stringify({ ranks: mr.ranks, gm, overlap: mr.overlap, comm: mr.comm, gpu: mr.gpu })})`);
+  n++;
 }
 const sw = S.sweep({ run: "infer", model: "qwen35", over: { B: [1, 8, 64], phase: ["decode", "prefill"] }, pick: ["stepT", "tComp"] });
 if (sw.rows.length !== 6 || sw.rows.some(x => !(x.stepT > 0))) problems.push("sweep: expected 6 rows with stepT");
 for (const id of Object.keys(cat.sets)) { const p = S.points({ set: id }); if (p.points.length !== cat.sets[id].n) problems.push(`points ${id}: ${p.points.length} != ${cat.sets[id].n}`); n++; }
 for (const id of Object.keys(P.Calib.SETS)) for (const basis of ["ideal", "modeled"]) { const c = S.calib({ set: id, basis }); if (!c.n || !(c.median > 0)) problems.push(`calib ${id} ${basis}: no points`); n++; }
+// k3-inference-calculator: where both sides count the same thing (k3calc_flops), per-module FLOPs agree within 1%
+{ const c = S.calib({ set: "k3calc_flops", basis: "ideal" }), bad = c.rows.filter(r => Math.abs(r.ratio - 1) > 0.01);
+  if (c.n < 70 || bad.length) problems.push(`k3calc_flops: ${bad.length} of ${c.n} modules off by more than 1% (${bad.slice(0, 3).map(r => r.p.id).join(", ")})`); n++; }
 for (const [f, q] of [["infer", { model: "nope" }], ["train", { hw: "X1" }], ["points", {}], ["calib", { set: "nope" }], ["sweep", { run: "nope" }], ["infer", { basis: "measured" }]]) {
   let threw = false; try { S[f](q); } catch (e) { threw = true; } if (!threw) problems.push(`${f}(${JSON.stringify(q)}) should throw`);
 }

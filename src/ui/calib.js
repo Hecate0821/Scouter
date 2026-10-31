@@ -39,7 +39,7 @@ function calibReplay(V, g){
 }
 function quantile(a,q){ const s=[...a].sort((x,y)=>x-y), i=(s.length-1)*q, lo=Math.floor(i); return s.length ? s[lo]+(s[Math.ceil(i)]-s[lo])*(i-lo) : NaN; }
 
-const renderCalib = () => renderCalibView(CV.train), renderInfCalib = () => { syncInfRack(); renderCalibView(CV.infer); renderTrace(); };
+const renderCalib = () => renderCalibView(CV.train), renderInfCalib = () => { syncInfRack(); renderCalibView(CV.infer); renderK3(); renderTrace(); };
 function renderCalibView(V){
   const {g}=ctx(), res=calibReplay(V, g), el=k=>$(V.pre+"-"+k);
   el("sum").innerHTML='<thead><tr><th>'+t("calib.sum.head.set")+'</th><th>'+t("calib.sum.head.n")+'</th><th>'+t("calib.sum.head.median")+'</th><th>'+t("calib.sum.head.mid80")+'</th><th>'+t("calib.sum.head.within25")+'</th><th>'+t("calib.sum.head.how")+'</th></tr></thead><tbody>'+
@@ -71,6 +71,18 @@ function calibScatter(V, res){
 }
 for(const V of Object.values(CV)) $(V.pre+"-sum").addEventListener("click",e=>{ const tr=e.target.closest("[data-calib]"); if(!tr) return; V.sel=tr.dataset.calib; renderCalibView(V); });
 
+/* 推理页：和 k3-inference-calculator 的解析下限逐场景对照。步长按 ideal 口径（下限对下限），FLOPs / 字节只列两边口径一致的模块，
+   routed expert 的字节单列（口径不同：它只读确定的最少 expert，本页按均匀路由的期望覆盖）；这几组不进上面的散点图 */
+function renderK3(){
+  const sc=id=>id.replace(/-[a-z_]+$/,""), rows=set=>Scouter.calib({ set, basis:"ideal" }).rows, {g}=ctx();
+  const by=set=>rows(set).reduce((m,r)=>((m[sc(r.p.id)]=m[sc(r.p.id)]||[]).push(r.ratio), m), {});
+  const span=a=>{ if(!a) return "—"; const s=[...a].sort((x,y)=>x-y); return s[0].toFixed(3)+(s.length>1?" – "+s[s.length-1].toFixed(3):""); };
+  const fl=by("k3calc_flops"), bt=by("k3calc_bytes"), ex=Object.fromEntries(DB.where("k3_calculator",{ group:"moe_exp" }).map(p=>[sc(p.id), Calib.k3Group(p,g).bytes/p.bytes]));
+  $("i-k3-tbl").innerHTML='<thead><tr><th>'+t("calib.k3.head.case")+'</th><th>'+t("calib.k3.head.calc")+'</th><th>'+t("calib.k3.head.ideal")+'</th><th>'+t("calib.term.ratio")+'</th><th>'+t("calib.k3.head.flops")+'</th><th>'+t("calib.k3.head.bytes")+'</th><th>'+t("calib.k3.head.exp")+'</th></tr></thead><tbody>'+
+    rows("k3calc_step").map(r=>{ const p=r.p, k=sc(p.id);
+      return '<tr><td>'+esc(t("calib.k3."+p.phase,{hw:String(HW[p.hw].name), b:p.batch, len:fK(p.ctx||p.seq)}))+'</td><td class="num">'+fT(r.meas)+'</td><td class="num">'+fT(r.pred)+'</td><td class="num">'+r.ratio.toFixed(2)+'</td><td class="num">'+span(fl[k])+'</td><td class="num">'+span(bt[k])+'</td><td class="num">'+(ex[k]?ex[k].toFixed(1)+"×":"—")+'</td></tr>'; }).join("")+'</tbody>';
+}
+
 /* 推理页：导入 torch profiler / Chrome trace，按右侧的推理设置跑一步，逐类别对照（Scouter.trace） */
 let traceData = null;
 function renderTrace(){
@@ -79,6 +91,9 @@ function renderTrace(){
   let r; try{ r=Scouter.trace(Object.assign({}, S.inf, { model:S.model, hw:S.hw, topo:S.topo, g:S.glob, trace:traceData.json, steps:+$("i-trace-steps").value||1 })); }
   catch(e){ tb.innerHTML=""; msg.textContent=t("calib.trace.err",{m:e.message}); return; }
   msg.textContent=t("calib.trace.sum",{file:traceData.name, n:r.kernels, steps:r.steps, meas:fT(r.total.meas), pred:fT(r.total.pred)})+
+    (r.ranks>1 ? " "+t("calib.trace.ranks",{n:r.ranks}) : "")+(r.overlap>0 ? " "+t("calib.trace.overlap",{t:fT(r.overlap)}) : "")+
+    (r.gpu ? " "+t("calib.trace.gpu",{busy:fT(r.gpu.busy), wall:fT(r.gpu.wall), idle:fT(r.gpu.idle), step:fT(r.gpu.step)}) : "")+
+    (r.comm ? " "+t("calib.trace.comm",{meas:fT(r.comm.meas), floor:fT(r.comm.floor), wait:fT(r.comm.wait), pred:fT(r.comm.pred), ratio:r.comm.ratio==null?"—":r.comm.ratio.toFixed(2)}) : "")+
     (r.unmatched.length ? " "+t("calib.trace.unmatched",{names:r.unmatched.slice(0,3).map(k=>k.name.slice(0,48)).join(", ")}) : "");
   const rt=x=>x==null?"—":x.toFixed(2);
   tb.innerHTML='<thead><tr><th>'+t("calib.trace.head.cat")+'</th><th>'+t("calib.term.meas")+'</th><th>'+t("calib.term.pred")+'</th><th>'+t("calib.term.ratio")+'</th><th>'+t("calib.trace.head.top")+'</th></tr></thead><tbody>'+
@@ -87,5 +102,6 @@ function renderTrace(){
     '<tr><td><b>'+t("calib.trace.total")+'</b></td><td class="num"><b>'+fT(r.total.meas)+'</b></td><td class="num"><b>'+fT(r.total.pred)+'</b></td><td class="num">'+rt(r.total.ratio)+'</td><td></td></tr></tbody>';
 }
 $("i-trace-file").addEventListener("change",e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return;
-  f.text().then(txt=>{ try{ traceData={ name:f.name, json:JSON.parse(txt) }; } catch(err){ traceData=null; $("i-trace-msg").textContent=t("calib.trace.err",{m:err.message}); return; } renderTrace(); }); });
+  /* .gz 用浏览器自带的 DecompressionStream 解开 */
+  (/\.gz$/i.test(f.name) ? new Response(f.stream().pipeThrough(new DecompressionStream("gzip"))).text() : f.text()).then(txt=>{ try{ traceData={ name:f.name, json:JSON.parse(txt) }; } catch(err){ traceData=null; $("i-trace-msg").textContent=t("calib.trace.err",{m:err.message}); return; } renderTrace(); }); });
 $("i-trace-steps").addEventListener("input",renderTrace);

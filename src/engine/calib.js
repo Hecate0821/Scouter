@@ -1,6 +1,7 @@
 /* 和实测对照：每个数据集怎样用计算核心复现——筛哪些点、实测是哪个字段、预测怎么算。
    数据点由调用方传进来（界面从数据点库取，测试直接读 data/db.json）；这里不读数据库、不出文字。
-   训练的几组是单台 H200 HGX 上 Qwen3.5-35B-A3B 的匿名实测；推理的两组是 SGLang cookbook 的公开测速（set 指向同一个数据集）。 */
+   训练的几组是单台 H200 HGX 上 Qwen3.5-35B-A3B 的匿名实测；推理是 SGLang cookbook 的公开测速，和 k3-inference-calculator 的解析下限
+   （set 指向同一个数据集）。 */
 const Calib = (function(){
 const { MODELS, HW, TOPO, derive, compT, memT, peakOf } = Common;
 
@@ -29,7 +30,27 @@ const SETS = {
     predict:(p,g)=>{ const hw=HW.H200; return p.op==="bf16_gemm" ? compT(2*p.m*p.n*p.k, peakOf(hw,"bf16"), g) : memT(p.rw_bytes, hw, g); } },
   /* cookbook 的闭环压测：Infer.serve 按每行的部署形状算。TPOT 用全部能对上的行；TTFT 只用并发 1 的行（压测下的排队不算） */
   cookbook_tpot: { set:"sglang_cookbook", where:{ calib:true }, meas:p=>p.tpot_ms/1e3, predict:(p,g)=>serveOf(p,g).tpot },
-  cookbook_ttft: { set:"sglang_cookbook", where:{ calib:true, conc:1 }, meas:p=>p.ttft_ms/1e3, predict:(p,g)=>serveOf(p,g).ttft0 } };
+  cookbook_ttft: { set:"sglang_cookbook", where:{ calib:true, conc:1 }, meas:p=>p.ttft_ms/1e3, predict:(p,g)=>serveOf(p,g).ttft0 },
+  /* k3-inference-calculator 的解析下限：同一场景下本页的步长（用 ideal 口径才是同类比较）、按模块的 FLOPs 和 HBM 字节。
+     FLOPs / 字节两组只取两边口径一致的行（flops_same / bytes_same），应当几乎重合；步长差在口径不同的地方（expert 覆盖、AR 算法） */
+  k3calc_step: { set:"k3_calculator", where:{ group:"total" }, meas:p=>p.total_s, predict:(p,g)=>k3Step(p,g).stepT },
+  k3calc_flops: { set:"k3_calculator", where:{ flops_same:true }, meas:p=>p.flops, predict:(p,g)=>k3Group(p,g).flops, unit:"flop" },
+  k3calc_bytes: { set:"k3_calculator", where:{ bytes_same:true }, meas:p=>p.bytes, predict:(p,g)=>k3Group(p,g).bytes, unit:"byte" } };
+
+/* k3-inference-calculator 的场景 → 本页的推理配置：SGLang，MoE 按 TP 切，MXFP4 expert、BF16 其余权重和 KV、FP32 线性注意力状态；
+   prefill 是一个 chunk 的冷启动 */
+function k3Cfg(p){
+  const c = Object.assign({}, Infer.BASE, { engine:"sglang", phase:p.phase, N:p.tp, dpA:1, moePar:p.moePar, wDt:"mxfp4", dDt:"bf16", kvDt:"bf16", stateDt:"fp32" });
+  return p.phase==="decode" ? Object.assign(c, { B:p.batch, n:p.ctx }) : Object.assign(c, { P:p.seq, C:p.seq, p:0, reqPerChunk:1 });
+}
+const k3Step = (p, g) => Infer.step(MODELS[p.model], HW[p.hw], TOPO[p.topo], k3Cfg(p), g);
+/* 计算器的模块 → 本页的算子 */
+const K3GROUP = { mla_proj:["aqa","aqb","agp","auk","auv","aout","akvb","aproj"], mla_core:["acore"], kda_proj:["lproj","lout"], kda_core:["lconv","lcore","lnorm"],
+  moe_exp:["moe","moeq"], moe_rest:["router","latd","latu","shared"], dense:["dense"], lm:["lm"] };
+function k3Group(p, g){
+  const keys = K3GROUP[p.group]; if(!keys) return { flops:NaN, bytes:NaN };
+  return k3Step(p, g).ops.filter(o => keys.includes(o.key)).reduce((a, o) => ({ flops:a.flops+o.flops, bytes:a.bytes+o.bytes }), { flops:0, bytes:0 });
+}
 
 /* cookbook 一行 → SGLang 的推理配置（MTP 的接受长度含 bonus token，Infer 的 accept 是接受的草稿数） */
 function serveCfg(p){
@@ -46,5 +67,5 @@ function mokRatio(R, g){
   return mk("deepep")/mk("mok");
 }
 
-return { BASE, BACKEND, SETS, serveCfg, mokRatio };
+return { BASE, BACKEND, SETS, serveCfg, k3Cfg, k3Group, mokRatio };
 })();

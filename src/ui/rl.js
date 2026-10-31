@@ -155,7 +155,7 @@ function renderLowprec(){
   // 权重同步：一次全量要搬的字节
   const lin=d.total-d.pEmb-d.pHead, ex=d.pExpertsAll, rest=d.total-ex, emb=(d.pEmb+d.pHead)*2;
   const F=[["BF16",d.total*2,t("rl.lowprec.ws.who.bf16")],[t("rl.lowprec.ws.fmt.fp8"),lin*Common.dtB("fp8")+emb,t("rl.lowprec.ws.who.fp8")],[t("rl.lowprec.ws.fmt.mxfp8"),lin*Common.dtB("mxfp8")+emb,t("rl.lowprec.ws.who.mxfp8")],
-    ...(ex?[[t("rl.lowprec.ws.fmt.nvfp4"),ex*Common.dtB("nvfp4")+rest*2,t("rl.lowprec.ws.who.nvfp4")],[t("rl.lowprec.ws.fmt.int4"),ex*(0.5+2/128)+rest*2,t("rl.lowprec.ws.who.int4")]]:[])];
+    ...(ex?[[t("rl.lowprec.ws.fmt.nvfp4"),ex*Common.dtB("nvfp4")+rest*2,t("rl.lowprec.ws.who.nvfp4")],[t("rl.lowprec.ws.fmt.int4"),ex*(0.5+2/32)+rest*2,t("rl.lowprec.ws.who.int4")]]:[])];
   const ib=hwS.ib*1e9, N=topo.gpus;
   $("r-ws-lede").innerHTML=t("rl.lowprec.ws.lede", {params:fN(d.total), hw:hwS.name, ib:hwS.ib});
   table($("r-ws"),[t("rl.lowprec.ws.head.fmt"),t("rl.lowprec.ws.head.bytes"),t("rl.lowprec.ws.head.vsBf16"),t("rl.lowprec.ws.head.one"),t("rl.lowprec.ws.head.sharded", {N}),t("rl.lowprec.ws.head.who")],F.map(([n,b,w])=>[esc(n),fB(b),pct(b,F[0][1]),fT(b/ib),fT(b/(N*ib)),esc(w)]),[1,2,3,4]);
