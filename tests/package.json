@@ -1,9 +1,10 @@
 {
-  "name": "roofline-tests",
+  "name": "scouter-tests",
   "private": true,
-  "description": "Headless checks for the roofline page: every model × framework × preset renders without errors or NaN.",
+  "description": "Headless checks for Scouter: every model × framework × preset renders without errors, NaN or missing text.",
   "scripts": {
     "regression": "node regression.js ../index.html",
+    "i18n": "node i18n.js",
     "timing": "node timing.js ../index.html"
   },
   "devDependencies": {

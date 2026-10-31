@@ -1,82 +1,135 @@
-# MoE 训推 Roofline 实验台
+# Scouter
 
-> 所有数字都基于开源实现和公开数据推算，和实际可能有较大出入，仅供学习参考。
+An interactive roofline lab for MoE training and inference. Pick a model and a GPU, and Scouter estimates a decode step, a chunked prefill or a post-training step kernel by kernel. It then shows where each attention and MLP module sits on the roofline, and how changing the architecture moves it.
 
-浏览器直接打开 `index.html`（`file://` 也能用，不需要构建）。五个页面：
+**Live:** https://hecate0821.github.io/Scouter/ · 中文说明：[README.zh.md](README.zh.md)
 
-- **总览**：同一个模型的推理一步 decode 和后训练一个 step 并排对比。
-- **后训练**：一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）；并行（一两层样例里每次通信的顺序和字节，FSDP、CP、EP 一维一维拆开）；低精度训练（只列 Megatron / TE / torchtitan 的默认配方）；和匿名实测对照。
-- **推理**：一步 decode / prefill；部署与并行（一层里的通信，TP、DP-attention、EP、PD 分离的取舍）；低精度推理；投机解码（MTP、EAGLE-3、DFlash、DSpark）。
-- **RL**：训推不一致；确定性 rollout（batch invariance、可复现、训推逐位一致）；低精度 rollout 和权重同步；低精度训练与 QAT（前向低精度、反向 BF16 的配方）。
-- **附录**：公开数据与过去一年的发布；量化基础；模型结构；建模口径和参考的开源实现。
+> Every number is an estimate derived from open-source implementations and public data. It can differ a lot from what you measure. Use it to learn, not to plan capacity.
 
-并行和低精度不单独成页，放进训练、推理各自的场景里；模型结构、量化格式这类和场景无关的放附录。拓扑只算两种：单机 8 卡（HGX）和 NVL72 里的 64 卡，所有并行组都在一个 NVLink 域内。地址是 `#页/子页/锚点`，比如 `#infer/spec`、`#train/par/cp`；旧的地址（`#par`、`#quant`、`#public` 等）会跳到新位置。
+The interface is in Chinese for now. All of its text lives in `locales/`, so you can add a language without touching code. See [docs/i18n.md](docs/i18n.md).
 
-## 目录
+## Pages
+
+Open `index.html` directly. It works from `file://` and needs no build step. You can also serve the folder with any static server.
+
+| Tab | What it shows |
+|---|---|
+| Overview | One decode step and one post-training step of the same model, side by side. |
+| Model architecture | **Model overview:** the layer stack (full, sliding-window and linear attention; MoE and dense MLP), one card per module, parameter counts, and KV/state cache versus context. **One module:** a diagram of the mechanism; sliders for its architecture knobs; the module's roofline as batch, context or sequence length changes, with the unedited preset as a ghost; throughput curves; the kernel list; and links to the code each assumption follows. **Compare:** every model's modules on one roofline, attention and MLP curves, and the per-layer time split. |
+| Post-training | One step (fwd, dgrad, wgrad, recompute, communication, optimizer, memory). Parallelism: every collective in a one- or two-layer sample, with FSDP, CP and EP shown one dimension at a time. Low-precision recipes: Megatron, Transformer Engine and torchtitan defaults only. A comparison with anonymized measurements. |
+| Inference | One decode or prefill step. Deployment and parallelism: TP, DP-attention, EP and PD disaggregation. Low-precision inference. Speculative decoding: MTP, EAGLE-3, DFlash and DSpark. |
+| RL | Train/inference mismatch. Deterministic rollout: batch invariance, reproducibility and bitwise train/inference match. Low-precision rollout and weight sync. Low-precision training and QAT. |
+| Appendix | Public data points and the past year's releases, quantization basics, and the modeling method with the open-source code it follows. |
+
+Addresses look like `#tab/subtab/anchor`, for example `#arch/module/lin`, `#infer/spec` or `#train/par/cp`. Old addresses such as `#par`, `#quant`, `#public` and `#appendix/models` redirect to their new place.
+
+**Models:**
+
+| Model | Attention | MLP |
+|---|---|---|
+| Qwen3.5-35B-A3B | Gated DeltaNet + gated GQA, 3 : 1 | MoE with a shared expert |
+| Kimi K3 | KDA + MLA | MoE with a shared expert; first layer dense |
+| GLM-5.3-Flash | KDA + DSA (DeepSeek sparse attention) | MoE with a shared expert; first 3 layers dense |
+| Muse Spark Open (816B-A42B) | GQA: 46 sliding-window (2048) layers + 16 global layers | MoE |
+| Qwen3.8-27B | Gated DeltaNet + gated GQA, 3 : 1 | dense SwiGLU (the dense baseline) |
+
+**GPUs:** H100, H200, B200, B300, GB200 and GB300.
+
+**Topologies:** one 8-GPU HGX node, or 64 GPUs in an NVL72 rack. Every parallel group stays inside one NVLink domain.
+
+## Where the numbers come from
+
+The ground truth is the code, PRs and docs of SGLang, vLLM, TensorRT-LLM, Megatron-LM, torchtitan, TorchRL, slime, Miles and AReaL, plus public blogs and papers. The appendix lists the modeling method. Every module page links to the files its assumptions follow.
+
+The architecture explorer has no formulas of its own. It takes the same kernel-by-kernel step model the inference and training pages use, groups the kernels into attention and MLP modules, and divides by the number of layers each kernel covers.
+
+- **Inference** uses an engine-neutral reference profile. It includes only optimizations that the engines all turn on by default, and runs on one GPU without CUDA-graph padding.
+- **Training** uses Megatron-Core defaults on one GPU, without recompute.
+
+| Part | Assumed by default | Follows |
+|---|---|---|
+| Full attention (GQA, sliding window) | FlashAttention | flash-attention; SGLang `flashattention_backend.py`; vLLM v1 `flash_attn.py`; TensorRT-LLM `attention_backend` |
+| MLA | Decode: up-projections absorbed into the query and output (FlashMLA). Prefill: the prefix KV is expanded back into per-head K/V. | FlashMLA; SGLang `deepseek_v2.py`; vLLM `mla_attention.py` |
+| DSA | DeepSeek's open-source path: an FP8 lightning indexer (DeepGEMM) picks the top-k keys, then FlashMLA sparse attention runs over them | DeepSeek-V3.2-Exp, DeepGEMM, FlashMLA; SGLang `dsa_backend.py`; vLLM `flashmla_sparse.py`, `indexer.py` |
+| Linear attention (Gated DeltaNet, KDA) | flash-linear-attention: the fused recurrent kernel for decode, the chunked kernel (chunk 64) for prefill and training | fla `ops/gated_delta_rule`, `ops/kda`; SGLang `hybrid_linear_attn_backend.py`; vLLM `gdn_attn.py` |
+| MoE | Fused grouped GEMM over the routed experts | SGLang `fused_moe_triton`; vLLM `fused_moe`; Megatron `moe/experts.py` |
+| Prefill | Chunked prefill: 8192-token chunks on GPUs with less than 160 GB of memory, 16384 otherwise | SGLang server args; vLLM `arg_utils.py` |
+
+The roofline model:
+
+- **Time per kernel:** max(FLOPs / (peak × 0.7), bytes / (HBM bandwidth × 0.8), kernel floor).
+- **Ridge point:** peak × 0.7 / (HBM × 0.8).
+- **Peaks used:** attention cores run at the BF16 peak. GEMMs run at the peak for their weight precision, with FP8 and MXFP4 / NVFP4 mapped to the FP8 and FP4 peaks.
+
+The mechanism diagrams reimplement the visual ideas of [Attention Lab](https://divagr.com/attention-lab/), credited under each diagram.
+
+## Layout
 
 ```
-index.html            页面骨架；按顺序加载下面的脚本（都是普通 <script>，共享全局作用域）
+index.html              page shell; loads the scripts below in order (plain <script> tags sharing one global scope)
 css/roofline.css
-src/engine/           计算模型，不碰 DOM
-  common.js           模型 / 硬件 / 拓扑表，derive、链路时间
-  par.js              FSDP / CP / EP 的通信与重叠（后训练一步和并行一节共用）；每次通信记成 xc(pass, op, what, bytes, t)
-  infer.js            推理一步：SGLang / vLLM / TokenSpeed 的 kernel 序列，含投机解码的 draft、验证、提交
-  train.js            训练一步：Megatron-Core / torchtitan；torchtitan 路径调用 Par
-  quant.js            低精度 GEMM、一层 MoE、训练三遍 GEMM
+src/i18n/i18n.js        t(key, params), data-i18n attributes, language choice (?lang=, saved choice, browser language)
+locales/zh/*.js         all UI text, one file per namespace (docs/i18n.md)
+src/engine/             the models; no DOM
+  common.js             model, hardware and topology tables; derive(); link times
+  infer.js              one inference step: SGLang / vLLM / TokenSpeed kernel sequences, the engine-neutral reference,
+                        speculative decoding (draft, verify, commit)
+  train.js              one training step: Megatron-Core / torchtitan
+  par.js                FSDP / CP / EP communication and overlap
+  quant.js              low-precision GEMM, one MoE layer, the three training GEMMs
+  arch.js               architecture explorer: step kernels grouped into attention / MLP modules per layer
 src/data/
-  db.js               生成文件：数据点库（const DB_RAW）
-  query.js            DB.set / DB.where / DB.one / DB.meta
-src/ui/               各页的渲染；app.js 最后加载，负责路由和首次渲染
-  base.js state.js config.js   格式化与画图底座、全局状态、预设
-  overview.js         总览
-  train.js par.js calib.js     后训练：一个 step、并行、和匿名实测对照
-  comm.js             一层里的通信：后训练并行一节和推理部署一节共用
-  infer.js tradeoff.js         推理：一步、部署与并行（三节共用一个参数架）
-  quant.js            低精度：推理、训练各一节，附录的格式表
-  spec.js             推理 · 投机解码
-  rl.js               RL 的四节
-  releases.js         附录 · 过去一年的发布；RL 和投机两节的出处也从这里取链接
-  public.js dbview.js 附录 · 公开数据、数据点库浏览
-  models.js charts.js 模型结构；折线图、甘特图
+  db.js                 generated: the data-point store (const DB_RAW)
+  query.js              DB.set / DB.where / DB.one / DB.meta
+src/ui/                 one renderer per page; app.js loads last and handles routing and the first render
+  base.js state.js config.js   formatting and plotting base, global state, presets
+  arch.js archviz.js    architecture explorer pages; mechanism diagrams
+  overview.js train.js par.js calib.js comm.js infer.js tradeoff.js quant.js spec.js rl.js
+  releases.js public.js dbview.js charts.js
 data/
-  anon/*.json         匿名数据点，每个文件一个数据集
-  public/*.json       公开数据点（手工整理，带 src / url）：inference、training、quant_evidence、spec、determinism、releases
-  db.json             生成文件：规范版本，每个点一行
-tools/build_db.py     生成 db.json 和 src/data/db.js
-tests/                jsdom 回归测试
+  anon/*.json           anonymized data points, one data set per file
+  public/*.json         public data points (hand-curated, each with src / url)
+  db.json               generated: canonical form, one point per line
+tools/build_db.py       builds data/db.json and src/data/db.js
+tests/                  jsdom checks
+docs/i18n.md            how UI text and languages work
 ```
 
-## 数据点库
+## Data points
 
 ```
 { schema: 1,
-  sets:   { <id>: { title, origin: "anon" | "public", stage, hw, gpus, topo, model, conditions, dims: [...], metrics: { <名字>: { unit, label } } } },
-  points: [ { id, set, ...维度, ...指标 } ] }
+  sets:   { <id>: { title, origin: "anon" | "public", stage, hw, gpus, topo, model, conditions, dims: [...], metrics: { <name>: { unit, label } } } },
+  points: [ { id, set, ...dims, ...metrics } ] }
 ```
 
-- **匿名数据点**（`origin: "anon"`）：自己测的数字。只保留测量条件（`conditions`）和数字，不带出处。每个数据集的点有同一组维度和指标，`id` 由维度拼成。
-- **公开数据点**（`origin: "public"`）：公开的 PR、博客、论文、发布说明和文档里的数字，点上带 `src` / `url`。量化证据的权重 `w` 在构建时按“时效 × 硬件匹配 × 来源类型”算出，参照日期记在 `sets.quant_evidence.as_of`。
-- **发布**（`releases`）：2025-11 到 2026-10 的 LMSYS 博客和 SGLang / vLLM / slime / Miles / AReaL 的 GitHub release，每条是 `releases:<项目>:<版本>`，带日期、链接、要点和标签。页面里引用发布时按项目和版本取链接，库里没有的条目会直接报错。
+- **Anonymized points** (`origin: "anon"`) are measured numbers. They keep only the measurement conditions and the numbers, with no source. All points in a set share the same dims and metrics. The `id` is built from the dims.
+- **Public points** (`origin: "public"`) come from public PRs, blogs, papers, release notes and docs, and carry `src` / `url`. The build computes the weight `w` of each quantization evidence point from recency × hardware match × source type. The reference date is `sets.quant_evidence.as_of`.
+- **Releases** are LMSYS blog posts and SGLang / vLLM / slime / Miles / AReaL GitHub releases from 2025-11 to 2026-10. Each is keyed `releases:<project>:<version>`. Pages look up release links by project and version, and a missing entry is an error.
 
-构建时会检查：匿名点不能带 `src` / `url`，匿名数据集的描述里不能出现出处类的词，id 不重复，没有空数据集。
+The build fails if:
 
-### 加一个数据点
+- an anonymized point carries `src` / `url`;
+- an anonymized set's description contains source-like words;
+- an id is duplicated;
+- a set is empty.
 
-- 公开数字：在 `data/public/` 对应的 JSON 里加一行（`id`、`date`、`src`、`url`、数字），然后重新构建。
-- 匿名实测：在 `data/anon/` 加一个 JSON（标题、测量条件、维度、指标和点），然后重新构建。
+To add a public number, add a row (`id`, `date`, `src`, `url`, numbers) to the matching file in `data/public/`. To add a measurement, add a JSON file to `data/anon/` with a title, conditions, dims, metrics and points. Then rebuild:
 
 ```
-uv run tools/build_db.py                 # 重新生成 data/db.json 和 src/data/db.js
-uv run tools/build_db.py --check         # 只检查生成结果是否最新
-uv run tools/build_db.py --sqlite x.sqlite   # 另导出 SQLite（每个数据集一个视图），方便临时查询
+uv run tools/build_db.py                     # regenerate data/db.json and src/data/db.js
+uv run tools/build_db.py --check             # only check that the generated files are current
+uv run tools/build_db.py --sqlite x.sqlite   # also export SQLite (one view per set) for ad-hoc queries
 ```
 
-页面里用 `DB.where("cp_full_model", {model: "qwen35", cp: 8})` 这样的查询取点。
+Pages read points with queries like `DB.where("cp_full_model", {model: "qwen35", cp: 8})`.
 
-## 测试
+## Tests
 
 ```
 cd tests && npm install
-npm run regression     # 所有模型 × 框架 × 预设跑一遍，再把每一页渲染一遍：报 NaN / undefined 和脚本错误
-npm run timing         # 每一页的渲染时间
+npm run regression     # every model × framework × preset, then every page: reports NaN / undefined and script errors
+npm run i18n           # no UI text left in code; every key used exists; no page renders a missing key
+npm run timing         # render time of each page
+node snapshot.js ../index.html new.json base.json   # dump the visible text of every view and diff it with a baseline
 ```
