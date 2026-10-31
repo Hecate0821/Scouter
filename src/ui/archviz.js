@@ -10,11 +10,11 @@ const ln = (x1,y1,x2,y2,stroke,w,dash) => '<line x1="'+x1.toFixed(1)+'" y1="'+y1
 const PAL = ["var(--s1)","var(--s2)","var(--s3)","var(--s4)","var(--s5)","var(--s6)","var(--c-attn)","var(--c-lin)"];
 /* 确定性的伪随机（同一组参数每次画出来一样） */
 function rng(seed){ let s=seed>>>0||1; return () => { s^=s<<13; s>>>=0; s^=s>>17; s^=s<<5; s>>>=0; return s/4294967296; }; }
-/* 横条对比：items [{label, v, col, hl}]，按最大值归一 */
+/* 横条对比：items [{label, v, col, hl}]，按最大值归一。左边留给标签，右边留给数值 */
 function bars(x, y, w, items, fmt){
-  const mx=Math.max(...items.map(i=>i.v),1e-30); let s="";
-  items.forEach((it,i)=>{ const yy=y+i*22, bw=Math.max(2,(w-150)*it.v/mx);
-    s+=tx(x,yy+12,it.label,{cls:it.hl?"lbl":""})+r(x+150,yy+2,bw,13,it.col,it.hl?"":'opacity=".45"')+tx(x+150+bw+5,yy+12,fmt(it.v),{cls:it.hl?"lbl":""}); });
+  const mx=Math.max(...items.map(i=>i.v),1e-30), LW=Math.min(250, w*0.42), VW=86; let s="";
+  items.forEach((it,i)=>{ const yy=y+i*22, bw=Math.max(2,(w-LW-VW)*it.v/mx);
+    s+=tx(x,yy+12,it.label,{cls:it.hl?"lbl":""})+r(x+LW,yy+2,bw,13,it.col,it.hl?"":'opacity=".45"')+tx(x+LW+bw+5,yy+12,fmt(it.v),{cls:it.hl?"lbl":""}); });
   return s;
 }
 const svgWrap = (h, body) => ({ h, svg: body });
@@ -109,10 +109,10 @@ function lin(m, l, wl, kind){
   s+=tx(x0,yb,t("arch.viz.lin.vs",{n:fInt(n)}),{cls:"lbl"});
   s+=bars(x0,yb+8,W-60,[{label:t("arch.viz.lin.barState"),v:st,col:"var(--c-st)",hl:true},{label:t("arch.viz.lin.barKv",{n:fInt(n)}),v:kvEq,col:"var(--c-kv)"}],fB);
   // prefill：C=64 的块
-  const px=360, C=64;
+  const px=400, C=64;
   s+=tx(px,16,t("arch.viz.lin.chunk",{c:C}),{cls:"lbl"});
-  for(let b=0;b<4;b++){ const bx=px+b*74, by=30; s+='<polygon points="'+bx+','+by+' '+bx+','+(by+56)+' '+(bx+56)+','+(by+56)+'" style="fill:var(--c-lin);opacity:.35"/>';
-    if(b<3) s+=ln(bx+58,by+28,bx+72,by+28,"var(--c-st)",2)+'<polygon points="'+(bx+72)+','+(by+24)+' '+(bx+72)+','+(by+32)+' '+(bx+76)+','+(by+28)+'" style="fill:var(--c-st)"/>'; }
+  for(let b=0;b<4;b++){ const bx=px+b*66, by=30; s+='<polygon points="'+bx+','+by+' '+bx+','+(by+48)+' '+(bx+48)+','+(by+48)+'" style="fill:var(--c-lin);opacity:.35"/>';
+    if(b<3) s+=ln(bx+50,by+28,bx+60,by+28,"var(--c-st)",2)+'<polygon points="'+(bx+60)+','+(by+24)+' '+(bx+60)+','+(by+32)+' '+(bx+64)+','+(by+28)+'" style="fill:var(--c-st)"/>'; }
   s+=tx(px,106,t("arch.viz.lin.chunkNote1"));
   s+=tx(px,124,t("arch.viz.lin.chunkNote2"));
   s+=tx(px,150,t("arch.viz.lin.decNote",{b:fB(2*st)}));
@@ -142,7 +142,7 @@ function moe(m, e, wl, B){
 function dense(m, F, wl, B, hw, g){
   const x0=30, wb=dtB(wl.wDt), I=2*B*3*m.D*F/(3*m.D*F*wb + B*(m.D*2+3*F*2)), ridge=peakOf(hw,wl.wDt)*g.etaC/(hw.hbm*1e9*g.etaM), Bst=ridge*wb/2;
   let s=tx(x0,16,t("arch.viz.dense.w",{d:m.D,f:F}),{cls:"lbl"});
-  s+=r(x0,26,300,90,"var(--c-lm)",'opacity=".55"')+tx(x0+150,76,t("arch.viz.dense.wBox",{b:fB(3*m.D*F*wb)}),{a:"middle",fill:"var(--panel)"});
+  s+=r(x0,26,300,90,"var(--c-lm)",'opacity=".55"')+tx(x0+150,76,t("arch.viz.dense.wBox",{b:fB(3*m.D*F*wb)}),{a:"middle",cls:"lbl"});
   const rows=Math.min(32,B); for(let i=0;i<rows;i++) s+=r(x0+330,26+i*90/rows,120,Math.max(1,90/rows-1),"var(--c-act)");
   s+=tx(x0+330,132,t("arch.viz.dense.rows",{b:fInt(B)}));
   s+=tx(x0,160,t("arch.viz.dense.I",{i:fI(I),r:fI(ridge),bs:fInt(Bst)}),{cls:"lbl"});

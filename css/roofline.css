@@ -226,3 +226,4 @@ ul.src{max-width:none}
 .ac-row .lab .v{font-size:12px;color:var(--muted)}
 .ac-row .bar{display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--soft)}
 .ac-row .bar span{display:block;height:100%}
+.figs.one{grid-template-columns:minmax(0,1fr)}

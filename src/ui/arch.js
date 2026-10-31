@@ -67,7 +67,7 @@ function renderArchOverview(){
     return '<a class="card" href="#arch/module/'+p.id+'"><h4><span class="dot" style="background:'+css(MODC[p.id])+'"></span>'+esc(modName(p))+' × '+p.layers+'</h4>'+
       '<p>'+esc(t("arch.ov.card.desc."+p.kind))+'</p><p class="meta">'+esc(t("arch.ov.card.params",{p:fN(fc.params||0)}))+' · '+esc(mem)+'</p>'+
       '<p class="meta">'+esc(t("arch.ov.card.now",{ph:phaseName(wl.phase),t:fT(a.t),i:fI(a.I)}))+' '+pillB(a.bound)+'</p></a>'; }).join("");
-  $("ao-mods-lede").textContent=t("arch.ov.modsLede",{ph:phaseName(wl.phase),hw:hw.name,wl:wlText(wl)});
+  $("ao-mods-lede").textContent=t("arch.ov.modsLede",{hw:hw.name,wl:wlText(wl)});
   const pr=[[t("arch.ov.p.full"),d.pAttn,m.full.n],[t("arch.ov.p.rep"),d.pAttnRep+d.pIdx,m.full.n],[t("arch.ov.p.lin"),d.pLin,m.lin.n],[t("arch.ov.p.expert"),d.pExpert,0],[t("arch.ov.p.routed"),d.pRouted,d.nMoe],
     [t("arch.ov.p.shared"),d.pShared,d.nMoe],[t("arch.ov.p.lat"),d.pLat,d.nMoe],[t("arch.ov.p.router"),d.pRouter,d.nMoe],[t("arch.ov.p.dense"),d.pDense,m.dense.n],["embedding",d.pEmb,1],["lm_head",d.pHead,1]];
   table($("m-params"),[t("arch.ov.pth.part"),t("arch.ov.pth.each"),t("arch.ov.pth.n"),t("arch.ov.pth.sum"),t("arch.ov.pth.share")],
@@ -125,6 +125,7 @@ function renderArchModule(){
   const {m,hw,g}=ctx(), wl=archWl();
   if(Arch.ORDER.includes(S.anchor)){ S.arch.mod=S.anchor; S.anchor=""; }
   const mod=pickMod(m), mods=Arch.present(m), edited=modelEdited(), base=baseModel();
+  if(location.hash!=="#arch/module/"+mod.id) try{ history.replaceState(null,"","#arch/module/"+mod.id); }catch(e){}   // 地址栏跟着当前模块，换了模型、模块不存在时也一样
   const sig=S.modelKey+"|"+mod.id+"|"+mod.kind+"|"+m.full.kind+"|"+m.lin.kind;
   if(sig!==knobSig){ knobSig=sig; buildKnobs(mod); }
   chips($("am-mods"), mods.map(p=>({v:p.id, html:'<span class="sw" style="background:'+css(MODC[p.id])+'"></span>'+esc(modName(p))+' × '+p.layers})), mod.id, v=>{ location.hash="#arch/module/"+v; });
@@ -170,18 +171,18 @@ function renderModRoof(mod, wl, cur, a, a0, edited, peaks){
   const others=Arch.present(m).filter(p=>p.id!==mod.id);
   const allI=traj.concat(traj0).map(p=>p[0]).concat([a.I]).filter(v=>isFinite(v)&&v>0), allP=traj.concat(traj0).map(p=>p[1]).concat([a.perf]).filter(v=>v>0);
   others.forEach(p=>{ const x=cur.mods[p.id]; if(x&&x.I>0&&isFinite(x.I)){ allI.push(x.I); allP.push(x.perf); } });
-  const x0=Math.pow(10,Math.floor(Math.log10(Math.max(0.05,Math.min(...allI)/2)))), x1=Math.pow(10,Math.ceil(Math.log10(Math.max(...allI,ridgeOf(hw,g,"bf16"))*3)));
+  const x0=Math.pow(10,Math.floor(Math.log10(Math.max(0.05,Math.min(...allI)/2)))), x1=Math.pow(10,Math.ceil(Math.log10(Math.max(...allI,ridgeOf(hw,g,"bf16")*4)*3)));
   const y1=Math.max(...peaks.map(p=>p.v))*1.6, y0=Math.pow(10,Math.floor(Math.log10(Math.max(1e9,Math.min(...allP)/3))));
   const series=roofSeries(hw,g,peaks,x0,x1);
   series.push({pts:traj.map(p=>[p[0],p[1]]),color:css(MODC[mod.id]),w:1.6});
   if(traj0.length) series.push({pts:traj0.map(p=>[p[0],p[1]]),color:css("muted"),w:1.2,dash:"5 4"});
-  const points=[], lab=x=>key+"="+fxPow(x), marks=key==="B"?[8,64,512]:[8192,131072];
+  const points=[], lab=x=>key+"="+(key==="B"?x:fK(x)), marks=key==="B"?[8,64,512]:[8192,131072];
   traj.forEach((p,i)=>{ if(i===0||i===traj.length-1||marks.includes(p[2])) points.push({x:p[0],y:p[1],color:css(MODC[mod.id]),r:2.6,label:lab(p[2])}); });
   others.forEach(p=>{ const x=cur.mods[p.id]; if(x) points.push({x:x.I,y:x.perf,color:css(MODC[p.id]),r:4.5,shape:modShape(p.id),label:modName(p)}); });
   if(edited&&sameKinds()) points.push({x:a0.I,y:a0.perf,color:css("muted"),r:5,label:t("arch.roof.preset")});
   points.push({x:a.I,y:a.perf,color:css(MODC[mod.id]),r:7,shape:modShape(mod.id),label:modName(mod)+" · "+t("arch.roof.now")});
   const vl=peaks.map((p,i)=>{ const rx=ridgeOf(hw,g,p.k); return {x:rx,color:css("muted"),label:t("arch.roof.ridge",{p:p.k.toUpperCase(),v:fI(rx)}),dy:i*13}; });
-  plot($("am-roof"),{x0,x1,y0,y1,logx:true,logy:true,fx:fxPow,fy:v=>fyFlops(v)+"FLOP/s",xl:t("arch.roof.x"),yl:t("arch.roof.y"),series,points,vlines:vl,h:380});
+  plot($("am-roof"),{x0,x1,y0,y1,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("arch.roof.x"),yl:t("arch.roof.y"),series,points,vlines:vl,h:380});
   $("am-roof-lede").innerHTML=t("arch.roof.lede."+key,{c:css(MODC[mod.id])})+(edited&&sameKinds()?" "+t("arch.roof.ledeEdited"):"");
   legendInto("am-roof-legend",[{name:t("arch.roof.legRoof",{hw:hw.name}),col:"ink",line:true},{name:t("arch.roof.legTraj",{mod:modName(mod)}),col:MODC[mod.id],line:true}].concat(traj0.length?[{name:t("arch.roof.legPreset"),col:"muted",line:true}]:[]));
 }
@@ -261,9 +262,9 @@ function renderArchCompare(){
   const points=[], allI=[], allP=[];
   res.forEach((x,i)=>x.mods.forEach(p=>{ const a=x.r.mods[p.id]; if(!a||!(a.I>0)||!isFinite(a.I)) return; allI.push(a.I); allP.push(a.perf);
     points.push({x:a.I,y:a.perf,color:css(MODEL_COL[i]),r:x.k===S.modelKey?6:4.5,shape:modShape(p.id),label:shortName(x.m)+" "+kindName(p.kind)}); }));
-  const x0=Math.pow(10,Math.floor(Math.log10(Math.max(0.05,Math.min(...allI)/2)))), x1=Math.pow(10,Math.ceil(Math.log10(Math.max(...allI,ridgeOf(hw,g,"bf16"))*3)));
+  const x0=Math.pow(10,Math.floor(Math.log10(Math.max(0.05,Math.min(...allI)/2)))), x1=Math.pow(10,Math.ceil(Math.log10(Math.max(...allI,ridgeOf(hw,g,"bf16")*4)*3)));
   const y0=Math.pow(10,Math.floor(Math.log10(Math.max(1e9,Math.min(...allP)/3)))), y1=Math.max(...peaks.map(p=>p.v))*1.6;
-  plot($("ac-roof"),{x0,x1,y0,y1,logx:true,logy:true,fx:fxPow,fy:v=>fyFlops(v)+"FLOP/s",xl:t("arch.roof.x"),yl:t("arch.roof.y"),series:roofSeries(hw,g,peaks,x0,x1),points,h:400,
+  plot($("ac-roof"),{x0,x1,y0,y1,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("arch.roof.x"),yl:t("arch.roof.y"),series:roofSeries(hw,g,peaks,x0,x1),points,h:400,
     vlines:peaks.map((p,i)=>{ const rx=ridgeOf(hw,g,p.k); return {x:rx,color:css("muted"),label:t("arch.roof.ridge",{p:p.k.toUpperCase(),v:fI(rx)}),dy:i*13}; })});
   legendInto("ac-roof-legend",res.map((x,i)=>({name:x.m.short,col:MODEL_COL[i]})).concat([{name:t("arch.cmp.shapes"),col:"muted",line:true}]));
   $("ac-lede").textContent=t("arch.cmp.lede",{wl:wlText(wl),hw:hw.name,w:wl.wDt.toUpperCase(),e:wl.eDt.toUpperCase(),kv:wl.kvDt.toUpperCase()});
