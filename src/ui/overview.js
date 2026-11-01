@@ -1,17 +1,8 @@
 /* ================= 总览：推理一步和训练一步并排（照搬两边的当前配置） ================= */
-const OGRP = { attn:t("overview.grp.attn"), lin:t("overview.grp.lin"), moe:t("overview.grp.moe"), lm:t("overview.grp.lm"), misc:t("overview.grp.misc") };
 function renderOverview(){
   const {m,hw,topo}=ctx(), ci=S.inf, ct=S.trn;
   syncInfRack(); syncTrnRack();      // 让预设和引擎相关的取值先归一（参数架本身在这一页不显示）
   const ri=infRun({phase:"decode"},"decode"), rt=trnRun(), e=m.moe;
-  // 推理：按类别归并一次 decode
-  const gi={}, gt={}; Object.keys(OGRP).forEach(k=>{ gi[k]=0; gt[k]=0; });
-  for(const o of ri.ops) if(o.overlap!=="moe") gi[o.group]+=o.t;
-  const commI=ri.tComm+(ri.exposedTbo||0)+(ri.exposedOverlap||0);   // TBO 能藏多少跟引擎同一口径（下限全藏、建模藏一半）
-  const specI=(ri.draftT||0)+(ri.commitT||0), otherI=Math.max(0,ri.stepT-sum(Object.values(gi))-commI-specI);
-  // 训练：每个 PP stage 的一个 micro-batch
-  for(const o of rt.ops) gt[o.group]+=(o.fwd.t+o.dgrad.t+o.wgrad.t)/rt.pp;
-  const recT=rt.tR/rt.pp, commT=Math.max(0,rt.tMB-sum(Object.values(gt))-recT);
   const ratio=rt.tokPerGpu/ri.tokPerGpu;     // 生成一个 token 的卡秒 ÷ 训练一个 token 的卡秒
   $("o-lede").innerHTML=t("overview.lede",{model:esc(m.short),hw:hw.name,topo:esc(topo.name)});
   kpis($("o-kpis"),[
@@ -35,11 +26,6 @@ function renderOverview(){
     [t("overview.cmp.slowest.k"),nm(slowI.name)+" "+fT(slowI.t),nm(slowT.name)+" "+fT(tOf(slowT))],
     [t("overview.cmp.mem.k"),fB(usedI)+" / "+hw.mem+" GB",fB(rt.mem.used)+" / "+hw.mem+" GB"],
     [t("overview.cmp.thr.k"),fN(ri.tokPerGpu)+" tok/s/GPU",fN(rt.tokPerGpu)+" tok/s/GPU"]]);
-  stackBar($("o-ibar"),$("o-ibarlist"),[...Object.keys(OGRP).map(k=>({label:OGRP[k],v:gi[k],color:GROUPC[k]})),
-    {label:t("overview.bar.comm"),v:commI,color:css("c-a2a"),tag:pill("comm")},{label:t("overview.bar.spec"),v:specI,color:css("c-cp")},
-    {label:t("overview.bar.other"),v:otherI,color:css("c-free"),tag:pill("launch")}],ri.stepT,fT);
-  stackBar($("o-tbar"),$("o-tbarlist"),[...Object.keys(OGRP).map(k=>({label:k==="lm"?t("overview.grp.lmTrain"):OGRP[k],v:gt[k],color:GROUPC[k]})),
-    {label:t("overview.bar.recompute"),v:recT,color:css("c-cp")},{label:t("overview.bar.comm"),v:commT,color:css("c-a2a"),tag:pill("comm")}],rt.tMB,fT);
   const rows=ri.rowsG>0?ct.tok/ri.rowsG:0;
   $("o-notes").innerHTML=ul([
     t("overview.notes.rows",{ratio:V(fI(rows)+"×"),rowsI:fInt(ri.rowsG),rowsT:fInt(ct.tok),perExpert:e.E?t("overview.notes.rowsPerExpert",{inf:fI(lamI),trn:fI(lamT)}):"",memI:pct(memI,1),memT:pct(memT,1)}),
