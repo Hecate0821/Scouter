@@ -125,7 +125,7 @@ I18N.add("zh", "appendix", {
   "method.b4.li_7": "<b>推理取舍。</b>每个配置把每个 DP rank 的并发从 1 扫到 min(显存上限, 引擎上限)，上下文按输入 + 输出/2。聚合部署每步顺带 prefill 完成掉的那些请求（一条 prompt 的 TTFT ÷ DP rank 数）；PD 分离把 prefill 卡按卡秒摊进分母。固定单用户速度时在 Pareto 曲线上线性插值。DeepInfer 的形状（prefill 小 EP、decode 宽 EP、attention 全 DP）按 SGLang 的 kernel 序列算。",
   "method.b4.li_8": "<b>和实测对照。</b>“和实测对照”一节把 8 × H200 上的 Qwen3.5 实测（attention 核心、整模型、expert FSDP、DeepEP 微基准）原样喂给训练核心，列出比值；MoK 只有和 DeepEP 的相对数字。",
   "method.b5.h2": "量化核心的口径",
-  "method.b5.li": "<b>硬件。</b>只算 Blackwell：B200 / B300（HGX）与 GB200 / GB300（NVL72）。dense 峰值 BF16 2.25 / FP8 4.5 / FP4 9（B300 13.5）PFLOPS，GB 系列 2.5 / 5 / 10（GB300 15），HBM 8 TB/s，和 LMSYS 引用的 HGX 规格一致。MMA 的峰值取两个操作数里精度高的那个：W4A8 按 FP8，W4A16 按 BF16。",
+  "method.b5.li": "<b>硬件。</b>用顶栏选的 GPU。MXFP8 / MXFP4 / NVFP4 要 Blackwell 的块缩放 MMA，Hopper 上只算 BF16、block FP8 和 W4A16。Blackwell 的 dense 峰值 BF16 2.25 / FP8 4.5 / FP4 9（B300 13.5）PFLOPS，GB 系列 2.5 / 5 / 10（GB300 15），HBM 8 TB/s，和 LMSYS 引用的 HGX 规格一致。MMA 的峰值取两个操作数里精度高的那个：W4A8 按 FP8，W4A16 按 BF16。",
   "method.b5.li_2": "<b>字节。</b>每元素字节含块 scale：block FP8 权重 1 + 4/128²、激活 1 + 4/128；MXFP8 1 + 1/32；MXFP4 0.5 + 1/32；NVFP4 0.5 + 1/16，激活再加每 token 4 字节 FP32。",
   "method.b5.li_3": "<b>激活量化。</b>融合时没有额外开销（上一个算子直接写低精度）；单独一个 kernel 时多读一遍 BF16、写一遍量化值，至少一个 kernel 的最短时间。",
   "method.b5.li_4": "<b>W4A16。</b>MMA 跑 BF16 峰值；每 BM 行的 CTA 在 CUDA core 上把整块权重反量化一遍，按可调的反量化吞吐记在算力一侧。",

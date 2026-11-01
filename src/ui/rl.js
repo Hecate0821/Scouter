@@ -137,12 +137,12 @@ function renderDeterminism(){
       t("rl.determinism.cost.page.value", {x:sBi.toFixed(2), tail:sBi<S.inf.biFactor-0.01 ? t("rl.determinism.cost.page.commSame") : t("rl.determinism.cost.page.noComm")}),t("rl.determinism.cost.rollout"),sp(sBi)]];
   table($("r-det-cost"),[t("rl.determinism.cost.head.how"),t("rl.determinism.cost.head.src"),t("rl.determinism.cost.head.cost"),t("rl.determinism.cost.head.side"),t("rl.determinism.cost.head.step", {f})],C.map(x=>[esc(x[0]),x[1],esc(x[2]),esc(x[3]),fx(x[4])]),[4]);
   // 和低精度的关系
-  const qh=HW[S.q.hw], r16=qInferE2E(qh,"bf16"), r4=qInferE2E(qh,"nvfp4"), sr=r16.stepT/r4.stepT;
+  const qh=hw, lk=Quant.schemeOK(qh,"nvfp4")?"nvfp4":"fp8", r16=qInferE2E("bf16"), r4=qInferE2E(lk), sr=r16.stepT/r4.stepT;   // Hopper 没有 NVFP4：换成 block FP8
   $("r-det-lp").innerHTML=ul([
     t("rl.determinism.lp.necessary", {vllm:aOut(ev.url,"vLLM 2026-10")}),
     t("rl.determinism.lp.granularity"),
     t("rl.determinism.lp.kernels", {v0200:relLink("vllm","v0.20.0"), v0220:relLink("vllm","v0.22.0"), v0280:relLink("vllm","v0.28.0"), v0521:relLink("sglang","v0.5.21")}),
-    t("rl.determinism.lp.both", {hw:esc(qh.name), x:V(fX(sr)), slow:lc.slow.toFixed(2), net:V(fX(sr/lc.slow))})]);
+    t("rl.determinism.lp.both", {hw:esc(qh.name), scheme:DTN[lk], x:V(fX(sr)), slow:lc.slow.toFixed(2), net:V(fX(sr/lc.slow))})]);
   table($("r-det-pub"),[t("rl.determinism.pub.head.date"),t("rl.determinism.pub.head.src"),t("rl.determinism.pub.head.what"),t("rl.determinism.pub.head.model"),t("rl.determinism.pub.head.setting"),t("rl.determinism.pub.head.value")],DB.set("determinism_public").slice().sort((x,y)=>x.date.localeCompare(y.date))
     .map(p=>['<span class="v">'+esc(p.date)+'</span>','<span class="nw">'+aOut(p.url,p.src)+'</span>'+(p.code?"<br>"+aOut(p.code,t("rl.determinism.pub.code")):""),'<span class="nw">'+esc(p.what)+'</span>',esc(p.model)+(p.hw&&p.hw!=="—"?"<br>"+'<span class="tag">'+esc(p.hw)+'</span>':""),esc(p.setting),esc(p.value)]));
   ossTable($("r-det-oss"),DET_OSS);
@@ -163,27 +163,28 @@ function renderLowprec(){
 }
 
 function renderQat(){
-  const {q,hw,g,Q}=qHead(), N=q.N, K=q.K, Mt=Math.max(16,q.Mt), to={nMicro:q.nMicro,tokFused:q.tokFused};
+  const {q,hw,g,Q,bw}=qHead(), N=q.N, K=q.K, Mt=Math.max(16,q.Mt), to={nMicro:q.nMicro,tokFused:q.tokFused};
   const G=(k,o)=>Q.trainGemm(hw,g,k,Mt,N,K,Object.assign({},to,o)), b=G("bf16");
   const fq=Q.fakeQuantT(hw,g,N,K,q.nMicro);
   $("r-qat-lede").innerHTML=t("rl.qat.lede", {N:fInt(N), K:fInt(K), M:fInt(Mt), hw:esc(hw.name)});
   const rows=[
-    [t("rl.qat.row.bf16Ptq"),"BF16","BF16",t("rl.qat.grad.unquant"),t("rl.qat.match.no"),b,t("rl.qat.who.bf16Ptq")],
-    [t("rl.qat.row.fakeQuant"),t("rl.qat.fwd.fakeQuant"),t("rl.qat.bwd.ste"),t("rl.qat.grad.quant"),t("rl.qat.match.weights"),{t:b.t+fq,extra:b.extra},t("rl.qat.who.fakeQuant")],
-    [t("rl.qat.row.mxfp8"),"MXFP8","MXFP8",t("rl.qat.grad.quantNoise"),t("rl.qat.match.rowOnly"),G("mxfp8"),"Miles --fp8-recipe mxfp8"],
-    [t("rl.qat.row.mxfp8hp"),"MXFP8",t("rl.qat.bwd.orig"),t("rl.qat.grad.unquantMismatch"),t("rl.qat.match.yes"),G("mxfp8hp"),"TE NVTE_BACKWARD_OVERRIDE=high_precision"],
-    [t("rl.qat.row.nvfp4hp"),t("rl.qat.fwd.nvfp4Tok"),t("rl.qat.bwd.orig"),t("rl.qat.grad.unquantMismatch"),t("rl.qat.match.yes"),G("nvfp4hp"),t("rl.qat.who.nvfp4hp")],
-    [t("rl.qat.row.nvfp4dq"),t("rl.qat.fwd.nvfp4Tok"),t("rl.qat.bwd.deq"),t("rl.qat.grad.quantSte"),t("rl.qat.match.yes"),G("nvfp4dq"),t("rl.qat.who.nvfp4dq")],
-    [t("rl.qat.row.nvfp4"),t("rl.qat.fwd.nvfp4W2d"),t("rl.qat.bwd.nvfp4"),t("rl.qat.grad.quantNoise"),t("rl.qat.match.te"),G("nvfp4"),t("rl.qat.who.nvfp4")]];
+    [t("rl.qat.row.bf16Ptq"),"BF16","BF16",t("rl.qat.grad.unquant"),t("rl.qat.match.no"),b,t("rl.qat.who.bf16Ptq"),"bf16"],
+    [t("rl.qat.row.fakeQuant"),t("rl.qat.fwd.fakeQuant"),t("rl.qat.bwd.ste"),t("rl.qat.grad.quant"),t("rl.qat.match.weights"),{t:b.t+fq,extra:b.extra},t("rl.qat.who.fakeQuant"),"bf16"],
+    [t("rl.qat.row.mxfp8"),"MXFP8","MXFP8",t("rl.qat.grad.quantNoise"),t("rl.qat.match.rowOnly"),G("mxfp8"),"Miles --fp8-recipe mxfp8","mxfp8"],
+    [t("rl.qat.row.mxfp8hp"),"MXFP8",t("rl.qat.bwd.orig"),t("rl.qat.grad.unquantMismatch"),t("rl.qat.match.yes"),G("mxfp8hp"),"TE NVTE_BACKWARD_OVERRIDE=high_precision","mxfp8hp"],
+    [t("rl.qat.row.nvfp4hp"),t("rl.qat.fwd.nvfp4Tok"),t("rl.qat.bwd.orig"),t("rl.qat.grad.unquantMismatch"),t("rl.qat.match.yes"),G("nvfp4hp"),t("rl.qat.who.nvfp4hp"),"nvfp4hp"],
+    [t("rl.qat.row.nvfp4dq"),t("rl.qat.fwd.nvfp4Tok"),t("rl.qat.bwd.deq"),t("rl.qat.grad.quantSte"),t("rl.qat.match.yes"),G("nvfp4dq"),t("rl.qat.who.nvfp4dq"),"nvfp4dq"],
+    [t("rl.qat.row.nvfp4"),t("rl.qat.fwd.nvfp4W2d"),t("rl.qat.bwd.nvfp4"),t("rl.qat.grad.quantNoise"),t("rl.qat.match.te"),G("nvfp4"),t("rl.qat.who.nvfp4"),"nvfp4"]].filter(x=>Q.recipeOK(hw,x[7]));   // Hopper 只剩前两行
   table($("r-qat"),[t("rl.qat.head.how"),t("rl.qat.head.fwd"),t("rl.qat.head.bwd"),t("rl.qat.head.grad"),t("rl.qat.head.match"),t("rl.qat.head.time"),t("rl.qat.head.vsBf16"),t("rl.qat.head.saved"),t("rl.qat.head.who")],
     rows.map(x=>[esc(x[0]),esc(x[1]),esc(x[2]),esc(x[3]),esc(x[4]),fT(x[5].t),fX(b.t/x[5].t),fB(x[5].extra),esc(x[6])]),[5,6,7]);
   const ideal=(f,bk)=>Q.idealSpeedup(hw,f,bk);
   const hp=G("nvfp4hp"), hpU=G("nvfp4hp",{tokFused:false}), hpF=G("nvfp4hp",{tokFused:true}), dq=G("nvfp4dq"), tDeq=(dq.q.find(z=>z[2]==="deq")||[0,0])[1];
   const mem=evOf(/mxfp8-nvfp4-rl/), A=[];
+  if(bw){
   A.push(t("rl.qat.an.peak", {hw:esc(hw.name), mx:V(fX(ideal("mxfp8","bf16"))), nv:V(fX(ideal("nvfp4","bf16"))), nvAll:fX(ideal("nvfp4","nvfp4"))}));
   A.push(t("rl.qat.an.tok", {state:q.tokFused ? t("rl.qat.an.tokFused") : t("rl.qat.an.tokSeparate"), fused:fT(hpF.t), unfused:V(fT(hpU.t)), xFused:fX(b.t/hpF.t), xUnfused:fX(b.t/hpU.t),
     lmsys:aOut(mem.url,t("rl.qat.an.tokLink"))}));
-  A.push(t("rl.qat.an.deq", {t:V(fT(tDeq)), pct:pct(tDeq,dq.t), dq:fB(dq.saveX), hp:fB(hp.saveX), same:aOut(mem.url,t("rl.qat.an.deqLink"))}));
+  A.push(t("rl.qat.an.deq", {t:V(fT(tDeq)), pct:pct(tDeq,dq.t), dq:fB(dq.saveX), hp:fB(hp.saveX), same:aOut(mem.url,t("rl.qat.an.deqLink"))})); }
   A.push(t("rl.qat.an.e2e"));
   $("r-qat-notes").innerHTML=ul(A);
   ossTable($("r-qat-oss"),QAT_OSS);

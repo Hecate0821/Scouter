@@ -28,7 +28,8 @@ function renderOverview(){
     [t("overview.cmp.thr.k"),fN(ri.tokPerGpu)+" tok/s/GPU",fN(rt.tokPerGpu)+" tok/s/GPU"]]);
   const rows=ri.rowsG>0?ct.tok/ri.rowsG:0;
   $("o-notes").innerHTML=ul([
-    t("overview.notes.rows",{ratio:V(fI(rows)+"×"),rowsI:fInt(ri.rowsG),rowsT:fInt(ct.tok),perExpert:e.E?t("overview.notes.rowsPerExpert",{inf:fI(lamI),trn:fI(lamT)}):"",memI:pct(memI,1),memT:pct(memT,1)}),
+    t("overview.notes.rows",{ratio:V(fI(rows)+"×"),rowsI:fInt(ri.rowsG),rowsT:fInt(ct.tok),perExpert:e.E?t("overview.notes.rowsPerExpert",{inf:fI(lamI),trn:fI(lamT)}):"",vInf:t(memI>=0.5?"overview.notes.vInfMem":"overview.notes.vInfCmp",{p:pct(memI,1)}),vTrn:t(memT<0.5?"overview.notes.vTrnCmp":"overview.notes.vTrnMem",{p:pct(memT,1)}),
+      quant:memI>=0.5&&memT<0.5?t("overview.notes.quant"):""}),
     t("overview.notes.par"),
     t("overview.notes.rl",{ratio:V(fX(ratio)),tail:ratio>1?t("overview.notes.rlRollout"):t("overview.notes.rlTrain")})]);
 }

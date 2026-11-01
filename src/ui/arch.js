@@ -223,8 +223,8 @@ function renderModRead(mod, wl, a, a0, fx, fx0, edited, ridge, pk){
     else if(mod.kind==="gdn"||mod.kind==="kda") R.push(t("arch.read.lin",{st:V(fB(x.st)),dt:wl.stateDt.toUpperCase(),rw:fB(x.rwB),i:fI(x.I),n:x.vsKv!=null?fN(x.vsKv):"—"}));
     else if(mod.kind==="moe") R.push(t("arch.read.moe",{b:fInt(B),hit:fInt(x.hit),e:e.E,pct:pc(x.cov),rows:fI(x.rows),w:V(fB(x.hit*fx.expert)),need:fInt(x.need),bneed:fInt(x.needB)}));
     else if(mod.kind==="dense") R.push(t("arch.read.dense",{w:V(fB(fx.weights)),i:fI(a.I),bs:fInt(x.Bstar)}));
-  } else if(wl.phase==="prefill") R.push(t("arch.read.prefill."+mod.kind,{c:fInt(Math.min(n,Arch.chunkOf(wl,hw))),n:fInt(n),k:fInt(f.topk||0)}));
-  else R.push(t("arch.read.train."+mod.kind,{s:fInt(wl.S)}));
+  } else if(wl.phase==="prefill") R.push(t("arch.read.prefill."+mod.kind,{c:fInt(Math.min(n,Arch.chunkOf(wl,hw))),n:fInt(n),k:fInt(f.topk||0),rows:e.E?fI(Math.min(n,Arch.chunkOf(wl,hw))*e.k/e.E):""}));
+  else R.push(t("arch.read.train."+mod.kind,{s:fInt(wl.S),rows:e.E?fI(wl.S*e.k/e.E):""}));
   if(edited&&sameKinds()){ const dkv = fx.kvTok!=null&&fx0.kvTok!=null ? t("arch.read.dKv",{a:fB(fx0.kvTok),b:fB(fx.kvTok)}) : fx.state!=null&&fx0.state!=null ? t("arch.read.dState",{a:fB(fx0.state),b:fB(fx.state)}) : fx.weights!=null&&fx0.weights!=null ? t("arch.read.dW",{a:fB(fx0.weights),b:fB(fx.weights)}) : "";
     R.push(t("arch.read.vsPreset",{a:fT(a0.t),b:V(fT(a.t)),x:fX(a0.t/Math.max(a.t,1e-30)),i0:fI(a0.I),i1:fI(a.I),d:dkv})); }
   $("am-read").innerHTML=ul(R);

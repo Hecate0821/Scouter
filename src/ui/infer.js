@@ -129,7 +129,7 @@ function renderInfer(){
   const A=[];
   A.push(t("infer.analysis.slowest",{list:ops.slice(0,3).map(o=>esc(shortName(o.name))+" "+V(fT(o.t))+" "+pill(o.bound)).join(t("infer.analysis.listSep"))}));
   A.push(t("infer.analysis.shares",{mem:V(pct(memT,r.stepT)),launch:V(pct(launchT,r.stepT)),comm:V(pct(commT,r.stepT))}));
-  if(moeO&&dec) A.push(t("infer.analysis.moe",{rows:fInt(r.Tg),touched:V(fI(moeO.touched)),cover:pct(moeO.cover,1),bytes:V(fB(moeO.bytes/moeO.layers))}));
+  if(moeO&&dec) A.push(t("infer.analysis.moe",{rows:fInt(r.Tg),touched:V(fI(moeO.touched)),cover:pct(moeO.cover,1),bytes:V(fB(moeO.bytes/moeO.layers)),tail:t(moeO.cover>=0.95?"infer.analysis.moeFull":"infer.analysis.moePart")}));
   if(dec&&kvO.length) A.push(t("infer.analysis.kv",{bytes:V(fB(kvBytes)),time:V(fT(sum(kvO,o=>o.t)))})+(m.lin.n>0&&r.specK>0?t("infer.analysis.kvSpec",{x:(E.stateVerify(m,r.w)/E.stateDecode(m)).toFixed(1),engine:ENGN[c.engine]}):""));
   if(dec&&r.graph&&r.rowsG>r.rowsR) A.push(t("infer.analysis.pad",{real:r.rowsR,pad:r.rowsG}));
   if(dec&&!r.graph) A.push(t("infer.analysis.eager",{n:r.nKern,us:g.launchUs,total:V(fT(r.nKern*g.launchUs*1e-6)),tail:r.cpuLaunch>r.gpu?t("infer.analysis.eagerCpu"):t("infer.analysis.eagerEnd")}));

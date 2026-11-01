@@ -23,7 +23,7 @@ function toCurve(cf, isl, osl, hwKey, topoKey){
   const {m,g}=ctx(), hw=HW[hwKey||S.hw], topo=TOPO[topoKey||S.topo];
   const base=Object.assign(clone(BASE_INF),cf.cfg,{phase:"decode"});
   const probe=Infer.decode(m,hw,topo,Object.assign({},base,{B:1,n:isl+osl}),g), E=Infer.ENGINES[base.engine];
-  const cap=Math.min(probe.mem.Bmax, base.specK>0?E.specCap:256), pts=[];
+  const lim=base.specK>0?E.specCap:256, cap=Math.min(probe.mem.Bmax, lim), capBy=probe.mem.Bmax<=lim?"mem":base.specK>0?"spec":"sweep", pts=[];   // 256：这张图只扫到每 rank 256 并发
   if(probe.mem.avail<=0 || cap<1) return { pts, fit:false, wt:probe.mem.weights, cap:Math.max(0,cap), mem:probe.mem };
   const preC=Object.assign({},base,{phase:"prefill",specK:0,C:Math.min(isl,8192),P:isl,p:0});
   const pre=cf.pd ? Infer.prefill(m,hw,topo,Object.assign({},preC,{N:cf.pd.N,dpA:cf.pd.N}),g) : Infer.prefill(m,hw,topo,preC,g);
@@ -35,7 +35,7 @@ function toCurve(cf, isl, osl, hwKey, topoKey){
     const gpus = cf.pd ? base.N + out/(t*osl)*pre.ttft : base.N;   // prefill 实例 DEP：每张卡一条 prompt，一条占 ttft 卡秒
     pts.push({ b, B:b*r.dpA, u:r.tokPerStep/r.Breq/t, thr:out/t/gpus*(TO.total?(isl+osl)/osl:1), t, preT, r });
   }
-  return { pts, fit:true, wt:probe.mem.weights, cap, mem:probe.mem, pre };
+  return { pts, fit:true, wt:probe.mem.weights, cap, capBy, mem:probe.mem, pre };
 }
 function isoThr(pts, u){ let best=null;
   for(let i=0;i<pts.length;i++){ const p=pts[i], q=pts[i+1];
@@ -61,7 +61,7 @@ function renderInferTO(){
     [t("tradeoff.kpi.current"),cur?(iso(cur)!=null?fN(iso(cur))+" tok/s/GPU":t("tradeoff.kpi.unreachable")):t("tradeoff.kpi.notListed"),cur?toShort(cur.cf)+" @"+TO.target:t("tradeoff.kpi.custom",{engine:ENGN[S.inf.engine]})]]);
   $("i-to-cfg").innerHTML='<thead><tr><th></th><th>'+t("tradeoff.cfg.head.cfg")+'</th><th>'+t("tradeoff.cfg.head.gpus")+'</th><th>attention</th><th>MoE</th><th>'+t("tradeoff.cfg.head.wt")+'</th><th>'+t("tradeoff.cfg.head.cap")+'</th><th>@'+TO.target+'</th><th>'+t("tradeoff.cfg.head.src")+'</th><th></th></tr></thead><tbody>'+
     curves.map(cu=>{ const c=cu.cf.cfg, tp=c.N/c.dpA, on=cu===cur;
-      return '<tr'+(on?' class="hl"':'')+'><td><span class="sw" style="display:inline-block;width:12px;height:3px;background:'+css(cu.col)+'"></span></td><td style="min-width:12em">'+esc(cu.cf.eng+" · "+cu.cf.label)+'</td><td class="num">'+(cu.cf.pd?t("tradeoff.cfg.gpusPd",{n:c.N,pd:cu.cf.pd.N}):c.N)+'</td><td>'+(tp>1?"TP"+tp:"")+(c.dpA>1?(tp>1?" × ":"")+"DP"+c.dpA:"")+(tp===1&&c.dpA===1?t("tradeoff.cfg.single"):"")+(c.dcp>1?" + DCP"+c.dcp:"")+(c.specK?t("tradeoff.cfg.spec",{k:c.specK}):"")+'</td><td>'+(m.moe.E?esc(MOENAME[c.moePar]):"—")+'</td><td class="num">'+fB(cu.wt)+'</td><td class="num">'+(cu.fit?cu.cap:t("tradeoff.cfg.noFit"))+'</td><td class="num">'+(iso(cu)!=null?fN(iso(cu)):"—")+'</td><td style="min-width:20em;font-size:12.5px">'+esc(cu.cf.src)+'</td><td>'+(on?t("tradeoff.cfg.current"):'<button type="button" class="mini" data-to-apply="'+esc(cu.cf.id)+'">'+t("tradeoff.cfg.open")+'</button>')+'</td></tr>'; }).join("")+'</tbody>';
+      return '<tr'+(on?' class="hl"':'')+'><td><span class="sw" style="display:inline-block;width:12px;height:3px;background:'+css(cu.col)+'"></span></td><td style="min-width:12em">'+esc(cu.cf.eng+" · "+cu.cf.label)+'</td><td class="num">'+(cu.cf.pd?t("tradeoff.cfg.gpusPd",{n:c.N,pd:cu.cf.pd.N}):c.N)+'</td><td>'+(tp>1?"TP"+tp:"")+(c.dpA>1?(tp>1?" × ":"")+"DP"+c.dpA:"")+(tp===1&&c.dpA===1?t("tradeoff.cfg.single"):"")+(c.dcp>1?" + DCP"+c.dcp:"")+(c.specK?t("tradeoff.cfg.spec",{k:c.specK}):"")+'</td><td>'+(m.moe.E?esc(MOENAME[c.moePar]):"—")+'</td><td class="num">'+fB(cu.wt)+'</td><td class="num">'+(cu.fit?cu.cap+(cu.capBy!=="mem"?'<br><span class="tag">'+t("tradeoff.cfg.capBy."+cu.capBy,{mem:fInt(cu.mem.Bmax)})+'</span>':""):t("tradeoff.cfg.noFit"))+'</td><td class="num">'+(iso(cu)!=null?fN(iso(cu)):"—")+'</td><td style="min-width:20em;font-size:12.5px">'+esc(cu.cf.src)+'</td><td>'+(on?t("tradeoff.cfg.current"):'<button type="button" class="mini" data-to-apply="'+esc(cu.cf.id)+'">'+t("tradeoff.cfg.open")+'</button>')+'</td></tr>'; }).join("")+'</tbody>';
   /* 随上下文 */
   const isls=[1024,2048,4096,8192,16384,32768,65536,131072];
   const serC=curves.map(cu=>({name:cu.cf.eng+" · "+cu.cf.label,short:toShort(cu.cf),col:cu.col,pts:isls.map(L=>{ const c2=toCurve(cu.cf,L,osl); return [L,c2.fit?isoThr(c2.pts,TO.target):null]; })}));

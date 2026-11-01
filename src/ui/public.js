@@ -45,7 +45,7 @@ function renderEff(){
       p.keff?t("appendix.data.keff.ev.inTable"):esc(conf[p.confidence||DB.meta("kernel_public").confidence]),pubSrc(p)]));
 }
 function renderPublic(){
-  const g=S.glob, hw=HW[S.q.hw], inf=DB.set("inference_public");
+  const g=S.glob, inf=DB.set("inference_public");
   table($("pub-infer"),[t("appendix.pub.infer.head.what"),t("appendix.pub.infer.head.config"),t("appendix.pub.infer.head.value"),t("appendix.pub.infer.head.src")],
     inf.filter(p=>!isPareto(p)).map(p=>[esc(p.model+" · "+p.engine+" · "+p.hw),esc(p.config),esc(p.value),pubSrc(p)]));
   table($("pub-pareto"),[t("appendix.pub.pareto.head.what"),t("appendix.pub.pareto.head.value"),t("appendix.pub.pareto.head.caveat"),t("appendix.pub.pareto.head.src")],
@@ -62,5 +62,5 @@ function renderPublic(){
   table($("q-evid"),[t("appendix.ev.head.date"),t("appendix.ev.head.src"),t("appendix.ev.head.hw"),t("appendix.ev.head.claim"),t("appendix.ev.head.value"),t("appendix.ev.head.w"),t("appendix.ev.head.page")],
     rows.map(r=>[r.date+(r.dk==="read"?'<br><span class="tag">'+t("appendix.ev.dateRead")+'</span>':r.dk==="measured"?'<br><span class="tag">'+t("appendix.ev.dateMeasured")+'</span>':""),'<a href="'+esc(r.url)+'" target="_blank" rel="noopener">'+esc(r.src)+'</a><br><span class="tag">'+esc(r.topic)+'</span>',
       esc(r.hw)+'<br><span class="tag">'+archN[r.arch]+'</span>',esc(r.claim),esc(r.value),
-      '<span class="wbar"><span style="width:'+(r.w*100).toFixed(0)+'%"></span></span>'+r.w.toFixed(2),r.chk?qCheck(r.chk,hw):"—"]));
+      '<span class="wbar"><span style="width:'+(r.w*100).toFixed(0)+'%"></span></span>'+r.w.toFixed(2),r.chk?qCheck(r.chk):"—"]));
 }

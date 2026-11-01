@@ -306,7 +306,7 @@ function renderInfComm(){
   xSeg("x-i-n",[[1,t("comm.seg.layers",{n:1})],[2,t("comm.seg.layers",{n:2})],[3,t("comm.seg.layers",{n:3})]],XV.inf.n,v=>{ XV.inf.n=+v; renderInfComm(); });
   const lanes=xGrid("x-i-grid",ev,groups);
   $("x-i-lede").innerHTML=t("comm.inf.lede",{auto:pick.auto?t("comm.inf.ledeAuto"):"",eng:ENGN[c.engine],model:esc(m.short),hw:hw.name,n:c.N,tp:tpA,dp:r.dpA,moe:esc(MOENAME[r.moePar]||r.moePar),
-    work:dec?t("comm.inf.ledeDec",{b:r.Breq,rows:fN(r.rowsG),spec:r.specK?t("comm.inf.ledeSpec",{k:r.specK+1}):""}):t("comm.inf.ledePre",{c:fN(c.C)})});
+    work:dec?t("comm.inf.ledeDec",{b:r.Breq,rows:fN(r.rowsG),spec:r.specK?t("comm.inf.ledeSpec",{k:r.specK+1}):""}):t("comm.inf.ledePre",{c:fN(c.C)}),src:t(pick.cf?"comm.inf.srcPreset":"comm.inf.srcCur")});
   const lay = i => ev.filter(e=>e.k==="x"&&e.lay===i);
   xVolume("x-i-vol",L.map(i=>({label:t("comm.vol.label",{i,name:"<span>"+esc(name(kind(i)))+"</span>"}),parts:lanes.map(dim=>({dim,v:sum(lay(i).filter(e=>e.dim===dim),e=>e.bytes)}))})));
   const dimOf = key => ({ar:"tp",latar:"tp",lmg:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:r.moePar==="ag"?"ep":"dpa",dps:r.moePar==="ag"?"ep":"dpa"})[key];
@@ -319,5 +319,5 @@ function renderInfComm(){
         '<td class="num">'+fB(s.b)+' <span class="tag">'+pc(s.b/tot)+'</span></td><td class="num">'+fT(s.t)+'</td><td class="num">'+fB(s.b/Math.max(1,toks))+'</td></tr>'; }).join("")+
     (dims.length?'<tr class="hl"><td>'+t("comm.tbl.total")+'</td><td></td>'+L.map(i=>'<td class="num">'+fB(sum(lay(i),e=>e.bytes))+'</td>').join("")+'<td class="num">'+fB(tot)+'</td><td class="num">'+fT(sum(dims,k=>bySt[k].t))+'</td><td class="num">'+fB(tot/Math.max(1,toks))+'</td></tr>':'<tr><td colspan="'+(5+L.length)+'">'+t("comm.tbl.none")+'</td></tr>')+'</tbody>';
   $("x-i-note").innerHTML=!dims.length ? t("comm.inf.noteNone") :
-    t("comm.inf.note",{b:V(fB(tot)),wt:V(fT(sum(dims,k=>bySt[k].t))),step:fT(r.stepT)});
+    t("comm.inf.note",{b:V(fB(tot)),wt:V(fT(sum(dims,k=>bySt[k].t))),step:fT(r.stepT),tail:t(dec?"comm.inf.noteDec":"comm.inf.notePre")});
 }

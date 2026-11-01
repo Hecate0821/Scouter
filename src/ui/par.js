@@ -254,25 +254,28 @@ t("par.fsdp.f.states", { p: fN(r.Pshard), bytes: fB(r.mem.states) });
   /* 连续几层的前向和预取 */
   const ffn=moe?P.rep.f+P.exp.f:P.den.f, compFull=P.pre.f+P.core.f+P.post.f+ffn, compLin=(m.lin.n?P.lin.f/m.lin.n*m.L/m.L:0)+ffn;
   const linPer=m.lin.n? (()=>{ let f=0; for(const o of r.ops) if(o.group==="lin") f+=o.fwd.t/o.layers; return f; })() : 0;
-  const lane=fs.lkD.intra?"nvl":"ib", isFull=i=>!m.lin.n||i%4===3, gT=i=>Par.wireT((isFull(i)?fs.pFull:fs.pLin)*(fs.fs-1)/fs.fs*2,fs.lkD,g.etaAg,1,g);
+  const lane=fs.lkD.intra?"nvl":"ib", LP=Common.layerPlan(m), isFull=i=>LP[i].attn!=="lin", gT=i=>Par.wireT((isFull(i)?fs.pFull:fs.pLin)*(fs.fs-1)/fs.fs*2,fs.lkD,g.etaAg,1,g);
   const layers=Math.min(6,m.L), segs=[]; let commEnd=gT(0), tc=commEnd;
   if(commEnd>0) segs.push({lane,label:t("par.fsdp.pref.gather", { i: 0 }),t0:0,t1:commEnd,cat:"fsdp"});
   for(let i=0;i<layers;i++){ const comp=isFull(i)?compFull:linPer+ffn, start=Math.max(tc,commEnd);
     if(i+1<layers){ const nx=gT(i+1), cs=Math.max(commEnd,start); if(nx>0) segs.push({lane,label:t("par.fsdp.pref.prefetch", { i: i+1 }),t0:cs,t1:cs+nx,cat:"fsdp"}); commEnd=cs+nx; }
-    segs.push({lane:"sm",label:t("par.fsdp.pref.fwd", { i, kind: isFull(i) ? t("par.fsdp.pref.full") : t("par.fsdp.pref.lin") }),t0:start,t1:start+comp,cat:isFull(i)?"attn":"lin"}); tc=start+comp; }
+    segs.push({lane:"sm",label:t("par.fsdp.pref.fwd", { i, kind: t("par.fsdp.pref."+LP[i].attn) }),t0:start,t1:start+comp,cat:isFull(i)?"attn":"lin"}); tc=start+comp; }
   gantt("p-f-pref",[{label:"",lanes:["sm",lane],segs}]);
-  $("p-f-pref-lede").textContent=t("par.fsdp.pref.lede", { n: layers, full: fT(compFull), lin: m.lin.n ? t("par.fsdp.pref.ledeLin", { t: fT(linPer+ffn) }) : "", gather: fT(gT(m.lin.n?3:0)), link: fs.lkD.kind })+(fs.fs<=1?t("par.fsdp.pref.noGather"):"");
+  $("p-f-pref-lede").textContent=t("par.fsdp.pref.lede", { n: layers, full: fT(compFull), lin: m.lin.n ? t("par.fsdp.pref.ledeLin", { t: fT(linPer+ffn) }) : "", gather: fT(gT(Math.max(0,LP.findIndex(x=>x.attn!=="lin")))), link: fs.lkD.kind })+(fs.fs<=1?t("par.fsdp.pref.noGather"):"");
   legendInto("p-f-pref-legend",[{name:t("par.fsdp.pref.legFull"),col:CAT.attn},{name:t("par.fsdp.pref.legLin"),col:CAT.lin},{name:t("par.fsdp.pref.legAg"),col:CAT.fsdp}]);
   /* 每卡 token：两种拓扑各跑一遍 Train.run（各用自己那一代的卡：HGX 用 B200 / B300 / H200，NVL72 用 GB200 / GB300） */
   const PAIR={B200:"GB200",GB200:"B200",B300:"GB300",GB300:"B300",H200:"GB200",H100:"GB200"}, gb=/^GB/.test(S.hw), hH=gb?PAIR[S.hw]:S.hw, hN=gb?S.hw:PAIR[S.hw];
-  const scen=[["hgx8",hH,t("par.fsdp.n.hgx", { hw: HW[hH].name }),"s1","8 × "+HW[hH].name],["nvl64",hN,t("par.fsdp.n.nvl", { hw: HW[hN].name }),"s2","64 × "+HW[hN].name]];
+  const runN=(tk,hk,n)=>{ const c2=fitPar(Object.assign(parBase(),{tok:n,S:Math.max(n*S.trn.cp,1024)}),TOPO[tk].gpus); return { c2, r2:Train.run(m,HW[hk],TOPO[tk],Object.assign({N:TOPO[tk].gpus},c2),g) }; };
+  const deg=(tk,hk)=>{ const {c2,r2}=runN(tk,hk,r.Tc), f=r2.par.fsdp; return { fs:f?f.fs:1, fe:f?f.fe:1, tp:c2.tp, cp:c2.cp, ep:c2.ep }; };   // 这套配置放到这个拓扑上实际的 FSDP 路数（TP / CP / EP 可能被缩小）
+  const dH=deg("hgx8",hH), dN=deg("nvl64",hN), dTxt=d=>t("par.fsdp.n.deg", { fs: d.fs, tp: d.tp, cp: d.cp, ep: d.ep });
+  const scen=[["hgx8",hH,t("par.fsdp.n.hgx", { hw: HW[hH].name, deg: dTxt(dH) }),"s1","8 × "+HW[hH].name],["nvl64",hN,t("par.fsdp.n.nvl", { hw: HW[hN].name, deg: dTxt(dN) }),"s2","64 × "+HW[hN].name]];
   const ns=[512,1024,2048,4096,8192,16384,32768,65536,131072];
-  const ser=scen.map(([tk,hk,name,col,short])=>({name,short,col,pts:ns.map(n=>{ const c2=fitPar(Object.assign(parBase(),{tok:n,S:Math.max(n*S.trn.cp,1024)}),TOPO[tk].gpus); const r2=Train.run(m,HW[hk],TOPO[tk],Object.assign({N:TOPO[tk].gpus},c2),g);
+  const ser=scen.map(([tk,hk,name,col,short])=>({name,short,col,pts:ns.map(n=>{ const {r2}=runN(tk,hk,n);
     return [n, runOK(r2) ? r2.fsdpExposedMB/r2.tMB : null, {hollow:!runFit(r2)}]; })}));
   lineChart("p-f-n",{series:ser,xLog:true,xBase:2,xFmt:fK,yFmt:pc,xLab:t("par.fsdp.n.xLab"),yLab:t("par.fsdp.n.yLab"),vlines:[{x:r.Tc,label:t("par.chart.now")}],yMin:0});
   legendInto("p-f-n-legend",ser.map(se=>({name:se.name,col:se.col,line:true})));
   const pkb=peakOf(hw,"bf16"), rN=Common.linkRidge(pkb,hw.nvl,g), rI=Common.linkRidge(pkb,hw.ib,g);
-  $("p-f-n-lede").textContent=t("par.fsdp.n.lede", { hw: hw.name, rN: fN(rN), ratio: fN(rI/rN) });
+  $("p-f-n-lede").textContent=t("par.fsdp.n.lede", { hw: hw.name, rN: fN(rN), ratio: fN(rI/rN), f1: dH.fs, f2: dN.fs, b1: (dH.fs-1)+"/"+dH.fs, b2: (dN.fs-1)+"/"+dN.fs });
   const rep=moe ? t("par.fsdp.tbl.rep") : "";
   $("p-f-tbl").innerHTML='<thead><tr><th>'+t("par.fsdp.tbl.th.kind")+'</th><th>'+t("par.fsdp.tbl.th.layers")+'</th><th>'+t("par.fsdp.tbl.th.params")+'</th><th>'+t("par.fsdp.tbl.th.group")+'</th><th>'+t("par.fsdp.tbl.th.bytes")+'</th><th>'+t("par.fsdp.tbl.th.wire")+'</th><th>'+t("par.fsdp.tbl.th.fwd")+'</th></tr></thead><tbody>'+
     [[t("par.fsdp.tbl.full", { rep }),m.full.n,fs.pFull,fs.fs,fs.lkD,compFull],...(m.lin.n?[[t("par.fsdp.tbl.lin", { rep }),m.lin.n,fs.pLin,fs.fs,fs.lkD,linPer+ffn]]:[]),...(m.dense.n?[[t("par.fsdp.tbl.dense"),m.dense.n,fs.pDen,fs.fs,fs.lkD,P.den.f]]:[]),...(moe?[[t("par.fsdp.tbl.exp"),r.nM,fs.pExpL,fs.fe,fs.lkE,P.exp.f]]:[])]

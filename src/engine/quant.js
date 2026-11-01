@@ -1,5 +1,6 @@
 /* 量化核心：只描述量化本身带来的差别。单个 GEMM 的权重 / scale / 激活字节，激活量化 kernel，W4A16 的反量化，
-   MoE grouped GEMM 的每 expert 行数与对齐补齐，训练三遍 GEMM 的精度与转置副本。统一按 Blackwell（SM100 / SM103）的块缩放 MMA 算。 */
+   MoE grouped GEMM 的每 expert 行数与对齐补齐，训练三遍 GEMM 的精度与转置副本。GPU 由调用方给；MX / NVFP4 要 Blackwell 的块缩放 MMA，
+   Hopper 上能跑的只有 BF16、block FP8 和 W4A16（反量化到 BF16 再算），见 schemeOK / recipeOK。 */
 const Quant = (function(){
 const { dtB, peakOf, roof, memT } = Common;
 
@@ -110,10 +111,15 @@ function trainGemm(hw, g, key, M, N, K, o){
   return { R, fprop, dgrad, wgrad, q, tq, t:fprop+dgrad+wgrad+tq, saveX, wCache, extra:saveX+wCache };
 }
 
+/* 这块 GPU 能不能原生跑：MMA 的操作数是 MX / NVFP4 时要 SM100+；W4A16 的权重先反量化成 BF16，Hopper 也行（Marlin） */
+const BW_FMT = new Set(["mxfp8","mxfp4","nvfp4"]);
+const schemeOK = (hw, k) => { const S=SCHEMES[k]; return hw.sm>=100 || (!BW_FMT.has(S.a) && (S.deq || !BW_FMT.has(S.w))); };
+const recipeOK = (hw, k) => { const R=RECIPES[k]; return hw.sm>=100 || (!BW_FMT.has(R.f) && !BW_FMT.has(R.b)); };
+
 /* 训练三遍 GEMM（fprop 一遍、dgrad + wgrad 两遍）只看峰值能快多少：fprop 用格式 f，反向用格式 b */
 const idealSpeedup = (hw, f, b) => { const pk = k => peakOf(hw,k)/peakOf(hw,"bf16"); return 3/(1/pk(f)+2/pk(b)); };
 /* QAT 的 fake quant：读 BF16 权重、写回量化再反量化的 BF16（N×K 各 2+2 字节），按 micro-batch 摊；至少一个 kernel */
 const fakeQuantT = (hw, g, N, K, nMicro) => Math.max(g.kernelUs*1e-6, memT(N*K*(2+2), hw, g))/Math.max(1, nMicro);
 
-return { SCHEMES, ORDER, RECIPES, RORDER, gemm, crossover, poisson, autoAlign, moeLayer, trainGemm, idealSpeedup, fakeQuantT };
+return { SCHEMES, ORDER, RECIPES, RORDER, schemeOK, recipeOK, gemm, crossover, poisson, autoAlign, moeLayer, trainGemm, idealSpeedup, fakeQuantT };
 })();

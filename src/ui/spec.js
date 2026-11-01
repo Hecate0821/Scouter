@@ -72,7 +72,7 @@ function renderSpec(){
     (capped?t("spec.cost.capped",{engine:ENGN[c.engine],cap:P.specCap}):t("spec.cost.uncapped"));
   legendInto("s-vs-legend",SPEC_ORDER.map(mt=>({name:Infer.SPEC[mt].name,col:SPECC[mt],line:true})).concat([{name:t("spec.vs.offShort"),col:"muted",line:true}]));
   table($("s-ledger"),[t("spec.ledger.method",{a:a.toFixed(2),b:r.Breq}),"k",t("spec.ledger.width"),t("spec.ledger.draft"),t("spec.ledger.verify"),t("spec.ledger.commit"),t("spec.ledger.step"),"τ","TPOT",t("spec.ledger.speed"),"tok/s/GPU",t("spec.ledger.draftW"),t("spec.ledger.bmax")],
-    SPEC_ORDER.map(mt=>{ const kk=SPEC_K[mt], x=specRun(mt,kk,a);
+    SPEC_ORDER.map(mt=>{ const kk=mt===method?k:SPEC_K[mt], x=specRun(mt,kk,a);   // 当前方法用左侧的 k（和上面的 KPI 一致），其余用各自常见的 k
       return {cls:mt===method?"hl":"",cells:[sw(css(SPECC[mt]))+Infer.SPEC[mt].name,kk,kk+1,fT(x.draftT),fT(x.stepT-x.draftT-x.commitT),x.commitT?fT(x.commitT):"—",fT(x.stepT),tauOf(a,kk).toFixed(2),fT(x.tpot),fX(base.tpot/x.tpot),fN(x.tokPerGpu),fB(x.mem.wDraft||x.mem.wMtp||0),fInt(x.mem.Bmax)]}; }),[1,2,3,4,5,6,7,8,9,10,11,12]);
   // 引擎支持、公开数字、RL
   const cell=list=>list.length?list.map(([p,v,note])=>t("spec.eng.cell",{link:relLink(p,v),note:esc(note)})).join("<br>"):"—";

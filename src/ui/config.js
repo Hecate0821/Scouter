@@ -136,10 +136,11 @@ function trnPresets(fw, mk, topoKey){
   } else {
     const bw = blackwell(), disp = bw?"distmoe":"standard";
     const st = { kimik3:t("config.trn.torchtitan.status.kimik3"), glm53f:t("config.trn.torchtitan.status.glm53f"), musespark:t("config.trn.torchtitan.status.musespark"), qwen38_27b:t("config.trn.torchtitan.status.qwen38_27b") }[mk]||"";
-    if(!big) add("dapo",t("config.trn.torchtitan.dapo.label"),t("config.trn.torchtitan.dapo.src",{ep:bw?t("config.trn.torchtitan.dapo.epBlackwell"):t("config.trn.torchtitan.dapo.epHopper"), status:st}),
-      {tp:1,cp:1,ep:MODELS[mk].moe.E?4:1,tok:8192,dispatcher:disp,cpType:"allgather",linCP:"state",recompute:"default",offload:false});
-    else add("big",t("config.trn.torchtitan.big.label"),t("config.trn.torchtitan.big.src",{status:st}),
-      {tp:4,cp:4,ep:16,tok:16384,dispatcher:disp,cpType:"ulysses",linCP:"ulysses",recompute:"default",offload:false});
+    const isMoE=!!MODELS[mk].moe.E;
+    if(!big) add("dapo",t(isMoE?"config.trn.torchtitan.dapo.label":"config.trn.torchtitan.dapo.labelDense"),t("config.trn.torchtitan.dapo.src",{ep:bw?t("config.trn.torchtitan.dapo.epBlackwell"):t("config.trn.torchtitan.dapo.epHopper"), status:st}),
+      {tp:1,cp:1,ep:isMoE?4:1,tok:8192,dispatcher:disp,cpType:"allgather",linCP:"state",recompute:"default",offload:false});
+    else add("big",t(isMoE?"config.trn.torchtitan.big.label":"config.trn.torchtitan.big.labelDense"),t("config.trn.torchtitan.big.src",{status:st}),
+      {tp:4,cp:4,ep:isMoE?16:1,tok:16384,dispatcher:disp,cpType:"ulysses",linCP:"ulysses",recompute:"default",offload:false});
     if(MODELS[mk].moe.E) add("ep8",t("config.trn.torchtitan.ep8.label"),t("config.trn.torchtitan.ep8.src"),{tp:1,cp:1,ep:8,tok:16384,dispatcher:disp,cpType:"allgather",linCP:"state",recompute:"full",offload:false});
     if(mk==="qwen35") add("h200cp8",t("config.trn.torchtitan.qwen35.h200cp8.label"),t("config.trn.torchtitan.qwen35.h200cp8.src"),
       {tp:1,cp:8,ep:4,tok:32768,S:262144,Gtok:262144,dispatcher:"standard",cpType:"allgather",cpLB:false,linCP:"state",recompute:"full",offload:false},{topo:"hgx8",hw:"H200"});
