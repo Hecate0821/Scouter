@@ -23,6 +23,9 @@ uv run python -m scouter_sim.run cases/fsdp4_ep2_moe.json
 cd ../tests && npm run sim                # compare with the engine
 ```
 
+All cases take about 2.5 s: most of it importing torch once, then about 0.3 s per case. Workers are forked from the process that
+imported torch (Linux or macOS; no Windows), and `uv sync` precompiles the bytecode.
+
 ## Cases
 
 ```json

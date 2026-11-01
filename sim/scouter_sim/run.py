@@ -20,7 +20,11 @@ import socket
 import sys
 from pathlib import Path
 
+os.environ.setdefault("OMP_NUM_THREADS", "1")   # before torch loads; the forked workers inherit it
+
 import torch
+import torch._dynamo   # fully_shard imports these two on first use: load them once here, before the workers fork
+import torch.onnx
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn.functional as F
@@ -137,11 +141,11 @@ def main(paths):
     for p in paths:
         case = json.loads(p.read_text())
         out = ROOT / "traces" / p.name
-        mp.spawn(worker, args=(case, free_port(), str(out)), nprocs=case["layout"]["N"], join=True)
+        # fork, not spawn: every worker inherits the imported torch instead of importing it again (the parent runs no torch ops)
+        mp.start_processes(worker, args=(case, free_port(), str(out)), nprocs=case["layout"]["N"], join=True, start_method="fork")
         n = sum(len(r) for r in json.loads(out.read_text())["ranks"])
         print(f"{case['name']}: {n} collectives on {case['layout']['N']} ranks -> {out.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("OMP_NUM_THREADS", "1")
     main(sys.argv[1:])
