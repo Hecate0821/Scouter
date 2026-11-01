@@ -38,7 +38,7 @@ const r = E.Train.run(E.MODELS.qwen35, E.HW.H200, E.TOPO.hgx8, c, E.G0);
 console.log(r.stepT, r.mfu, r.comm.map(x => x.key));   // 一步的秒数、MFU、各类通信
 ```
 
-计算核心外面还有一层数据平面入口 `src/plane/scouter.js`（`Scouter.*`）：把计算核心和数据点库包成一组调用（`catalog`、`roofline`、`infer`、`train`、`module`、`serve`、`sweep`、`sets`、`points`、`kernels`、`eff`、`calib`、`trace`），输入是 key 和覆盖项，输出能 JSON 序列化。界面的“命令行 / JSON”按钮、`tools/scouter.js` 和 agent 用的都是它，用法见 [`AGENTS.md`](../AGENTS.md)：
+计算核心外面还有一层数据平面入口 `src/plane/scouter.js`（`Scouter.*`）：把计算核心和数据点库包成一组调用（`catalog`、`roofline`、`infer`、`train`、`module`、`serve`、`sweep`、`sets`、`points`、`kernels`、`eff`、`calib`、`trace`），输入是 key 和覆盖项，输出能 JSON 序列化。界面的“命令行 / JSON”按钮、`tools/scouter.js` 和 agent 用的都是它，用法见 [`docs/api.md`](api.md)：
 
 ```
 node tools/scouter.js catalog

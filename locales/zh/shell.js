@@ -28,7 +28,7 @@ I18N.add("zh", "shell", {
   "dlg.download": "下载",
   "dlg.close": "关闭",
   "dlg.cli.t": "命令行",
-  "dlg.cli.hint": "在仓库根目录运行，输出 JSON；浏览器控制台里也可以直接调用下面的 Scouter.*。参数说明见仓库里的 AGENTS.md。",
+  "dlg.cli.hint": "在仓库根目录运行，输出 JSON；浏览器控制台里也可以直接调用下面的 Scouter.*。参数说明见仓库里的 docs/api.md。",
   "dlg.json.t": "数据平面输出：Scouter.{cmd}",
   "dlg.json.hint": "和页面画图用的是同一份计算；文字是消息 key（Msg）。",
   "empty.noMeasured.h": "这一页没有实测数据",

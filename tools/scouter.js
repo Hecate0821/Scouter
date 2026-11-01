@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Scouter's data plane from the command line: the same Scouter.* calls the page makes, printed as JSON (AGENTS.md).
+// Scouter's data plane from the command line: the same Scouter.* calls the page makes, printed as JSON (docs/api.md).
 //   node tools/scouter.js catalog                                   models, GPUs, topologies, bases, engines, defaults, data sets
 //   node tools/scouter.js roofline --hw B200 --basis ideal --flops 4e12 --bytes 2e9 --dtype fp8
 //   node tools/scouter.js infer    --model kimik3 --hw B200 --engine vllm --phase prefill --n 32768 --pick stepT,tComp

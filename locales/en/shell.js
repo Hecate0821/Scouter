@@ -28,7 +28,7 @@ I18N.add("en", "shell", {
   "dlg.download": "Download",
   "dlg.close": "Close",
   "dlg.cli.t": "Command line",
-  "dlg.cli.hint": "Run from the repo root; it prints JSON. You can also call the Scouter.* functions below directly in the browser console. See AGENTS.md in the repo for the parameters.",
+  "dlg.cli.hint": "Run from the repo root; it prints JSON. You can also call the Scouter.* functions below directly in the browser console. See docs/api.md in the repo for the parameters.",
   "dlg.json.t": "Data-plane output: Scouter.{cmd}",
   "dlg.json.hint": "Same computation as the page's charts; text is given as message keys (Msg).",
   "empty.noMeasured.h": "This page has no measured data",

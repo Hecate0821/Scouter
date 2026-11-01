@@ -33,7 +33,6 @@ function renderOverview(){
     ...(e.E?[[t("overview.cmp.perExpert.k"),fI(lamI),fI(lamT)]]:[]),
     [t("overview.cmp.memBound.k"),pct(memI,1),pct(memT,1)],
     [t("overview.cmp.slowest.k"),nm(slowI.name)+" "+fT(slowI.t),nm(slowT.name)+" "+fT(tOf(slowT))],
-    [t("overview.cmp.comm.k"),t("overview.cmp.comm.inf",{pct:pct(commI,ri.stepT)}),t("overview.cmp.comm.trn",{pct:pct(commT,rt.tMB)})],
     [t("overview.cmp.mem.k"),fB(usedI)+" / "+hw.mem+" GB",fB(rt.mem.used)+" / "+hw.mem+" GB"],
     [t("overview.cmp.thr.k"),fN(ri.tokPerGpu)+" tok/s/GPU",fN(rt.tokPerGpu)+" tok/s/GPU"]]);
   stackBar($("o-ibar"),$("o-ibarlist"),[...Object.keys(OGRP).map(k=>({label:OGRP[k],v:gi[k],color:GROUPC[k]})),
