@@ -7,8 +7,7 @@ function renderOverview(){
   // 推理：按类别归并一次 decode
   const gi={}, gt={}; Object.keys(OGRP).forEach(k=>{ gi[k]=0; gt[k]=0; });
   for(const o of ri.ops) if(o.overlap!=="moe") gi[o.group]+=o.t;
-  const tbo=sum(ri.comm.filter(x=>x.overlap==="tbo"),x=>x.t);
-  const commI=sum(ri.comm.filter(x=>!x.overlap),x=>x.t)+Math.max(0,tbo-ri.tComp*0.5)+(ri.exposedOverlap||0);
+  const commI=ri.tComm+(ri.exposedTbo||0)+(ri.exposedOverlap||0);   // TBO 能藏多少跟引擎同一口径（下限全藏、建模藏一半）
   const specI=(ri.draftT||0)+(ri.commitT||0), otherI=Math.max(0,ri.stepT-sum(Object.values(gi))-commI-specI);
   // 训练：每个 PP stage 的一个 micro-batch
   for(const o of rt.ops) gt[o.group]+=(o.fwd.t+o.dgrad.t+o.wgrad.t)/rt.pp;

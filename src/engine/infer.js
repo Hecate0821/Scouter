@@ -250,7 +250,8 @@ function step(m, hw, topo, c, g){
   const exposedOverlap = Math.max(0, sharedT + fusedComm - moeT);  // 共享 expert 与融合 a2a 都藏在 routed expert 后面
   const tComp = tOps;
   // TBO：一个 micro-batch 的通信和另一个的计算重叠；建模按能藏一半，下限按全部能藏
-  let gpu = tComp + tComm + exposedOverlap + (c.tbo ? Math.max(0,tboComm - tComp*(lb?1:0.5)) : tboComm);
+  const exposedTbo = c.tbo ? Math.max(0,tboComm - tComp*(lb?1:0.5)) : tboComm;
+  let gpu = tComp + tComm + exposedOverlap + exposedTbo;
   const nKern = ops.reduce((s,o)=>s+o.kernels,0) + comm.length*1;
   // graph 里 kernel 之间的间隔：开 PDL（programmatic dependent launch）时下一个 kernel 的开头和上一个的结尾重叠，按全部去掉算（上限）
   const gapT = graph && !c.pdl ? nKern*g.gapUs*1e-6 : 0;
@@ -262,7 +263,7 @@ function step(m, hw, topo, c, g){
   const cpuLaunch = graph ? g.graphLaunchUs*1e-6 : nKern*g.launchUs*1e-6;
   const dpSync = (c.engine==="vllm"||c.engine==="titan") && dpA>1 ? g.dpSyncUs*1e-6 : 0;
   const stepT = Math.max(gpu + (graph?g.graphLaunchUs*1e-6:0), cpuLaunch, g.schedUs*1e-6) + dpSync;
-  return { ops, comm, tComp, tComm, exposedOverlap, gpu, gapT, stepT, bound, graph, rowsG, rowsR, Breq, Bp, w, specK, tpA, dpA, N, Tg, kvTokRank, idxTok, Sl, Cl, nKern, cpuLaunch, fused, warn, moePar, P };
+  return { ops, comm, tComp, tComm, exposedOverlap, exposedTbo, gpu, gapT, stepT, bound, graph, rowsG, rowsR, Breq, Bp, w, specK, tpA, dpA, N, Tg, kvTokRank, idxTok, Sl, Cl, nKern, cpuLaunch, fused, warn, moePar, P };
 }
 
 /* 投机解码的 draft 一项，按方法分开算。MTP：目标模型一层的平均代价（第一步按验证宽度，之后每步 1 行）+ 每步一次 lm_head。
