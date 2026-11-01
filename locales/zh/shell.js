@@ -1,9 +1,9 @@
 /* shell：index.html 里的静态文字（由迁移脚本从 index.html 抽出） */
 I18N.add("zh", "shell", {
-  "title": "Scouter · MoE 训推 Roofline 实验台",
+  "title": "Scouter · 大模型训推 Roofline 实验台",
   "lede": "后训练、推理和 RL 发出的 kernel 几乎不重合，所以各用各的算子图：推理按 SGLang / vLLM / TokenSpeed 的 kernel 序列，后训练按 Megatron-Core / torchtitan。并行和低精度跟着场景放；RL 讲训推不一致、确定性、低精度和 QAT。",
   "disc": "所有数字都基于开源实现和公开数据推算，和实际可能有较大出入，仅供学习参考。",
-  "brand": "MoE 训推 roofline 实验台",
+  "brand": "大模型训推 roofline 实验台",
   "find": "搜索页面（按 /）",
   "menu": "菜单",
   "rack.h": "参数",

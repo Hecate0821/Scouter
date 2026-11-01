@@ -1,6 +1,6 @@
 # Scouter
 
-An interactive roofline lab for MoE training and inference. Pick a model and a GPU, and Scouter estimates a decode step, a chunked prefill or a post-training step kernel by kernel, then places every attention and MLP module on the roofline.
+An interactive roofline lab for LLM training and inference, MoE and dense. Pick a model and a GPU, and Scouter estimates a decode step, a chunked prefill or a post-training step kernel by kernel, then places every attention and MLP module on the roofline.
 
 **Live:** https://hecate0821.github.io/Scouter/ · 中文：[README.zh.md](README.zh.md)
 

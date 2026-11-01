@@ -1,6 +1,6 @@
-# Scouter：MoE 训推 Roofline 实验台
+# Scouter：大模型训推 Roofline 实验台
 
-选一个模型和一种 GPU，Scouter 按 kernel 推算一步 decode、一次 chunked prefill 或一个后训练 step，再把每个 attention、MLP 模块放到 roofline 上。
+选一个模型（MoE 或 dense）和一种 GPU，Scouter 按 kernel 推算一步 decode、一次 chunked prefill 或一个后训练 step，再把每个 attention、MLP 模块放到 roofline 上。
 
 **在线：** https://hecate0821.github.io/Scouter/ · English: [README.md](README.md)
 

@@ -1,9 +1,9 @@
 /* shell: static text in index.html (extracted from index.html by the migration script) */
 I18N.add("en", "shell", {
-  "title": "Scouter · MoE Training and Inference Roofline Testbench",
+  "title": "Scouter · LLM Training and Inference Roofline Lab",
   "lede": "Post-training, inference and RL launch almost non-overlapping kernels, so each gets its own operator graph: inference follows the kernel sequences of SGLang / vLLM / TokenSpeed, post-training follows Megatron-Core / torchtitan. Parallelism and low precision sit with each scenario; RL covers train-inference mismatch, determinism, low precision and QAT.",
   "disc": "All numbers are derived from open-source implementations and public data, may differ substantially from reality, and are for learning and reference only.",
-  "brand": "MoE train-inference roofline testbench",
+  "brand": "LLM training and inference roofline lab",
   "find": "Search pages (press /)",
   "menu": "Menu",
   "rack.h": "Parameters",
