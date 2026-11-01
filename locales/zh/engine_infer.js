@@ -84,4 +84,7 @@ I18N.add("zh", "engine_infer", {
   "comm.combine": "{a2a} combine",
   "comm.cnt": "token 计数交换 + D2H 同步",
   "comm.lmg": "logits all-gather（词表并行）",
+  "warn.dpDivides": "DP-attention = {dp} 必须整除卡数 {n}",
+  "warn.moePar": "MoE 并行方式 {v} 不是可选项（{opts}）",
+  "comm.epag": "EP 合回后 TP 组内 all-gather（每层）",
 });

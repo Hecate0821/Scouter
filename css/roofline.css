@@ -105,6 +105,9 @@ select{font-family:var(--f-body);font-size:13px;padding:4px 6px;border:1px solid
 select.full{width:100%}
 .check{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:6px 0}
 .check input{margin-top:5px;accent-color:var(--accent)}
+label.inert>span,label.inert input,label.inert select{opacity:.5}
+label.inert::after{content:attr(data-why);grid-column:1/-1;font-size:11px;color:var(--muted);flex-basis:100%}
+.check.inert{flex-wrap:wrap}
 details.adv{margin-top:10px;border-top:1px solid var(--grid);padding-top:6px}
 details.adv summary{cursor:pointer;font-size:13px;color:var(--muted)}
 .warnbox{color:var(--warn);font-size:12.5px;margin:6px 0}

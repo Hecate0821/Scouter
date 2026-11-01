@@ -111,7 +111,7 @@ I18N.add("zh", "appendix", {
   "method.b3.li_3": "<b>FLA chunk（C=64），每个 value head 每 token。</b>GDN 前向 6KV + 7.25CK + 4CV + 0.5C²，反向 16KV + 18CK + 10CV + 4C²；KDA 前向 6KV + 3.5CK + 4CV + 0.5C²，反向 16KV + 9CK + 10CV + 4C²。h 不保存，反向重算。",
   "method.b3.li_4": "<b>MoE。</b>R = 本 rank token × k × 不均系数。permute / unpermute 是纯搬运；grouped GEMM fc1 / fc2。EP a2a 每层 dispatch + combine 前向各一次、反向各一次，共 4 次；full 重算或重算 moe 模块时再 2 次（torchtitan 默认重算不重放 a2a）。alltoall dispatcher 每个 token 发 k 份，DeepEP / HybridEP / Dist-MoE 按 rank 去重，发 ep·(1−(1−1/ep)<sup>k</sup>) 份。",
   "method.b3.li_5": "<b>TP + SP（Megatron）。</b>每个块前向 AG + RS，反向 3 次 AG + 1 次 RS，MLA 的 AG 按压缩后的宽度。torchtitan 的 TP 按 Column AG + Row RS 前后向各一次算。",
-  "method.b3.li_6": "<b>CP。</b>Megatron：p2p 环（KV 绕 cp−1 步，可藏在注意力后面）、all-gather、a2a（Ulysses）；GDN 按头 a2a，KDA 可以按段传 FP32 状态。torchtitan：all-gather KV 或 Ulysses。",
+  "method.b3.li_6": "<b>CP。</b>Megatron：p2p 环（KV 绕 cp−1 步，可藏在注意力后面）、all-gather、a2a（Ulysses）；线性注意力（GDN / KDA）由“线性注意力 CP”选：按段传 FP32 状态 + 转移矩阵（FLA cp_context），或按头 a2a。torchtitan：all-gather KV 或 Ulysses。",
   "method.b3.li_7": "<b>步级。</b>micro-batch 数 = 每 step token ÷ (DP × CP × 每卡 token)。PP 气泡 (p−1)/v 个 micro-batch。Megatron 分布式优化器：梯度 FP32 reduce-scatter + 参数 BF16 all-gather，可与反向 / 前向重叠；torchtitan FSDP2 每个 micro-batch 都要 all-gather 参数（reshard 时反向再一次）+ reduce-scatter 梯度。GPU Adam ≈ 30 B/参数 HBM 流量；CPU Adam 受 PCIe / C2C 和 CPU 吞吐限制。",
   "method.b3.li_8": "<b>显存。</b>Megatron：本地参数 BF16 + FP32 main_grad 6 B/参数，加上分片后的 12 B/参数 optimizer 状态（offload 时为 0）；torchtitan：分片后的 16 B/参数，加当前和预取块的全量参数。激活按每层保存的张量算，full 重算时每层只存输入。",
   "method.b3.li_9": "<b>MFU。</b>这里按真实 FLOPs（含 KDA、MLA、indexer、CE）算；Megatron 自己报的 MFU 漏掉了 KDA 和 MLA 层，torchtitan 的注意力没按 causal 打折，两者都和这里不完全一致。",

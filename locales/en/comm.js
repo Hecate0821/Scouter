@@ -160,6 +160,7 @@ I18N.add("en", "comm", {
   "inf.noteFused": "Fused into the MoE kernel",
   "inf.arAttn": "attention output{fused}",
   "inf.arMoe": "MoE output{fused}",
+  "inf.epagMoe": "All-gather within the TP group after EP combine",
   "inf.arFfn": "FFN output{fused}",
   "inf.arFused": " + residual + RMSNorm (fused)",
   "inf.lin": "{kind} (in_proj → state update → out_proj)",

@@ -160,6 +160,7 @@ I18N.add("zh", "comm", {
   "inf.noteFused": "融合在 MoE kernel 里",
   "inf.arAttn": "attention 输出{fused}",
   "inf.arMoe": "MoE 输出{fused}",
+  "inf.epagMoe": "EP 合回后 TP 组内 all-gather",
   "inf.arFfn": "FFN 输出{fused}",
   "inf.arFused": " + 残差 + RMSNorm（融合）",
   "inf.lin": "{kind}（in_proj → 状态更新 → out_proj）",

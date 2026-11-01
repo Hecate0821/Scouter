@@ -55,7 +55,7 @@ data/{public,anon}/*.json   数据点 → tools/build_db.py → data/db.json、s
 locales/<lang>/             所有界面和计算核心的文字
 tools/                      scouter.js（命令行）、build_db.py、导入脚本、reduce_trace.py
 sim/                        PyTorch CPU 集合通信模拟器（sim/README.md）
-tests/                      Node 检查：计算核心、数据平面、FLOPs、sim、i18n、控制台、回归
+tests/                      Node 检查：计算核心、数据平面、FLOPs、sim、配置生效、i18n、控制台、回归
 ```
 
 ## 文档

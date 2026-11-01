@@ -8,6 +8,7 @@ I18N.add("en", "kv", {
   "mix.sep": ", ",
   "kpi.tok": "KV per token",
   "kpi.tokFoot": "Per GPU, {kv}; full-attention + sliding-window layers",
+  "kpi.tokFootFull": "Per GPU, {kv}; full-attention layers",
   "kpi.snap": "One linear-state snapshot",
   "kpi.snapFoot": "Per GPU; about {n} tokens of full-attention KV",
   "kpi.snapNone": "This model has no linear-attention layers",

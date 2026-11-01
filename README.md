@@ -55,7 +55,7 @@ data/{public,anon}/*.json   data points → tools/build_db.py → data/db.json, 
 locales/<lang>/             all UI and engine text
 tools/                      scouter.js (CLI), build_db.py, importers, reduce_trace.py
 sim/                        PyTorch-on-CPU collective simulator (sim/README.md)
-tests/                      Node checks: engine, plane, FLOPs, sim, i18n, shell, regression
+tests/                      Node checks: engine, plane, FLOPs, sim, config reach, i18n, shell, regression
 ```
 
 ## Docs

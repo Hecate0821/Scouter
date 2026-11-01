@@ -3,7 +3,7 @@
   "private": true,
   "description": "Headless checks for Scouter: the engine and the data plane on their own, collectives against PyTorch traces, text kept out of code, the console shell, and every page rendering without errors or NaN.",
   "scripts": {
-    "test": "node engine.js && node plane.js && node flops.js && node sim.js && node i18n.js --lang=zh && node i18n.js --lang=en && node shell.js && node regression.js ../index.html",
+    "test": "node engine.js && node plane.js && node flops.js && node sim.js && node config_reach.js && node i18n.js --lang=zh && node i18n.js --lang=en && node shell.js && node regression.js ../index.html",
     "engine": "node engine.js",
     "plane": "node plane.js",
     "sim": "node sim.js",

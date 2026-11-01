@@ -49,7 +49,7 @@ I18N.add("zh", "par", {
   "b6.h3_4": "固定卡数和每步 token 时，CP 不是越大越好",
   "attr.p-c-fixed.aria-label": "固定卡数和每步 token 时的单步时间",
   "b6.h3_5": "混合架构里的 CP",
-  "b6.li": "<b>线性注意力层（GDN / KDA）不需要 K / V。</b>按段传状态时，每张卡先按零初始状态扫自己那段，再交换每段的末状态（Hv × dk × dv，FP32），本地做一次前缀修正，字节和序列长度无关；GDN 在 Megatron 里只能按头 a2a。左侧的“线性注意力 CP”选的就是这两种。所以 Qwen3.5 / Qwen3.8 / GLM / Kimi 这种 3:1 混合模型，CP 的大头只来自那 1/4 的 full-attention 层。",
+  "b6.li": "<b>线性注意力层（GDN / KDA）不需要 K / V。</b>按段传状态时，每张卡先按零初始状态扫自己那段，再交换每段的末状态和转移矩阵（Hv × dk × (dv + dk)，FP32），本地做一次前缀修正，字节和序列长度无关，代价是每段多算一个转移矩阵；另一种是按头 a2a。左侧的“线性注意力 CP”选的就是这两种，GDN 和 KDA 都一样。所以 Qwen3.5 / Qwen3.8 / GLM / Kimi 这种 3:1 混合模型，CP 的大头只来自那 1/4 的 full-attention 层。",
   "b6.li_2": "<b>滑窗层（Muse Spark 的 46 层）只要邻居的最后 W 个 token。</b>Ring / AllGather 退化成一次 halo 交换，字节 ≈ W × KV 宽度，和 C 无关；Ulysses 仍然要两次全量 all-to-all，所以滑窗层越多，Ulysses 越吃亏。",
   "b6.li_3": "<b>MLA 只有一份 latent KV。</b>AllGather 的字节最省（每 token 512 + 64 维）；Ulysses 下 latent 不能按头切，每张卡都要拿完整的 latent，KV 部分退化成 all-gather，Q / O 仍走 all-to-all。",
   "b6.li_4": "<b>DSA（GLM）的 indexer 也要全量 key。</b>每个 query 只看 top-2048 个 token，attention 核心的 FLOP 随 S 线性增长，但 indexer 的打分仍然是 S² 量级；CP 要把 indexer 的 key 一起 gather。",

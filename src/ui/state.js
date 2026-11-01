@@ -22,7 +22,7 @@ function applyInf(id){
 function applyTrn(id, sw){
   const P=trnPresets(S.trn.fw,S.modelKey,S.topo), p=P.find(x=>x.id===id)||P[0];
   S.trnPreset=p.id; if(!p.cfg) return; applyNeed(p, sw);
-  S.trn=Object.assign(clone(BASE_TRN),{fw:S.trn.fw, S:S.trn.S, Gtok:S.trn.Gtok}, S.trn.fw==="torchtitan"?{cpType:"allgather",linCP:"state",dispatcher:"standard",recompute:"default",offload:false}:{}, p.cfg);
+  S.trn=Object.assign(clone(BASE_TRN),{fw:S.trn.fw, S:S.trn.S, Gtok:S.trn.Gtok}, Train.FW_DEF[S.trn.fw], p.cfg);
 }
 function applyAll(){ applyInf("rec"); applyTrn(firstOK(trnPresets(S.trn.fw,S.modelKey,S.topo)),false); }
 /* ---------- 全局选择器 ---------- */
@@ -96,6 +96,9 @@ function buildEditor(){
 const ctx = () => ({ m:S.model, d:derive(S.model), hw:HW[S.hw], topo:TOPO[S.topo], g:S.glob });
 function kpis(el, list){ el.innerHTML=list.map(k=>'<div class="kpi'+(k[3]?' bad':'')+'"><span class="k">'+k[0]+'</span><span class="n">'+k[1]+'</span><span class="f">'+esc(k[2]||"")+'</span></div>').join(""); }
 function presetSel(sel, srcEl, P, cur){ sel.innerHTML=P.map(p=>'<option value="'+p.id+'">'+esc(p.label+(needOK(p)?"":t("common.preset.need",{n:TOPO[p.need.topo].gpus,hw:p.need.hw?" "+p.need.hw:""})))+'</option>').join(""); sel.value=cur; const p=P.find(x=>x.id===cur); srcEl.textContent=p?p.src:""; }
+/* 当前配置下不影响结果的控件：灰掉并写明原因（原因由引擎的 inert 给，界面不另判断） */
+function markInert(ns, map){ qa('[data-bind^="'+ns+'."]').forEach(el=>{ const why=map[el.dataset.bind.slice(ns.length+1)], lab=el.closest("label"), txt=why?t("shell.inert."+why):"";
+  el.disabled=!!why; if(lab){ lab.classList.toggle("inert",!!why); if(why) lab.dataset.why=txt; else delete lab.dataset.why; lab.title=txt; } }); }
 function setWarn(list){ const gw=$("g-warn"); gw.hidden=!list.length; gw.innerHTML=list.map(esc).join("<br>"); }
 const ul = items => '<ul class="tight">'+items.filter(Boolean).map(x=>'<li>'+x+'</li>').join("")+'</ul>';
 const V = s => '<span class="v">'+s+'</span>';

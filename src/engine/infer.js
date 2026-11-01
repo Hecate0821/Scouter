@@ -44,6 +44,7 @@ const ENGINES = {
     kernels:{ gqa:Msg.of("engine_infer.kernel.titan.gqa"), mla:Msg.of("engine_infer.kernel.titan.mla"), dsa:Msg.of("engine_infer.kernel.titan.dsa"), gdn:"attn_gym GDN", kda:"attn_gym KDA", moe:"torch._grouped_mm / Dist-MoE", ar:Msg.of("engine_infer.kernel.titan.ar") } }
 };
 
+const MOEPARS = ["tp","replicated","ag","standard","deepep","hybridep","fused"];
 const padTo = (ladder, x) => { for(const v of ladder) if(v>=x) return v; return x; };
 /* 每个算子查效率表用的 kernel 类别（Common.KEFF）：带权重的线性层是 gemm，attention 核心是 attn，MoE 是 grouped GEMM；
    elementwise、norm、线性注意力的扫描没有公开的单独效率，不查表 */
@@ -67,6 +68,7 @@ function step(m, hw, topo, c, g){
   const slow=lb ? 1 : (c.bi?c.biFactor:1)/(c.implEff||1);
   const specK = dec ? (c.specK||0) : 0, w = specK>0 ? specK+1 : 1;
   const warn=[];
+  if(!Number.isInteger(tpA)) warn.push(Msg.of("engine_infer.warn.dpDivides",{dp:dpA,n:N}).invalid());
   // 批大小与 CUDA graph 补齐
   let Breq = dec ? c.B : 1;
   if(dec && specK>0 && Breq>P.specCap){ warn.push(specCapWarn(P)); Breq=P.specCap; }
@@ -94,12 +96,17 @@ function step(m, hw, topo, c, g){
   const ctx = dec ? c.n : c.p;              // decode：已有上下文；prefill：本 chunk 之前的前缀
 
   /* ---- 层边界：AR(+add+RMSNorm) ---- */
-  const boundaries = m.L*2;
+  const nMoe=d.nMoe, moePar=c.moePar||P.defaultMoe;
+  if(nMoe>0 && !MOEPARS.includes(moePar)) warn.push(Msg.of("engine_infer.warn.moePar",{v:String(moePar),opts:MOEPARS.join(" / ")}).invalid());
+  // EP 合回来的只有本卡那份 token，TP 组内靠 all-gather 拼齐，不是 AR；shared expert 还是 TP 切的，那一层仍要 AR
+  const epGather = tpA>1 && !e.Fs && moePar!=="tp" && moePar!=="replicated" ? nMoe : 0;
+  const boundaries = m.L*2-epGather;
   const fused = tpA>1 && P.arFusion(m,c,rowsG,D,hw);
   const arAlgo = rowsG*D*2 <= 512*1024 ? "oneshot" : "twoshot";
   if(tpA>1){
     cm("ar", fused?Msg.of("engine_infer.comm.arFused"):Msg.of("engine_infer.comm.ar"), boundaries, arT(rowsG*D*2,tpA,lkA,g,arAlgo), rowsG*D*2*(tpA-1)/tpA);
-    if(!fused) op("norm",Msg.of("engine_infer.op.norm"),"misc",boundaries,8*rowsG*D,3*rowsG*D*2,pkA,1);
+    if(epGather) cm("epag",Msg.of("engine_infer.comm.epag"),epGather,agT(rowsG*D*2,tpA,lkA,g),rowsG*D*2*(tpA-1)/tpA);
+    op("norm",Msg.of("engine_infer.op.norm"),"misc",fused?epGather:m.L*2,8*rowsG*D,3*rowsG*D*2,pkA,1);
   } else op("norm",Msg.of("engine_infer.op.norm"),"misc",boundaries,8*rowsG*D,3*rowsG*D*2,pkA,1);
   if(m.mhc) op("mhc",Msg.of("engine_infer.op.mhc"),"misc",m.L*2,4*m.mhc*rowsG*D,2*m.mhc*rowsG*D*2,pkA,2);
   // AttnRes：每层两次（attention 前、MLP 前；SGLang kimi_k3.py 的 attn_res / mlp_res_proj），读 bank 里之前各块的快照和当前流，写一行
@@ -182,20 +189,19 @@ function step(m, hw, topo, c, g){
   }
 
   /* ---- MoE 层 ---- */
-  const nMoe=d.nMoe, De=d.De, moePar=c.moePar||P.defaultMoe;
+  const De=d.De;
   const Tg = rowsG*dpA;                     // MoE 一侧看到的全局 token（含补齐行）
   const Tloc = rowsG;
-  const replicatedIn = moePar==="replicated" || moePar==="tp";
   const routerT = moePar==="replicated" ? Tg : Tloc;
   op("router",Msg.of("engine_infer.op.router"),"moe",nMoe,2*routerT*D*e.E + 8*routerT*e.E, D*e.E*2 + routerT*(D*2+e.E*4), pkA, 2);
   if(e.Dlat) op("latd",Msg.of("engine_infer.op.latd",{dim:e.Dlat}),"moe",nMoe,2*Tloc*D*e.Dlat, D*e.Dlat*2 + Tloc*(D+e.Dlat)*2, pkA,1);
-  const Eloc=(e.E+(c.redundant||0))/N;
+  const red=moePar==="tp"||N<=1 ? 0 : c.redundant||0, Eloc=(e.E+red)/N;   // tp 切的每卡都有全部 expert 的切片，没有“多放几个”这回事
   // 碰到的 expert：建模按均匀路由的期望覆盖；下限只算一定会碰到的——每个 token 选 k 个不同的 expert，所有 token 可以选同一组，
   // TP 切时每卡是这 k 个的切片，按 expert 切时最忙的 rank 至少有 ceil(k / N) 个
   const cv = lb ? (moePar==="tp" ? Math.min(1, e.k/e.E) : Math.min(1, Math.ceil(e.k/N)/Eloc)) : cover(e.k,e.E,Tg);
   const touched = moePar==="tp" ? e.E*cv : Eloc*cv;   // tp：每卡持有全部 expert 的 F/N 切片
   const wSlice = moePar==="tp" ? 3*De*e.F/N : 3*De*e.F;
-  const rowsExp = Tg*e.k/N*(moePar==="tp" || lb ? 1 : c.imb||1);   // tp：每卡都有全部 expert 的切片，负载天然均衡
+  const rowsExp = Tg*e.k/N*(moePar==="tp" || lb || N<=1 ? 1 : c.imb||1);   // tp：每卡都有全部 expert 的切片，负载天然均衡；单卡没有组间不均
   const eA = eActOf(c,hw);
   if(c.qSep && eA!=="bf16") op("moeq",Msg.of("engine_infer.op.moeq"),"moe",nMoe,4*Tloc*De, Tloc*De*(2+dtB(eA)), pkA,1);
   // Blackwell 上 FP4 MoE（TRT-LLM-gen）的 hidden 维按 256 补零（vLLM PR 39510）：补出来的部分照样算、照样读
@@ -223,22 +229,25 @@ function step(m, hw, topo, c, g){
       cm("dpg",Msg.of("engine_infer.comm.epAg"),nMoe,agT(Tg*De*2,N,lkE,g),Tg*De*2*(N-1)/N);
       cm("dps",Msg.of("engine_infer.comm.epRs"),nMoe,agT(Tg*De*2,N,lkE,g),Tg*De*2*(N-1)/N);
     } else {
-      const sentD = Tloc*e.k*De*(moePar==="deepep"&&c.dispFp8 ? 1+4/128 : 2), sentC = Tloc*e.k*De*2;
+      const Tr = Tg/N;                                                 // 每卡只发自己那份 token：TP 组内按 rank 切开
+      const sentD = Tr*e.k*De*(moePar==="deepep"&&c.dispFp8 ? 1+4/128 : 2), sentC = Tr*e.k*De*2;
       const al = moePar==="deepep" ? (dec?g.a2aLLus:g.alphaNv) : undefined;
       const fusedA2A = moePar==="fused";
       const tag = moePar==="deepep" ? (dec?Msg.of("engine_infer.comm.a2a.deepepLL"):Msg.of("engine_infer.comm.a2a.deepepNormal")) : moePar==="standard" ? Msg.of("engine_infer.comm.a2a.standard") : moePar==="hybridep" ? Msg.of("engine_infer.comm.a2a.hybridep") : Msg.of("engine_infer.comm.a2a.fused");
       cm("disp",Msg.of("engine_infer.comm.dispatch",{a2a:tag}),nMoe,a2aT(sentD,N,lkE,g,al),sentD*(N-1)/N,{overlap:fusedA2A?"moe":(c.tbo?"tbo":false)});
       cm("comb",Msg.of("engine_infer.comm.combine",{a2a:tag}),nMoe,a2aT(sentC,N,lkE,g,al),sentC*(N-1)/N,{overlap:fusedA2A?"moe":(c.tbo?"tbo":false)});
-      if(moePar==="standard" && !lb) cm("cnt",Msg.of("engine_infer.comm.cnt"),nMoe,(lkE.intra?g.alphaNv:g.alphaIb)*1e-6 + (c.hostSyncUs||20)*1e-6, N*e.E*8/N);
+      if(moePar==="standard" && !lb) cm("cnt",Msg.of("engine_infer.comm.cnt"),nMoe,(lkE.intra?g.alphaNv:g.alphaIb)*1e-6 + (c.hostSyncUs??20)*1e-6, N*e.E*8/N);
     }
   }
 
   /* ---- 每步一次：lm_head、logits 收集、采样 ---- */
-  const lmRows = dec ? (P.lmInGraph&&graph ? rowsG : rowsR) : Math.max(1,c.reqPerChunk||1);
+  const lmRows = dec ? (P.lmInGraph&&graph ? rowsG : rowsR) : c.reqPerChunk??1;   // prefill：只有收尾的 chunk 才要 lm_head 和采样，每个结束的请求一行
+  if(lmRows>0){
   op("lm",dec&&P.lmInGraph&&graph?Msg.of("engine_infer.op.lmGraph"):Msg.of("engine_infer.op.lm"),"lm",1,2*lmRows*D*m.V/tpA, D*m.V/tpA*wbD + lmRows*m.V/tpA*4, pkD,1);
   if(tpA>1) cm("lmg",Msg.of("engine_infer.comm.lmg"),1,agT(lmRows*m.V*4,tpA,lkA,g),lmRows*m.V*4*(tpA-1)/tpA);
   const sampRows = dec ? (P.samplerInGraph&&graph ? rowsG : rowsR) : lmRows;
   op("samp",P.samplerInGraph?Msg.of("engine_infer.op.sampGraph"):Msg.of("engine_infer.op.sampEager"),"lm",1,5*sampRows*m.V,4*sampRows*m.V*4,pkA,3);
+  }
 
   /* ---- 汇总 ---- */
   const moeT = ops.filter(o=>o.key==="moe").reduce((s,o)=>s+o.t,0);
@@ -309,10 +318,13 @@ const opT=(r,k)=>r.ops.filter(o=>o.key===k).reduce((s,o)=>s+o.t,0);
 
 /* prefill：按 chunk 迭代一个长 prompt，得到 TTFT；单 chunk 的吞吐 */
 function prefill(m, hw, topo, c, g){
-  const C=c.C, P=c.P||C, chunks=[]; let t=0;
-  for(let p=0;p<P;p+=C){ const cc=Math.min(C,P-p); const r=step(m,hw,topo,Object.assign({},c,{phase:"prefill",C:cc,p}),g); chunks.push({p,C:cc,t:r.stepT}); t+=r.stepT; if(chunks.length>256) break; }
+  const C=c.C, P=c.P||C, chunks=[], n=Math.ceil(P/C), stride=Math.max(1,Math.ceil((n-1)/255)); let t=0;
+  const one=(p,cc,req,w)=>{ const r=step(m,hw,topo,Object.assign({},c,{phase:"prefill",C:cc,p,reqPerChunk:req}),g); chunks.push({p,C:cc,t:r.stepT}); t+=r.stepT*w; };
+  // 只有收尾的一块跑 lm_head。块数很多时每 stride 块取中间一块代表（单块时间随前缀平滑变化），总时间仍覆盖整个 prompt
+  for(let i=0;i<n-1;i+=stride){ const w=Math.min(stride,n-1-i); one((i+Math.floor((w-1)/2))*C,C,0,w); }
+  one((n-1)*C,P-(n-1)*C,c.reqPerChunk??1,1);
   const r = step(m,hw,topo,Object.assign({},c,{phase:"prefill",p:c.p||0}),g);
-  r.ttft=t; r.chunks=chunks; r.tokPerGpu = c.C*r.dpA/r.N/r.stepT; r.mem=memory(m,hw,Object.assign({},c,{phase:"decode",B:1}),r);
+  r.ttft=t; r.chunks=chunks; r.nChunks=n; r.tokPerGpu = c.C*r.dpA/r.N/r.stepT; r.mem=memory(m,hw,Object.assign({},c,{phase:"decode",B:1}),r);
   return r;
 }
 
@@ -336,7 +348,7 @@ function memory(m, hw, c, r){
   const wbE=dtB(c.wDt), wbD=dtB(c.dDt), kvb=dtB(c.kvDt), sb=c.stateDt==="bf16"?2:4, P=ENGINES[c.engine];
   const wAttn = f.n*(((d.pQKV+d.pO)/tpA) + d.pAttnRep + d.pIdx)*wbD;
   const wLin = l.n*d.pLin/tpA*wbD;
-  const wExp = e.E ? d.nMoe*d.pRouted*(e.E+(c.redundant||0))/e.E/N*wbE : 0;
+  const wExp = e.E ? d.nMoe*d.pRouted*(e.E+(r.moePar==="tp"||N<=1?0:c.redundant||0))/e.E/N*wbE : 0;
   const wMoeRep = d.nMoe*((d.pShared)/tpA + d.pRouter + d.pLat)*wbD;
   const wDense = m.dense.n*d.pDense/tpA*wbD;
   const wEmb = 2*m.V*m.D/tpA*wbD;
@@ -364,5 +376,24 @@ const BASE = Common.freeze({ engine:"sglang", phase:"decode", N:1, dpA:1, B:64, 
 /* 最少切几份放得下权重：每卡权重不超过显存的 60%，取 2 的幂（2–64） */
 function fitShards(m, hw){ const w=derive(m).total*dtB(m.wDefault); let p=2; while(w/p>0.6*hw.mem*1e9 && p<64) p*=2; return p; }
 
-return { ENGINES, SPEC, BASE, fitShards, step, decode, prefill, serve, memory, cover, eActOf, specCapWarn };
+/* 当前配置下不影响结果的选项：{ 配置项: 原因 key }。界面据此把控件灰掉并说明原因 */
+function inert(m, c, g){
+  const d=derive(m), P=ENGINES[c.engine], moe=d.nMoe>0, mp=c.moePar||P.defaultMoe, o={}, dec=c.phase==="decode";
+  const put=(cond,why,...keys)=>{ if(cond) for(const k of keys) o[k]=o[k]||why; };
+  const ep=!["tp","replicated"].includes(mp)&&mp!=="ag"&&mp!=="fused";            // 走单独 a2a 的后端
+  put(!moe,"noMoe","moePar","imb","redundant","dispFp8","tbo","hostSyncUs","eAct");
+  put(moe&&c.N<=1,"oneCard","moePar","imb","redundant","dispFp8","tbo","hostSyncUs");
+  put(mp==="tp","moeTp","imb","redundant");
+  put(!ep,"noA2a","tbo");
+  put(mp!=="deepep","notDeepep","dispFp8");
+  put(mp!=="standard","notStandard","hostSyncUs");
+  put(m.full.n<=0||m.full.kind==="gqa","noLatent","dcp");
+  put(c.engine!=="sglang","slotsFixed","prefixCache");
+  put(!(c.specK>0),"noSpec","specMethod","accept");
+  put(!!g.lb,"ideal","imb","bi","biFactor","implEff","hostSyncUs");
+  put(!c.bi,"noBi","biFactor");
+  return o;
+}
+
+return { ENGINES, SPEC, BASE, inert, fitShards, step, decode, prefill, serve, memory, cover, eActOf, specCapWarn };
 })();

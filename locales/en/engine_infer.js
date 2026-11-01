@@ -84,4 +84,7 @@ I18N.add("en", "engine_infer", {
   "comm.combine": "{a2a} combine",
   "comm.cnt": "token count exchange + D2H sync",
   "comm.lmg": "logits all-gather (vocabulary parallel)",
+  "warn.dpDivides": "DP-attention = {dp} must divide the {n} cards",
+  "warn.moePar": "MoE parallelism {v} is not an option ({opts})",
+  "comm.epag": "All-gather within the TP group after EP combine (per layer)",
 });

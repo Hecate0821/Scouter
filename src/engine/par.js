@@ -38,8 +38,9 @@ function cpLayer(meth, x){
     const w1 = 2*Math.min(f.W, S/C)*kvTok, det = [xc("fwd","P2P",Msg.of("engine_par.cp.swa.fwd", { W: f.W }),w1)];
     if(ac) det.push(xc("rc","P2P",Msg.of("engine_par.cp.swa.rc"),w1));
     det.push(xc("bwd","P2P",Msg.of("engine_par.cp.swa.bwd"),w1), xc("bwd","P2P",Msg.of("engine_par.cp.swa.bwdGrad"),w1));
-    o.calls = det.length; o.tw = wireT(det.length*w1, l, g.etaAg, o.calls, g); split(det); o.exposed = o.tw; return o;
+    o.buf = 2*w1; o.calls = det.length; o.tw = wireT(det.length*w1, l, g.etaAg, o.calls, g); split(det); o.exposed = o.tw; return o;
   }
+  o.buf = meth==="allgather" ? C*Lb : meth==="ring" ? 2*Lb : 0;   // 这一层一篇文档要放下多少别人的 K / V：AllGather 整篇，Ring 收发各一段；Ulysses 在下面按头算
   if(meth==="allgather"){
     const chunks = gqa ? Math.min(f.Hkv/Math.min(tp,f.Hkv), 2) : 1, w1 = (C-1)*Lb, det = [xc("fwd","AG",Msg.of("engine_par.cp.ag.fwd", { kv }),w1)];
     if(ac) det.push(xc("rc","AG",Msg.of("engine_par.cp.ag.rc", { kv }),w1));
@@ -55,6 +56,7 @@ function cpLayer(meth, x){
     // 一次 a2a 发出 (C−1)/C：Q/K/V 序列 → 头，输出 O 头 → 序列。MLA 的 latent 不能按头切，按 C 份复制
     const uQKV = gqa ? H*f.dh + 2*Math.max(f.Hkv/Math.min(tp,f.Hkv), C)*f.dh : H*d.dqk + C*kvTok, uO = gqa ? H*f.dh : H*d.dv;
     const a = u => 2*(S/C)*u*(C-1)/C;
+    o.buf = 2*(S/C)*uQKV;
     const det = [xc("fwd","A2A",Msg.of("engine_par.cp.uly.qkv"),a(uQKV)), xc("fwd","A2A",Msg.of("engine_par.cp.uly.o"),a(uO))];
     if(ac) det.push(xc("rc","A2A",Msg.of("engine_par.cp.uly.rcQkv"),a(uQKV)), xc("rc","A2A",Msg.of("engine_par.cp.uly.rcO"),a(uO)));
     det.push(xc("bwd","A2A",Msg.of("engine_par.cp.uly.dO"),a(uO)), xc("bwd","A2A",Msg.of("engine_par.cp.uly.dQkv"),a(uQKV)));

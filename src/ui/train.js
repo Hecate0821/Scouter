@@ -13,6 +13,7 @@ function syncTrnRack(){
     if(!L[c.fw].some(x=>x[0]===c[k])) c[k]=L[c.fw][0][0]; fillOpts($(id),L[c.fw],c[k]); }
   $("t-rcmods").innerHTML=c.recompute==="selective"?'<p class="hint">--recompute-modules</p>'+RCMODS.map(x=>'<label class="check"><input type="checkbox" data-rcmod="'+x[0]+'"'+(c.rcModules.includes(x[0])?" checked":"")+'><span>'+x[1]+'</span></label>').join(""):"";
   presetSel($("t-preset"),$("t-preset-src"),trnPresets(c.fw,S.modelKey,S.topo),S.trnPreset);
+  const {m,topo,g}=ctx(); markInert("trn",Train.inert(m,Object.assign({N:topo.gpus},c),g));
 }
 function renderTrain(){
   const {m,d,hw,topo,g}=ctx(), c=S.trn, mg=c.fw==="megatron";

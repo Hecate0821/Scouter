@@ -17,6 +17,34 @@ const PREC = {
   nvfp4:  { f:"nvfp4", b:"nvfp4", w2d:true, name:Msg.of("engine_train.prec.nvfp4") },
   nvfp4hp:{ f:"nvfp4", b:"bf16",  tok:true, name:Msg.of("engine_train.prec.nvfp4hp") } };
 
+/* 每个框架认的枚举值：传别的值不会被悄悄换成默认值，而是报无效配置 */
+const ENUMS = {
+  megatron:{ dispatcher:["alltoall","deepep","hybridep","ncclep","standard","distmoe"], cpType:["p2p","allgather","a2a"], linCP:["headwise","chunkwise"], recompute:["none","full","selective"] },
+  torchtitan:{ dispatcher:Object.keys(Par.EP), cpType:Object.keys(Par.CP), linCP:["state","ulysses"], recompute:["none","default","full"] } };
+
+/* 当前配置下不影响结果的选项：{ 配置项: 原因 key }。界面据此把控件灰掉并说明原因 */
+function inert(m, c, g){
+  const d=derive(m), mg=c.fw==="megatron", moe=d.nMoe>0, o={};
+  const put=(cond,why,...keys)=>{ if(cond) for(const k of keys) o[k]=o[k]||why; };
+  put(!moe,"noMoe","ep","etp","imb","dispatcher","epOverlap","hostSyncUs","mokF");
+  put(moe&&c.ep<=1,"noEp","imb","dispatcher","epOverlap","sharedOverlap","hostSyncUs","mokF");
+  put(!moe||!m.moe.Fs,"noShared","sharedOverlap");
+  put(mg?["hybridep","distmoe"].includes(c.dispatcher):c.dispatcher!=="standard"&&c.dispatcher!=="deepep","dispNoSync","hostSyncUs");
+  put(!mg&&c.dispatcher!=="mok","dispNoMok","mokF");
+  put(c.cp<=1,"noCp","cpType","linCP","cpLB");
+  put(m.full.n<=0,"noAttn","cpType","cpLB");
+  put(m.lin.n<=0,"noLin","linCP");
+  put(c.cp>1&&(mg||c.cpType==="ulysses"),"cpLbNa","cpLB");
+  put(c.tp<=1,"noTp","tpOverlap");
+  put(!c.offload,"noOffload","cpuAdamGBs","overlapOffload");
+  put(!!g.lb,"ideal","etaA","imb","hostSyncUs");
+  put(c.pp<=1,"noPp","vpp");
+  const dp=c.N/(c.tp*c.cp*c.pp), edp=mg ? c.N/(Math.max(1,c.etp||1)*c.ep*c.pp) : dp*c.cp*c.tp/c.ep, R=Math.max(1,c.hsdp||1);
+  put(mg&&dp*c.cp<=1&&edp<=1,"noDp","overlapGrad","overlapParam");
+  put(!mg&&dp*c.cp/R<=1&&edp/R<=1,"noFsdp","gradDt","reshard");
+  return o;
+}
+
 function run(m, hw, topo, c, g){
   const d=derive(m), f=m.full, l=m.lin, e=m.moe, D=m.D, N=c.N, mg=c.fw==="megatron";
   const tp=c.tp, cp=c.cp, pp=c.pp, vpp=Math.max(1,c.vpp||1), ep=c.ep, etp=mg?Math.max(1,c.etp||1):1;
@@ -24,11 +52,16 @@ function run(m, hw, topo, c, g){
   const edp = mg ? N/(etp*ep*pp) : dp*cp*tp/ep;
   const warn=[];
   if(!Number.isInteger(dp)) warn.push(Msg.of("engine_train.warn.dpDivides",{n:N}).invalid());
-  if(mg && !Number.isInteger(edp)) warn.push(Msg.of("engine_train.warn.edpDivides",{n:N}).invalid());
-  if(d.nMoe>0 && !mg && ep<tp) warn.push(Msg.of("engine_train.warn.ttEpTp").invalid());
+  if(mg && d.nMoe>0 && !Number.isInteger(edp)) warn.push(Msg.of("engine_train.warn.edpDivides",{n:N}).invalid());
+  if(d.nMoe>0 && !mg && (ep<tp || ep%tp)) warn.push(Msg.of("engine_train.warn.ttEpTp").invalid());
   if(d.nMoe>0 && e.E%ep) warn.push(Msg.of("engine_train.warn.epExperts",{e:e.E}));
+  for(const [k,opts] of Object.entries(ENUMS[c.fw]||ENUMS.megatron)) if(!opts.includes(c[k])) warn.push(Msg.of("engine_train.warn.enum",{key:k,val:String(c[k]),fw:c.fw,opts:opts.join(" / ")}).invalid());
+  if(!PREC[c.prec]) warn.push(Msg.of("engine_train.warn.enum",{key:"prec",val:String(c.prec),fw:c.fw,opts:Object.keys(PREC).join(" / ")}).invalid());
+  if(pp*vpp>m.L) warn.push(Msg.of("engine_train.warn.ppTooMany",{l:m.L,n:pp*vpp}).invalid());
+  else if(pp>1 && m.L%(pp*vpp)) warn.push(Msg.of("engine_train.warn.ppLayers",{l:m.L,n:pp*vpp}));
   const tok=c.tok, T=tok*cp, Tc=tok, Tl=tok/tp;    // T：TP×CP 组一个 micro-batch 的 token；Tc：本 CP rank；Tl：SP 下本 rank 驻留
   const PR=PREC[c.prec]||PREC.bf16, fq=PR.f!=="bf16", bq=PR.b!=="bf16";
+  if(c.S>T) warn.push(Msg.of("engine_train.warn.docGtBatch",{s:c.S,t:T}));
   const S=c.S, wbF=dtB(PR.f), wbB=dtB(PR.b), pkF=peakOf(hw,PR.f), pkB=peakOf(hw,PR.b), pkA=peakOf(hw,"bf16");
   const pkAt = c.etaA>0 && !g.lb ? pkA*c.etaA/g.etaC : pkA;   // attention 核心单独给效率（0 = 和 GEMM 一样用 η_c；理想下限不打折）
   if(fq && PR.f!=="fp8" && hw.sm<100) warn.push(Msg.of("engine_train.warn.needBlackwell",{prec:PR.name}));
@@ -57,6 +90,7 @@ function run(m, hw, topo, c, g){
   const xc=Par.xc, cmX=(key,name,cls,layers,blk,xs,extra)=>cm(key,name,cls,layers,1,xs.reduce((s,x)=>s+x.t,0),xs.reduce((s,x)=>s+x.bytes,0),Object.assign({blk,xs},extra||{}));
 
   const lkTP=link(hw,topo,tp,1), lkCP=link(hw,topo,cp,tp), lkEP=link(hw,topo,ep, mg?etp:1);
+  const lkTPx=Par.lk(hw,topo,tp,1), lkCPx=Par.lk(hw,topo,cp,tp);   // 带 kind 的同一条链路：和 FSDP 抢带宽时按它记账
   const lkPP=link(hw,topo,2,tp*cp*dp), lkDP=link(hw,topo,dp*cp,tp);
   const lkEDP=link(hw,topo,edp, mg?etp*ep:ep);
   // 重算策略 → 每个算子是否在反向里再跑一次 fwd
@@ -69,6 +103,7 @@ function run(m, hw, topo, c, g){
       (sel.has("shared_experts") && key==="shared") || (sel.has("gdn") && ["lproj","lconv","lcore","lnorm","lout"].includes(key)) )
     : ttDef ? (key==="moe1"||key==="act") : false;
   const rcA2A = mg ? (rcFull || sel.has("moe")) : (rcFull && c.dispatcher!=="distmoe");
+  const linHead = c.linCP==="headwise" || c.linCP==="ulysses";   // 线性注意力的 CP：按头 a2a，否则按段传状态（FLA cp_context）
   const tpBlocks = []; // 走 TP+SP 的块：每块 fwd AG+RS，bwd 2 AG + 1 RS
 
   /* ---- 全注意力 ---- */
@@ -113,18 +148,23 @@ function run(m, hw, topo, c, g){
 
   /* ---- 线性注意力 ---- */
   if(l.n>0){
-    const Hv=l.Hv/tp, lf=linFlops(l.kind,l.dk,l.dv), byTok=Hv*(l.kind==="KDA"?8200:5500);
+    const Hv=l.Hv/tp, lf=linFlops(l.kind,l.dk,l.dv), byTok=Hv*(l.kind==="KDA"?8200:5500)*(l.dk+l.dv)/256;
     op("norm",Msg.of("engine_train.op.normAttn"),"misc",l.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
     op("lproj",Msg.of("engine_train.op.lproj"),"lin",l.n,...gemm(Tc,D,d.linIn+(d.linFa+d.linFb)/D,tp));   // KDA 的低秩 f 门按等量 FLOPs 并进宽度
     op("lconv",Msg.of("engine_train.op.lconv"),"lin",l.n,...elem(2*l.conv*d.linConvDim/tp+20*Hv*l.dk,(d.linConvDim+2*Hv*l.dk)*2*2/tp,Tc,3));
     op("lcore",Msg.of("engine_train.op.lcore",{kind:l.kind,impl:mg?"FLA":"attn_gym"}),"lin",l.n,{fl:Hv*lf.f*Tc,by:byTok*Tc,pk:pkA,k:5},{fl:Hv*lf.b*Tc,by:2.5*byTok*Tc,pk:pkA,k:8},null);
+    if(cp>1 && !linHead){
+      // FLA CP：每段除 S_ext 外还要算转移矩阵 M（chunk_cp_fwd_kernel_h）：每个 C 块一次 KᵀW（2K²C）+ 一次 M 链乘（2K³，TF32x3 约 1/3 峰值），再按前面的 rank 合并 S←M·S+S_ext；反向对每个乘积各算两边
+      const K=l.dk, C=64, seqs=S<Tc?2:1, flKW=Hv*2*K*K*Tc, flM=Hv*2*K*K*K/C*Tc + (cp-1)*Hv*2*K*K*l.dv, pkM=(flKW+flM)/(flKW/pkA+flM/(pkA/3)), byM=Tc*Hv*K*2*2 + seqs*Hv*K*(K+l.dv)*4*cp;
+      op("lcore",Msg.of("engine_train.op.lcoreM",{kind:l.kind}),"lin",l.n,{fl:flKW+flM,by:byM,pk:pkM,k:2},{fl:2*(flKW+flM),by:2*byM,pk:pkM,k:3},null);
+    }
     op("lnorm",Msg.of("engine_train.op.lnorm"),"lin",l.n,...elem(10*Hv*l.dv,3*Hv*l.dv*2,Tc,2));
     op("lout",Msg.of("engine_train.op.lout"),"lin",l.n,...gemm(Tc,l.Hv*l.dv,D,tp));
     tpBlocks.push({name:Msg.of("engine_train.blk.lin"),blk:"lin",layers:l.n,inW:D});
   }
 
   /* ---- MoE ---- */
-  const nM=d.nMoe, De=d.De, imb=g.lb ? 1 : c.imb||1;     // 理想下限：EP 负载完全均衡
+  const nM=d.nMoe, De=d.De, imb=g.lb||ep<=1 ? 1 : c.imb||1;     // 理想下限：EP 负载完全均衡；没有 EP 就没有组间不均
   const dedup = ["deepep","hybridep","ncclep","distmoe"].includes(c.dispatcher);
   const perRankExp = e.E/ep;
   const kEff = dedup ? ep*Par.pDest(e.E, ep, e.k) : e.k;     // 去重后每 token 发往的不同 rank 数（含本 rank）
@@ -156,15 +196,15 @@ function run(m, hw, topo, c, g){
       const xs=[tpX("fwd","AG",Msg.of("engine_train.tp.fwdAG",{input:inN}),msgAG), tpX("fwd","RS",Msg.of("engine_train.tp.fwdRS"),msgRS)];
       if(rcFull) xs.push(tpX("rc","AG",Msg.of("engine_train.tp.rcAG",{input:inN}),msgAG), tpX("rc","RS",Msg.of("engine_train.tp.rcRS"),msgRS));
       xs.push(tpX("bwd","AG",Msg.of("engine_train.tp.bwdAG"),msgRS), tpX("bwd","AG",Msg.of("engine_train.tp.bwdAGInput",{input:inN}),msgAG), tpX("bwd","RS",Msg.of("engine_train.tp.bwdRS",{input:inN}),msgAG));
-      cmX("tp",rcFull?Msg.of("engine_train.tp.nameRc",{blk:b.name}):Msg.of("engine_train.tp.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false}); }
-    if(f.kind==="dsa") cmX("tpidx",Msg.of("engine_train.tp.idx"),"tp",f.n,"attn",[tpX("fwd","AG",Msg.of("engine_train.tp.idxX"),Tc*D*2),tpX("fwd","AG",Msg.of("engine_train.tp.idxQ"),Tc*f.qLora*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradX"),Tc*D*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradQ"),Tc*f.qLora*2)]);
+      cmX("tp",rcFull?Msg.of("engine_train.tp.nameRc",{blk:b.name}):Msg.of("engine_train.tp.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false,lk:lkTPx}); }
+    if(f.kind==="dsa") cmX("tpidx",Msg.of("engine_train.tp.idx"),"tp",f.n,"attn",[tpX("fwd","AG",Msg.of("engine_train.tp.idxX"),Tc*D*2),tpX("fwd","AG",Msg.of("engine_train.tp.idxQ"),Tc*f.qLora*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradX"),Tc*D*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradQ"),Tc*f.qLora*2)],{lk:lkTPx});
   } else if(!mg && tp>1){
     // DTensor：Column 输入 Shard → Replicate（AG），Row 输出 Partial → Shard（RS）；反向各自对偶，gather 后的输入留给 wgrad
     for(const b of tpBlocks){ const msg=Tc*D*2;
       const xs=[tpX("fwd","AG",Msg.of("engine_train.tpTt.fwdAG"),msg), tpX("fwd","RS",Msg.of("engine_train.tpTt.fwdRS"),msg)];
       if(rcFull) xs.push(tpX("rc","AG",Msg.of("engine_train.tpTt.rcAG"),msg), tpX("rc","RS",Msg.of("engine_train.tp.rcRS"),msg));
       xs.push(tpX("bwd","AG",Msg.of("engine_train.tpTt.bwdAG"),msg), tpX("bwd","RS",Msg.of("engine_train.tpTt.bwdRS"),msg));
-      cmX("tp",rcFull?Msg.of("engine_train.tpTt.nameRc",{blk:b.name}):Msg.of("engine_train.tpTt.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false}); }
+      cmX("tp",rcFull?Msg.of("engine_train.tpTt.nameRc",{blk:b.name}):Msg.of("engine_train.tpTt.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false,lk:lkTPx}); }
   }
   // CP：全注意力层走 Par.cpLayer（和“并行”页同一套公式）
   const cpMeth = mg ? ({p2p:"ring",allgather:"allgather",a2a:"ulysses"}[c.cpType]||"ring") : (Par.CP[c.cpType] ? c.cpType : "allgather");
@@ -187,14 +227,22 @@ function run(m, hw, topo, c, g){
   }
   if(cp>1 && l.n>0){
     const Hv=l.Hv/tp;
-    const head = l.kind==="GDN" || (mg ? c.linCP==="headwise" : c.linCP==="ulysses");
-    if(head){ const sIn=Tc*d.linIn/tp*2, sOut=Tc*Hv*l.dv*2, aX=(pass,what,s)=>xc(pass,"A2A",what,s*(cp-1)/cp,a2aT(s,cp,lkCP,g));
+    const rcLin = rcFull||sel.has("gdn");
+    if(linHead){ if(Hv%cp) warn.push(Msg.of("engine_train.warn.linHeadCp",{hv:Hv,cp}).invalid());
+      const sIn=Tc*d.linIn/tp*2, sOut=Tc*Hv*l.dv*2, aX=(pass,what,s)=>xc(pass,"A2A",what,s*(cp-1)/cp,a2aT(s,cp,lkCP,g));
       const xs=[aX("fwd",Msg.of("engine_train.cpLin.fwdIn"),sIn), aX("fwd",Msg.of("engine_train.cpLin.fwdOut"),sOut)];
-      if(rcFull||sel.has("gdn")) xs.push(aX("rc",Msg.of("engine_train.cpLin.rcIn"),sIn), aX("rc",Msg.of("engine_train.cpLin.rcOut"),sOut));
+      if(rcLin) xs.push(aX("rc",Msg.of("engine_train.cpLin.rcIn"),sIn), aX("rc",Msg.of("engine_train.cpLin.rcOut"),sOut));
       xs.push(aX("bwd",Msg.of("engine_train.cpLin.bwdOut"),sOut), aX("bwd",Msg.of("engine_train.cpLin.bwdIn"),sIn));
-      cmX("cplin",xs.length>4?Msg.of("engine_train.cpLin.headRc",{kind:l.kind}):Msg.of("engine_train.cpLin.head",{kind:l.kind}),"cp",l.n,"lin",xs); }
-    else { const msg=cp*Hv*l.dk*(l.dv+l.dk)*4;
-      cmX("cplin",Msg.of("engine_train.cpLin.chunk",{kind:l.kind}),"cp",l.n,"lin",[xc("fwd","AG",Msg.of("engine_train.cpLin.chunkFwd"),msg*(cp-1)/cp,agT(msg,cp,lkCP,g)),xc("bwd","AG",Msg.of("engine_train.cpLin.chunkBwd"),msg*(cp-1)/cp,agT(msg,cp,lkCP,g))]); }
+      cmX("cplin",rcLin?Msg.of("engine_train.cpLin.headRc",{kind:l.kind}):Msg.of("engine_train.cpLin.head",{kind:l.kind}),"cp",l.n,"lin",xs,{lk:lkCPx}); }
+    else {
+      // 本卡有不止一段序列时（S < Tc）FLA 只交换首尾两段的 [S_ext | M]：(2, HV, K, V+K)；否则一段。字节和序列长度无关
+      const seqs=S<Tc?2:1, msg=cp*seqs*Hv*l.dk*(l.dv+l.dk)*4, gX=(pass,what)=>xc(pass,"AG",what,msg*(cp-1)/cp,agT(msg,cp,lkCP,g));
+      // 短卷积的 halo：每段开头要前一段的最后 conv−1 个 token
+      const halo=(l.conv-1)*d.linConvDim/tp*2, hX=(pass,what)=>xc(pass,"P2P",what,halo,halo/(lkCP.bw*g.etaN)+(lkCP.intra?g.alphaNv:g.alphaIb)*1e-6);
+      const xs=[hX("fwd",Msg.of("engine_train.cpLin.haloFwd")), gX("fwd",Msg.of("engine_train.cpLin.chunkFwd"))];
+      if(rcLin) xs.push(hX("rc",Msg.of("engine_train.cpLin.haloRc")), gX("rc",Msg.of("engine_train.cpLin.chunkRc")));
+      xs.push(gX("bwd",Msg.of("engine_train.cpLin.chunkBwd")), hX("bwd",Msg.of("engine_train.cpLin.haloBwd")));
+      cmX("cplin",rcLin?Msg.of("engine_train.cpLin.chunkNameRc",{kind:l.kind}):Msg.of("engine_train.cpLin.chunk",{kind:l.kind}),"cp",l.n,"lin",xs,{lk:lkCPx}); }
   }
   // EP
   let a2aPerLayer=0, epL=null;
@@ -250,7 +298,7 @@ function run(m, hw, topo, c, g){
   let fsdpMB=0, fsdp=null;
   if(!mg){
     const R = Math.max(1, c.hsdp||1), fs = dp*cp/R, fe = edp/R;
-    if(!Number.isInteger(fs) || !Number.isInteger(fe)) warn.push(Msg.of("engine_train.warn.hsdp",{r:R,dpcp:dp*cp,edp}).invalid());
+    if(!Number.isInteger(fs) || (nM>0 && !Number.isInteger(fe))) warn.push(Msg.of("engine_train.warn.hsdp",{r:R,dpcp:dp*cp,edp}).invalid());
     const reshard = c.reshard ?? (pp===1), aG = reshard?2:1, gB = c.gradDt==="bf16"?2:4;
     const lkD = Par.lk(hw,topo,fs,tp), lkE = Par.lk(hw,topo,fe,ep), lkR = Par.lk(hw,topo,R,fs*tp);
     const pRep = nM ? (d.pShared+d.pRouter+d.pLat)/tp : 0;           // MoE 层里随 dense 一起切的部分（shared、router、latent 投影）
@@ -273,7 +321,10 @@ function run(m, hw, topo, c, g){
     comm.push({key:"fsdp",name:Msg.of("engine_train.fsdp.name",{passes:Msg.of(reshard?"engine_train.fsdp.passesBoth":"engine_train.fsdp.passesFwd"),dt:gB===4?"FP32":"BF16",fs,fe,hsdp:R>1?Msg.of("engine_train.fsdp.hsdp",{r:R}):""}),cls:"dp",layers:1,passes:1,t:fsdpMB,bytes:bDense+bExp,ovl:"prefetch",perStage:true,par:"fsdp"});
   }
 
-  const tMBstage = (compMB + exposed)/pp;
+  // PP：层按 stage 平分，lm_head 和 CE 都在最后一段。下限按能把层搬开算（不低于头本身）
+  const tHead = ops.filter(o=>o.group==="lm").reduce((s,o)=>s+o.fwd.t+o.dgrad.t+o.wgrad.t+(rc(o.key)?o.fwd.t:0),0);
+  const stageComp = pp<=1 ? compMB : g.lb ? Math.max(compMB/pp,tHead) : tHead+(compMB-tHead)/pp;
+  const tMBstage = stageComp + exposed/pp;
   // FSDP 在后台流上跑，但和 CP / EP 抢同一条链路：一个 micro-batch 至少要等最忙那条链路跑完；第一层的 gather 藏不住
   let fsdpExposedMB = 0;
   if(fsdp){
@@ -325,12 +376,11 @@ function run(m, hw, topo, c, g){
   const mfu = (flF+flB)/pp*microsPerStep/(stepT*pkF);
 
   /* ---- 显存 ---- */
-  const L_st = m.L/pp;
   const actTok = {};      // 每 token 每层保存的激活字节（本 rank）
   const sp=tp;
   const attnAct = f.n>0 ? (f.kind==="gqa" ? (2*D*2 + (2*f.Hq+2*f.Hkv)*f.dh*2 + 4*f.Hq + (f.gate?2*f.Hq*f.dh*2:0))/sp
                  : (2*D*2 + (f.qLora+f.kvLora)*2 + (sel.has("mla_up_proj")?0:f.H*((f.nope+f.rope)*3+f.nope+f.vh)*2) + f.H*f.vh*2 + 4*f.H + (f.kind==="dsa"?f.topk*4*sp + (f.idxH*f.idxD+f.idxD)*2*sp:0))/sp) : 0;
-  const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650) + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
+  const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650)*(l.dk+l.dv)/256 + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
   const rowAct = e.k*imb*(De*2 + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4);
   const moeAct = (2*D*2 + e.E*4*3)/sp + (sel.has("moe")?0:rowAct)/1 + (e.Dlat?(D+e.Dlat)*2:0) + (e.Fs>0&&!sel.has("shared_experts")?3*e.Fs*2/tp:0);
   const denseAct = 2*D*2+3*m.dense.F*2/tp;
@@ -341,8 +391,8 @@ function run(m, hw, topo, c, g){
   const inflight = pp>1 ? Math.min(microsPerStep,pp)*(vpp>1?1+(pp-1)/(pp*vpp):1) : 1;
   const act = perTokLayers*Tc*inflight + (rcFull?oneLayerWS*Tc:0);
   const logits = Tc*m.V/tp*(mg?6:6/8);
-  const a2aBuf = epL ? epL.buf : Tl*e.k*imb*De*2*2;
-  const cpBuf = cp>1&&f.n>0 ? cp*Tc*d.kvTokElems*2 : 0;
+  const a2aBuf = nM<=0 ? 0 : epL ? epL.buf : Tl*e.k*imb*De*2*(ep>1?2:1);   // 没有 EP 只有 permute 那一份
+  const cpBuf = !cpFull ? 0 : Math.max((f.n-(cpSwa?f.swa:0))>0?cpFull.buf:0, cpSwa?cpSwa.buf:0);
   let states, paramsGPU, gathered=0;
   if(mg){
     paramsGPU = (PlD+PlE)*(2+4);                                      // bf16 参数 + fp32 main_grad
@@ -350,9 +400,10 @@ function run(m, hw, topo, c, g){
   } else {
     paramsGPU = 0;
     states = c.offload ? 0 : Pshard*16;
-    gathered = 2*(Pdense/tp/pp/(m.L/pp) + Pexp/ep/pp/(m.L/pp))*2*2;    // 当前 + 预取 block 的 bf16 参数与梯度
+    const gD = fsdp.fs>1 ? Pdense/tp/pp : 0, gE = fsdp.fe>1 ? Pexp/ep/pp : 0;   // 分片组只有 1 张卡时本来就是整份，不用 gather
+    gathered = 2*(gD+gE)/(m.L/pp)*2*2;                                 // 当前 + 预取 block 的 bf16 参数与梯度
     // reshard 关掉（reshard_after_forward=False）时前向 gather 的 BF16 参数一直留到反向：本 stage 所有层的整份参数（对照 PopSoda2002/FSDP_memory_estimator 的 SHARD_GRAD_OP）
-    if(fsdp && !fsdp.reshard) gathered += (Pdense/tp/pp + Pexp/ep/pp)*2;
+    if(!fsdp.reshard) gathered += (gD+gE)*2;
   }
   const work = c.workspaceGB*1e9;
   // 低精度权重缓存：前向一份；反向也低精度且权重是 1D 块时再从 BF16 量化一份列方向（2D 块共用一份）
@@ -367,10 +418,13 @@ function run(m, hw, topo, c, g){
 }
 
 /* 默认的训练配置（界面的初始值；预设和架构页都在它上面改）。卡数 N 由调用方按拓扑给 */
-const BASE = Common.freeze({ fw:"megatron", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"alltoall", cpType:"p2p", linCP:"headwise", tok:16384, S:8192, Gtok:2097152,
+const BASE = Common.freeze({ fw:"megatron", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"alltoall", cpType:"p2p", linCP:"chunkwise", tok:16384, S:8192, Gtok:2097152,
   prec:"bf16", recompute:"full", rcModules:[], offload:true, overlapOffload:true, cpuAdamGBs:30, overlapGrad:true, overlapParam:true,
   epOverlap:false, sharedOverlap:false, tpOverlap:false, reshard:true, imb:1.15, hostSyncUs:20, workspaceGB:6,
   cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0 });
 
-return { run, linFlops, PREC, BASE };
+/* torchtitan 的默认选项：BASE 是 Megatron 的枚举，切到 torchtitan 时用这份盖上去，否则 BASE 的值在 torchtitan 下没有定义 */
+const FW_DEF = Common.freeze({ megatron:{}, torchtitan:{ dispatcher:"standard", cpType:"allgather", linCP:"state", recompute:"default", offload:false } });
+
+return { run, linFlops, PREC, BASE, FW_DEF, inert };
 })();

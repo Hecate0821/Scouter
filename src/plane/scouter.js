@@ -38,14 +38,15 @@ function roofline(q){
   }
   return out;
 }
-/* 推理一步（Infer.step）：q 里除 model / hw / topo / basis / g 以外的字段覆盖 Infer.BASE */
+/* 推理一步（decode 走 Infer.decode，含投机的 draft / commit；prefill 走 Infer.prefill，含整段 prompt 的 TTFT，和页面同一条路）：
+   q 里除 model / hw / topo / basis / g 以外的字段覆盖 Infer.BASE */
 function infer(q){
   q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Infer.BASE, rest(q));
-  return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, Infer.step(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
+  return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, (cfg.phase==="prefill"?Infer.prefill:Infer.decode)(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
 }
-/* 训练一步（Train.run）：覆盖 Train.BASE；N 默认是拓扑的卡数 */
+/* 训练一步（Train.run）：覆盖 Train.BASE 和所选框架的默认值 Train.FW_DEF；N 默认是拓扑的卡数 */
 function train(q){
-  q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Train.BASE, { N: c.topo.gpus }, rest(q));
+  q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Train.BASE, Train.FW_DEF[q.fw]||{}, { N: c.topo.gpus }, rest(q));
   return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, Train.run(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
 }
 /* 架构页：一层里每个 attention / MLP 模块的 kernel、时间和瓶颈（引擎中立的参考画像），覆盖 Arch.defaults */
@@ -140,7 +141,7 @@ function catalog(){
   return { version: VERSION, sources: SOURCES, basis: BASIS,
     models: Object.fromEntries(Object.keys(MODELS).map(k => [k, { name: MODELS[k].name, family: MODELS[k].family }])),
     hw: HW, topo: TOPO, engines: Object.keys(Infer.ENGINES), spec: Object.keys(Infer.SPEC), prec: Object.keys(Train.PREC), epBackends: Object.keys(Par.EP),
-    quant: Quant.ORDER, defaults: { infer: Infer.BASE, kv: KV.BASE, train: Train.BASE, module: Arch.defaults(MODELS.qwen35) },
+    quant: Quant.ORDER, defaults: { infer: Infer.BASE, kv: KV.BASE, train: Train.BASE, trainFw: Train.FW_DEF, module: Arch.defaults(MODELS.qwen35) },
     runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
 }
 

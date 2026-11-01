@@ -8,6 +8,7 @@ I18N.add("zh", "kv", {
   "mix.sep": "、",
   "kpi.tok": "每个 token 的 KV",
   "kpi.tokFoot": "每卡、{kv}，全注意力层 + 滑窗层",
+  "kpi.tokFootFull": "每卡、{kv}，全注意力层",
   "kpi.snap": "一份线性状态快照",
   "kpi.snapFoot": "每卡；约等于 {n} 个 token 的全注意力 KV",
   "kpi.snapNone": "这个模型没有线性注意力层",

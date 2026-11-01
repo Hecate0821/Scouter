@@ -13,7 +13,7 @@ function renderKV(){
     sys:fInt(c.sys),turnIn:fInt(c.turnIn),turnOut:fInt(c.turnOut),turns:c.turns,sessions:fInt(c.sessions)});
   const tokB=pt.full+pt.swa;
   kpis($("kv-kpis"),[
-    [t("kv.kpi.tok"),fB(tokB),t("kv.kpi.tokFoot",{kv:kvDt})],
+    [t("kv.kpi.tok"),fB(tokB),t(lay.swa?"kv.kpi.tokFoot":"kv.kpi.tokFootFull",{kv:kvDt})],
     [t("kv.kpi.snap"),lay.lin?fB(pt.snap):"—",lay.lin?t("kv.kpi.snapFoot",{n:pt.full>0?fInt(pt.snapTok):"—"}):t("kv.kpi.snapNone")],
     [t("kv.kpi.fit"),fInt(r.fit.hbm),t("kv.kpi.fitFoot",{ws:fB(r.ws1)}),r.fit.hbm<c.sessions],
     [t("kv.kpi.hit"),pct(r.hitRate,1),t("kv.kpi.hitFoot",{hbm:pct(fr.hbm,1)})],

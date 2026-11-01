@@ -260,7 +260,7 @@ function infPlan(r, L){
   const PI = { pre:per(o=>o.group==="attn"&&!["acore","agate","auv","aout"].includes(o.key)), full:cores[0]?cores[0].t/cores[0].layers:0, swa:cores[1]?cores[1].t/cores[1].layers:0, post:per(o=>["agate","auv","aout"].includes(o.key)),
     lin:per(o=>o.group==="lin"), router:per(o=>["router","latd","moeq"].includes(o.key)), exp:per(o=>o.key==="moe"), latu:per(o=>o.key==="latu"), shared:per(o=>o.key==="shared"), dense:per(o=>o.key==="dense"),
     lm:per(o=>o.key==="lm"), samp:per(o=>o.key==="samp") };
-  const one = key => { const e=r.comm.find(x=>x.key===key); return e ? { op:{ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG"}[key], bytes:e.bytes/e.layers, t:e.t/e.layers, ov:e.overlap } : null; };
+  const one = key => { const e=r.comm.find(x=>x.key===key); return e ? { op:{ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG",epag:"AG"}[key], bytes:e.bytes/e.layers, t:e.t/e.layers, ov:e.overlap } : null; };
   const ev=[], C=(label,t,cat,o)=>ev.push(Object.assign({k:"c",label,t,cat},o||{})), sec=(label,o)=>ev.push(Object.assign({k:"s",label},o||{}));
   const X=(dim,key,what,lay,o)=>{ const x=one(key); if(!x) return; const mode=x.ov==="moe"?"fused":x.ov==="tbo"?"part":"block";
     ev.push(Object.assign({k:"x",dim,mode,lay,pass:"fwd",what,note:x.ov==="tbo"?t("comm.inf.noteTbo"):x.ov==="moe"?t("comm.inf.noteFused"):""},x,o||{})); };
@@ -281,7 +281,7 @@ function infPlan(r, L){
       X("tp","latar",t("comm.inf.latar",{d:m.moe.Dlat}),i);
       if(PI.latu>0) C(t("comm.inf.latu"),PI.latu,"proj");
       X(epDim,"dps",ag?t("comm.inf.dpsEp"):t("comm.inf.dpsDpa"),i);
-      X("tp","ar",t("comm.inf.arMoe",{fused:arF}),i);
+      X("tp","ar",t("comm.inf.arMoe",{fused:arF}),i); X("tp","epag",t("comm.inf.epagMoe"),i);
     } else { C(t("comm.blk.dense"),PI.dense,"proj"); X("tp","ar",t("comm.inf.arFfn",{fused:arF}),i); }
   }
   sec(t("comm.sec.perStep"),{sub:true});

@@ -31,6 +31,19 @@ The roofline model:
 
 The mechanism diagrams reimplement the visual ideas of Attention Lab, credited under each diagram and in the [README](../README.md#acknowledgements).
 
+## What a parallel layout changes
+
+Every key either changes the result or is reported as inert: `Train.inert(m, c, g)` and `Infer.inert(m, c, g)` return `{ key: reason }` for this config, and the racks gray those controls out and show the reason. `tests/config_reach.js` holds both directions: an inert key changes nothing, and every other key changes a result somewhere.
+
+- **Linear attention under CP** follows `linCP`, for GDN and KDA alike. `chunkwise` / `state` is `flash-linear-attention`'s `cp_context` (what Miles uses): each rank all-gathers `[S_ext | M]`, shape `[Hv, dk, dv + dk]` in FP32, forward and backward, twice as many slots when a rank holds more than one sequence, plus the short-conv halo. It also pays for `M` per value head: `2·dk²` per token for `KᵀW`, `2·dk³ / 64` per token for the chain product at TF32x3 (about a third of the peak), and `(cp − 1)·2·dk²·dv` to merge, twice each in backward. `headwise` / `ulysses` does all-to-all of the in_proj and norm outputs and needs CP to divide the value heads.
+- **Pipeline stages:** layers split evenly and `lm_head` + CE sit on the last stage, so the stage time is `head + (rest) / pp`. The ideal basis allows moving layers, `max(total / pp, head)`. `pp·vpp` above the layer count is invalid.
+- **Load imbalance** (`imb`) exists only across an EP group: it does nothing at `ep = 1`, at one inference card, or when experts are TP-split.
+- **CP buffers** follow the method: all of a document's K / V for all-gather, two chunks for ring, the head-wise Q / K / V for Ulysses, and the halo for sliding-window layers. K / V heads split under TP, a latent does not.
+- **FSDP contention:** TP and linear-CP traffic share the link lanes with FSDP. When the lane is the slower side, compute changes stop moving `tMB`, so curves flatten there.
+- **Prefill** runs `lm_head` and sampling only on the chunk that finishes a request. Above 256 chunks, each sampled chunk stands for its neighbors, and `ttft` still covers the whole prompt.
+
+Not verified against a measurement: the 2.5× backward factor of the attention core, and the factor of 2 for `M` in backward, which counts both sides of each matrix product.
+
 ## Data points
 
 ```

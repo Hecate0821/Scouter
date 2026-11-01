@@ -5,11 +5,13 @@ const asEng = e => ({engine:e, moePar:compatMoe(e,S.inf.moePar)});
 /* 推理参数架：随引擎和阶段显示 / 隐藏，填 MoE 并行和预设（一步、部署、投机三节共用） */
 function syncInfRack(){
   const c=S.inf;
-  qa("[data-phase]").forEach(el=>el.hidden=el.dataset.phase!==c.phase);
+  const onSpec=location.hash==="#infer/spec";                        // 投机解码一节只算 decode，阶段选项和 prefill 的参数在这里没有意义
+  qa("[data-phase]").forEach(el=>el.hidden=el.dataset.phase!==(onSpec?"decode":c.phase));
   qa("[data-eng]").forEach(el=>el.hidden=el.dataset.eng!==c.engine);
   if(!MOEPAR[c.engine].some(x=>x[0]===c.moePar)) c.moePar=Infer.ENGINES[c.engine].defaultMoe;
   fillOpts($("i-moepar"),MOEPAR[c.engine],c.moePar);
   presetSel($("i-preset"),$("i-preset-src"),infPresets(c.engine,S.modelKey,S.topo),S.infPreset);
+  { const {m,g}=ctx(); markInert("inf",Object.assign(Infer.inert(m,c,g),onSpec?{phase:"specDecode"}:{})); }
   $("i-engine-note").textContent={
     sglang:t("infer.engineNote.sglang"),
     vllm:t("infer.engineNote.vllm"),
@@ -44,7 +46,7 @@ function renderInfer(){
     [t("infer.kpi.wPer"),fB(wPer),t("infer.kpi.wPerFoot",{b:fB(r.mem.wExp)}),r.mem.avail<=0],
     [t("infer.kpi.perSeq"),fB(r.mem.perSeq),r.mem.statePer>0?t("infer.kpi.perSeqFootState",{kv:fB(r.mem.kvTok*c.n),state:fB(r.mem.statePer),slots:r.mem.slots}):t("infer.kpi.perSeqFoot",{kv:fB(r.mem.kvTok*c.n)})]]);
   else kpis($("i-kpis"),[
-    ["TTFT",fT(r.ttft),t("infer.kpi.ttftFoot",{n:r.chunks.length})],
+    ["TTFT",fT(r.ttft),t("infer.kpi.ttftFoot",{n:r.nChunks})],
     [t("infer.kpi.firstChunk"),fT(r.chunks[0]?r.chunks[0].t:r.stepT),t("infer.kpi.firstChunkFoot",{last:fT(r.chunks.length?r.chunks[r.chunks.length-1].t:0)})],
     [t("infer.kpi.prefillThr"),fN(r.tokPerGpu)+" tok/s/GPU",t("infer.kpi.prefillThrFoot")],
     [t("infer.kpi.prefillGraph"),r.graph?t("infer.kpi.prefillGraphOn"):t("infer.kpi.prefillGraphOff"),E.prefillGraph(m)?"":t("infer.kpi.prefillGraphNone")],
