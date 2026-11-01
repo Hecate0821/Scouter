@@ -6,7 +6,7 @@ const fs = require("fs");
 const load = require("./load");
 (async () => {
   const [page = "../index.html", out, base] = process.argv.slice(2);
-  const { w, d, errs } = await load(page, "#overview");
+  const { w, d, errs } = await load(page, "#overview", undefined, "?lang=zh");   // the baseline is the Chinese page
   const go = h => { w.location.hash = h; w.dispatchEvent(new w.HashChangeEvent("hashchange")); };
   const setSel = (sel, v) => { const el = d.querySelector(sel); if (!el) return; el.value = v; el.dispatchEvent(new w.Event("change", { bubbles: true })); };
   const norm = s => String(s || "").replace(/\s+/g, " ").trim();

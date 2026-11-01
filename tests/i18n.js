@@ -6,13 +6,15 @@
 // of the data store in ⟪ ⟫, so a word left outside the markers was written by code and no translation can reach it. Outside the
 // markers only numbers, units, code identifiers (anything with a digit or _ / . =), abbreviations (no lowercase letter), CamelCase
 // names, the names in the engine's tables (models, GPUs, engines, kernels, formats, CP / EP methods) and NAMES may appear.
-// Usage: node i18n.js [--static-only]
+// Usage: node i18n.js [--static-only] [--lang=zh|en]   (the rendering checks run in the chosen language; npm test runs both)
 const fs = require("fs");
 const path = require("path");
 const acorn = require("acorn");
 const ROOT = path.resolve(__dirname, "..");
 const CJK = /[　-〿㐀-鿿＀-￯]/;
 const problems = [];
+const LANG = (process.argv.find(a => a.startsWith("--lang=")) || "--lang=zh").slice("--lang=".length);
+if (!["zh", "en"].includes(LANG)) { console.log("--lang must be zh or en"); process.exit(2); }
 
 // zh 的全部 key：用一个假的 I18N.add 执行 locales/zh/*.js
 const KEYS = new Set();
@@ -20,6 +22,27 @@ for (const f of fs.readdirSync(path.join(ROOT, "locales", "zh")).filter(f => f.e
   try { new Function("I18N", fs.readFileSync(path.join(ROOT, "locales", "zh", f), "utf8"))({ add(loc, ns, e) { for (const k in e) KEYS.add(ns ? ns + "." + k : k); } }); }
   catch (e) { problems.push(`locales/zh/${f}: ${e.message}`); }
 }
+// 每个语言文件的 key 集合和值：key 对不上的，缺的会悄悄退回中文，多的是登记时打错了名字（data.js 按记录 id 另查）
+function keysOf(loc, file) { const ks = new Set(), vals = [];
+  new Function("I18N", fs.readFileSync(path.join(ROOT, "locales", loc, file), "utf8"))({ add(l, ns, e) { for (const k in e) { ks.add(ns ? ns + "." + k : k); vals.push(e[k]); } } });
+  return { ks, vals }; }
+const localeFiles = loc => fs.readdirSync(path.join(ROOT, "locales", loc)).filter(f => f.endsWith(".js") && f !== "data.js");
+if (fs.existsSync(path.join(ROOT, "locales", "en"))) {
+  const zhF = localeFiles("zh"), enF = localeFiles("en");
+  for (const f of zhF) if (!enF.includes(f)) problems.push(`locales/en/${f} is missing`);
+  for (const f of enF) if (!zhF.includes(f)) problems.push(`locales/en/${f} has no zh counterpart`);
+  for (const f of zhF.filter(f => enF.includes(f))) {
+    try {
+      const z = keysOf("zh", f), e = keysOf("en", f);
+      const miss = [...z.ks].filter(k => !e.ks.has(k)), extra = [...e.ks].filter(k => !z.ks.has(k));
+      if (miss.length) problems.push(`locales/en/${f}: ${miss.length} keys not translated, e.g. ${miss.slice(0, 4).join(", ")}`);
+      if (extra.length) problems.push(`locales/en/${f}: keys that zh does not have, e.g. ${extra.slice(0, 4).join(", ")}`);
+      const cjk = e.vals.filter(v => typeof v === "string" && CJK.test(v));
+      if (cjk.length) problems.push(`locales/en/${f}: ${cjk.length} values still contain Chinese, e.g. ${JSON.stringify(cjk[0].slice(0, 60))}`);
+    } catch (err) { problems.push(`locales/en/${f}: ${err.message}`); }
+  }
+}
+
 function scanJs(file) {
   const src = fs.readFileSync(file, "utf8");
   const rel = path.relative(ROOT, file);
@@ -73,8 +96,9 @@ for (const f of walk(path.join(ROOT, "src"))) if (!f.endsWith(path.join("data", 
     return false; };
   for (const loc of fs.readdirSync(path.join(ROOT, "locales"))) {
     const f = path.join(ROOT, "locales", loc, "data.js"); if (!fs.existsSync(f)) continue;
-    const keys = []; new Function("I18N", fs.readFileSync(f, "utf8"))({ add(l, ns, e) { keys.push(...Object.keys(e)); } });
+    const keys = [], vals = []; new Function("I18N", fs.readFileSync(f, "utf8"))({ add(l, ns, e) { keys.push(...Object.keys(e)); vals.push(...Object.values(e)); } });
     for (const k of keys) if (!textAt(k)) problems.push(`locales/${loc}/data.js  ${k} matches no text field in data/db.json`);
+    if (loc !== "zh") for (const v of vals) if (typeof v === "string" && CJK.test(v)) problems.push(`locales/${loc}/data.js  Chinese in translation: ${v.slice(0, 60)}`);
   } }   // i18n.js 里只有各语言的自称（LOCALES.name）
 const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8").replace(/<!--[\s\S]*?-->/g, "");
 html.split("\n").forEach((line, i) => { if (CJK.test(line)) problems.push(`index.html:${i + 1}  ${line.trim().slice(0, 70)}`); });
@@ -93,11 +117,16 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
       return add(loc, ns, o); }; })();</script>`;
     const MARK = `<script>(function(){ const REF = /^(id|set|url|href|hw|topo|model|engine|fw|kind|stage|origin|unit|project|version|date|phase|dtype)$/;
       const prose = (v, k) => /[\\u3000-\\u9fff\\uff00-\\uffef ]/.test(v) || !REF.test(k) && /[A-Z]/.test(v) && /[a-z]{2}/.test(v);
-      const mark = (v, k) => typeof v === "string" ? (prose(v, k) && !/^https?:/.test(v) ? "⟪" + v + "⟫" : v)
+      const mark = (v, k) => typeof v === "string" ? (k !== "id" && prose(v, k) && !/^https?:/.test(v) ? "⟪" + v + "⟫" : v)   // id 是查表的 key（localizeData 按它找译文），不能动
         : Array.isArray(v) ? v.map(x => mark(x, k)) : v && typeof v === "object" ? (Object.keys(v).forEach(f => { v[f] = mark(v[f], f); }), v) : v;
       mark(DB_RAW, ""); })();</script>`;
+    // 英文文件：页面里 i18n.js 之后、页面自己的脚本之前，同步地加载（和浏览器里 i18n.js 的 document.write 效果一样；jsdom 里 document.write 的脚本会晚于页面的初始渲染）
+    const EN_TAGS = LANG === "en" ? fs.readdirSync(path.join(ROOT, "locales", "en")).filter(f => f.endsWith(".js")).map(f => `<script src="locales/en/${f}"></script>`).join("") : "";
     const { w, d, errs } = await load(path.join(ROOT, "index.html"), "#overview", h => h
-      .replace('<script src="src/i18n/i18n.js"></script>', m => m + WRAP).replace('<script src="src/data/db.js"></script>', m => m + MARK));
+      .replace('<script src="src/i18n/i18n.js"></script>', m => m + WRAP + EN_TAGS).replace('<script src="src/data/db.js"></script>', m => m + MARK), "?lang=" + LANG);
+    // 英文页上不该剩下中文：界面和数据里的中文都要换掉（语言菜单里的“中文”、数据浏览表印的原始记录除外）
+    const cjkLeft = new Map();
+    const leftover = (where, s, el) => { if (LANG === "en" && CJK.test(s) && !(el && el.closest("#g-lang,#m-db-pts,code,script,style"))) cjkLeft.set(s.replace(/\s+/g, " ").trim().slice(0, 80), where); };
     const go = h => { w.location.hash = h; w.dispatchEvent(new w.HashChangeEvent("hashchange")); scan(h, d.querySelector(`section[data-pane="${h}"]`)); };
     const setSel = (sel, v) => { const el = d.querySelector(sel); if (!el) return; el.value = v; el.dispatchEvent(new w.Event("change", { bubbles: true })); };
 
@@ -108,7 +137,7 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
     const TABLE = new RegExp("(?<![A-Za-z0-9])(" + [...table].sort((a, b) => b.length - a.length).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![A-Za-z0-9])", "g");
     const UNITS = new Set(["ms", "us", "s", "min", "h", "tok", "x"]);
     // 代码里会出现的专名和代码词：框架、GPU 架构、GEMM 的三遍、计数同步的 op 名、命令行参数；再加上模型名里的每个词
-    const NAMES = new Set(["torchtitan", "Megatron", "Megatron-Core", "Miles", "slime", "Blackwell", "Hopper", "fprop", "dgrad", "wgrad", "sync", "top-k", "dp-size", "Scouter"]);
+    const NAMES = new Set(["torchtitan", "Megatron", "Megatron-Core", "Miles", "slime", "Blackwell", "Hopper", "fprop", "dgrad", "wgrad", "sync", "top-k", "dp-size", "Scouter", "English"]);   // "English" 是语言菜单里的自称（LOCALES.name，写在 src/i18n/i18n.js）
     for (const m of Object.values(w.eval("Common.MODELS"))) for (const v of [m.name, m.short]) if (typeof v === "string") v.split(/\s+/).forEach(x => NAMES.add(x));
     for (const id of Object.keys(w.eval("DB.sets"))) NAMES.add(id);   // 数据集的 id（数据浏览里照印）
     const plain = p => p.length > 1 && /[a-z]/.test(p) && !/^[A-Za-z][a-z]*[A-Z]/.test(p) && !UNITS.has(p) && !NAMES.has(p);
@@ -121,8 +150,8 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
     function scan(where, root) {
       if (!root) return;
       const nodes = [], it = d.createTreeWalker(root, w.NodeFilter.SHOW_TEXT);
-      for (let n; (n = it.nextNode()); ) if (!n.parentElement.closest("code,script,style,#m-db-pts")) nodes.push(n.data);   // #m-db-pts：数据浏览表，印的是记录的原始字段
-      const attrs = Array.from(root.querySelectorAll("[title],[aria-label],[placeholder],[alt]")).flatMap(el => ["title", "aria-label", "placeholder", "alt"].map(a => el.getAttribute(a) || ""));
+      for (let n; (n = it.nextNode()); ) { leftover(where, n.data, n.parentElement); if (!n.parentElement.closest("code,script,style,#m-db-pts")) nodes.push(n.data); }   // #m-db-pts：数据浏览表，印的是记录的原始字段
+      const attrs = Array.from(root.querySelectorAll("[title],[aria-label],[placeholder],[alt]")).flatMap(el => ["title", "aria-label", "placeholder", "alt"].map(a => { const v = el.getAttribute(a) || ""; leftover(where, v, el); return v; }));
       for (let seg of [strip(nodes.join("\u0001")), ...attrs.map(strip)].join("\u0001").split("\u0001")) {
         seg = seg.replace(/\s+/g, " ").trim();
         if (!seg || seen.has(seg)) continue; seen.add(seg);
@@ -141,10 +170,12 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
       setSel("[data-bind='inf.engine']", "sglang"); setSel("[data-bind='inf.phase']", "decode");
       scan("racks · " + m, d.body);
     }
+    leftover("page title", d.title, null);
+    if (cjkLeft.size) problems.push(`${cjkLeft.size} Chinese strings on the English page: ` + [...cjkLeft].slice(0, 40).map(([s, where]) => `\n  ${where}: ${JSON.stringify(s)}`).join(""));
     if (coded.size) problems.push(`${coded.size} words written by code rather than a locale file or the data:` +
       [...coded].map(([tok, o]) => `\n  ${tok.padEnd(16)} ${o.where}: ${JSON.stringify(o.seg.slice(0, 90))}`).join(""));
     // 数据点库的译文真的换得进去：登记三条（数据集标题、指标名、数组字段里的一项），再跑一遍 localizeData
-    w.eval(`I18N.add("zh", "data", { "cp_attention.title": "@T", "cp_attention.metrics.fb_ms": "@M", "${"releases:lmsys:2025-11-03-gpt-oss-on-nvidia-dgx-spark"}.highlights.1": "@H" }); localizeData();`);
+    w.eval(`I18N.add("${LANG}", "data", { "cp_attention.title": "@T", "cp_attention.metrics.fb_ms": "@M", "${"releases:lmsys:2025-11-03-gpt-oss-on-nvidia-dgx-spark"}.highlights.1": "@H" }); localizeData();`);
     const got = w.eval(`[DB.meta("cp_attention").title, DB.meta("cp_attention").metrics.fb_ms.label, DB.one("releases", { id: "releases:lmsys:2025-11-03-gpt-oss-on-nvidia-dgx-spark" }).highlights[1]].join()`);
     if (got !== "⟦@T⟧,⟦@M⟧,⟦@H⟧") problems.push("data translations are not applied: " + got);
     const miss = Array.from(w.eval("I18N").missing);
