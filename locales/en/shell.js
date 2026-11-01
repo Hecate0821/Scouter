@@ -55,6 +55,7 @@ I18N.add("en", "shell", {
   "nav.infer.deploy": "Deployment and parallelism",
   "nav.infer.quant": "Low-precision inference",
   "nav.infer.spec": "Speculative decoding",
+  "nav.infer.kv": "KV cache",
   "nav.infer.calib": "Against measurements",
   "nav.rl.mismatch": "Train-inference mismatch",
   "nav.rl.determinism": "Deterministic rollout",

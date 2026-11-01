@@ -6,8 +6,8 @@
 "use strict";
 const fs = require("fs"), path = require("path"), vm = require("vm");
 
-const FILES = ["msg.js", "common.js", "par.js", "infer.js", "train.js", "quant.js", "arch.js", "calib.js", "trace.js"];
-const MODULES = ["Msg", "Common", "Par", "Infer", "Train", "Quant", "Arch", "Calib", "Trace"];
+const FILES = ["msg.js", "common.js", "par.js", "infer.js", "train.js", "quant.js", "arch.js", "calib.js", "trace.js", "kv.js"];
+const MODULES = ["Msg", "Common", "Par", "Infer", "Train", "Quant", "Arch", "Calib", "Trace", "KV"];
 
 function load(ctx){
   ctx = ctx || vm.createContext({});

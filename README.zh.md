@@ -37,7 +37,7 @@ cd tests && npm install && npm test
 | 总览 | 同一个模型的推理一步和后训练一步并排。 |
 | 模型架构 | 层排布、单个模块的 roofline 和旋钮、机制示意图、所有模型对比。 |
 | 后训练 | 一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）、并行、低精度配方。 |
-| 推理 | decode / prefill、部署与并行、低精度、投机解码，以及和 SGLang cookbook、自己的 profiler trace 对照。 |
+| 推理 | decode / prefill、部署与并行、低精度、投机解码、KV cache（每种层存多少、多轮 agent 会话在 HBM / 主机 / 远端三层里的前缀命中率、SGLang / vLLM / TRT-LLM / TokenSpeed 各怎么管），以及和 SGLang cookbook、自己的 profiler trace 对照。 |
 | RL | 训推不一致、确定性 rollout、低精度 rollout 与 QAT。 |
 | 附录 | 实测 kernel 对照屋顶、效率表、公开数据点、建模方法。 |
 

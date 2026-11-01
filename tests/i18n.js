@@ -165,7 +165,7 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
       setSel("#g-model", m);
       for (const v of views) go(v);
       for (const eng of ["sglang", "vllm", "tokenspeed", "titan"]) { setSel("[data-bind='inf.engine']", eng);
-        for (const ph of ["decode", "prefill"]) { setSel("[data-bind='inf.phase']", ph); go("infer/step"); } go("infer/deploy"); go("infer/spec"); }
+        for (const ph of ["decode", "prefill"]) { setSel("[data-bind='inf.phase']", ph); go("infer/step"); } go("infer/deploy"); go("infer/spec"); go("infer/kv"); }
       for (const fw of ["megatron", "torchtitan"]) { go("train/step"); setSel("[data-bind='trn.fw']", fw); go("train/par"); }
       setSel("[data-bind='inf.engine']", "sglang"); setSel("[data-bind='inf.phase']", "decode");
       scan("racks · " + m, d.body);

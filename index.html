@@ -29,6 +29,7 @@
     <a href="#infer/deploy" data-route="infer/deploy" data-i18n="shell.nav.infer.deploy"></a>
     <a href="#infer/quant" data-route="infer/quant" data-i18n="shell.nav.infer.quant"></a>
     <a href="#infer/spec" data-route="infer/spec" data-i18n="shell.nav.infer.spec"></a>
+    <a href="#infer/kv" data-route="infer/kv" data-i18n="shell.nav.infer.kv"></a>
     <a href="#infer/calib" data-route="infer/calib" data-i18n="shell.nav.infer.calib"></a>
   </div>
   <div class="grp" data-grp="rl"><h4>RL</h4>
@@ -100,7 +101,7 @@
   </div>
 
   <!-- 推理 -->
-  <div data-rack="infer/step infer/deploy infer/spec infer/calib">
+  <div data-rack="infer/step infer/deploy infer/spec infer/kv infer/calib">
     <h3 data-i18n="infer.rack.h3"></h3>
     <select data-bind="inf.engine" class="full" data-i18n-attr="aria-label=infer.rack.attr.inf.engine.aria-label">
       <option value="sglang">SGLang</option>
@@ -130,7 +131,7 @@
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.wDt"></span><select data-bind="inf.wDt" data-i18n-attr="aria-label=infer.rack.attr.inf.wDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.eAct"></span><select data-bind="inf.eAct" data-i18n-attr="aria-label=infer.rack.attr.inf.eAct.aria-label"><option value="" data-i18n="infer.rack.opt.inf.eAct.empty"></option><option value="bf16" data-i18n="infer.rack.opt.inf.eAct.bf16"></option><option value="mxfp8" data-i18n="infer.rack.opt.inf.eAct.mxfp8"></option><option value="same" data-i18n="infer.rack.opt.inf.eAct.same"></option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dDt"></span><select data-bind="inf.dDt" data-i18n-attr="aria-label=infer.rack.attr.inf.dDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option></select></label>
-    <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
+    <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option><option value="nvfp4">NVFP4</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.stateDt"></span><select data-bind="inf.stateDt" data-i18n-attr="aria-label=infer.rack.attr.inf.stateDt.aria-label"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
     <label class="check"><input type="checkbox" data-bind="inf.graph"><span data-i18n="infer.rack.ctl.inf.graph"></span></label>
     <label class="check"><input type="checkbox" data-bind="inf.tbo"><span data-i18n="infer.rack.ctl.inf.tbo"></span></label>
@@ -149,6 +150,23 @@
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.reserveGB"></span><input type="number" step="1" min="0" data-bind="inf.reserveGB"></label>
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.hostSyncUs"></span><input type="number" step="5" min="0" data-bind="inf.hostSyncUs"></label>
     </details>
+  </div>
+
+  <!-- 推理 · KV cache：agent 会话和缓存层级 -->
+  <div data-rack="infer/kv">
+    <h3 data-i18n="kv.rack.h3"></h3>
+    <label class="ctl"><span data-i18n="kv.rack.sys"></span><input type="number" min="0" step="1024" data-bind="kv.sys"></label>
+    <label class="ctl"><span data-i18n="kv.rack.turnIn"></span><input type="number" min="1" step="256" data-bind="kv.turnIn"></label>
+    <label class="ctl"><span data-i18n="kv.rack.turnOut"></span><input type="number" min="1" step="128" data-bind="kv.turnOut"></label>
+    <label class="ctl"><span data-i18n="kv.rack.turns"></span><input type="number" min="1" max="1000" step="1" data-bind="kv.turns"></label>
+    <label class="ctl"><span data-i18n="kv.rack.sessions"></span><input type="number" min="1" step="8" data-bind="kv.sessions"></label>
+    <h3 data-i18n="kv.rack.h3_2"></h3>
+    <label class="ctl"><span data-i18n-html="kv.rack.hostGB"></span><input type="number" min="0" step="16" data-bind="kv.hostGB"></label>
+    <label class="ctl"><span data-i18n-html="kv.rack.remoteGB"></span><input type="number" min="0" step="64" data-bind="kv.remoteGB"></label>
+    <label class="check"><input type="checkbox" data-bind="kv.inclusive"><span data-i18n="kv.rack.inclusive"></span></label>
+    <label class="ctl"><span data-i18n="kv.rack.replicas"></span><input type="number" min="1" step="1" data-bind="kv.replicas"></label>
+    <label class="ctl"><span data-i18n="kv.rack.routing"></span><select data-bind="kv.routing" data-i18n-attr="aria-label=kv.rack.routing"><option value="aware" data-i18n="kv.rack.opt.aware"></option><option value="random" data-i18n="kv.rack.opt.random"></option></select></label>
+    <p class="hint" data-i18n-html="kv.rack.hint"></p>
   </div>
 
   <!-- 训练 -->
@@ -747,6 +765,41 @@
   <div class="block"><h2 data-i18n="spec.b7.h2"></h2><div id="s-rl"></div></div>
 </section>
 
+<!-- ============ 推理 · KV cache ============ -->
+<section class="pane" data-pane="infer/kv" hidden>
+  <div class="block"><h2 data-i18n="kv.b1.h2"></h2>
+    <p class="lede" id="kv-lede"></p>
+    <div class="kpis" id="kv-kpis"></div>
+  </div>
+  <div class="block" id="kv-space-b"><h2 data-i18n="kv.b2.h2"></h2>
+    <p class="lede" data-i18n-html="kv.b2.lede"></p>
+    <div class="fig"><svg id="kv-space" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=kv.b2.aria"></svg></div>
+    <div class="tbl"><table id="kv-layers"></table></div>
+    <div class="tbl"><table id="kv-dt"></table></div>
+    <div class="hint" id="kv-space-read"></div>
+  </div>
+  <div class="block" id="kv-hit-b"><h2 data-i18n="kv.b3.h2"></h2>
+    <p class="lede" data-i18n-html="kv.b3.lede"></p>
+    <div class="fig"><svg id="kv-hit" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=kv.b3.aria"></svg></div>
+    <div class="bar" id="kv-bar"></div><div class="barlist" id="kv-barlist"></div>
+    <div class="hint" id="kv-hit-read"></div>
+  </div>
+  <div class="block" id="kv-turn-b"><h2 data-i18n="kv.b4.h2"></h2>
+    <p class="lede" id="kv-turn-lede"></p>
+    <div class="fig"><svg id="kv-turn" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=kv.b4.aria"></svg></div>
+    <div class="hint" id="kv-turn-read"></div>
+  </div>
+  <div class="block" id="kv-eng-b"><h2 data-i18n="kv.b5.h2"></h2>
+    <p class="lede" data-i18n-html="kv.b5.lede"></p>
+    <div class="tbl"><table id="kv-eng"></table></div>
+    <div id="kv-eco"></div>
+  </div>
+  <div class="block" data-src="measured"><h2 data-i18n="kv.b6.h2"></h2>
+    <p class="lede" data-i18n="kv.b6.lede"></p>
+    <div class="tbl"><table id="kv-pub"></table></div>
+  </div>
+</section>
+
 <!-- ============ 推理 · 和实测对照 ============ -->
 <section class="pane" data-pane="infer/calib" hidden>
   <div class="block" id="i-calib-main" data-src="both"><h2 data-i18n="calib.inf.h2"></h2>
@@ -1070,6 +1123,7 @@
 <script src="locales/zh/infer.js"></script>
 <script src="locales/zh/tradeoff.js"></script>
 <script src="locales/zh/spec.js"></script>
+<script src="locales/zh/kv.js"></script>
 <script src="locales/zh/config.js"></script>
 <script src="locales/zh/quant.js"></script>
 <script src="locales/zh/rl.js"></script>
@@ -1080,6 +1134,7 @@
 <script src="locales/zh/engine_train.js"></script>
 <script src="locales/zh/engine_par.js"></script>
 <script src="locales/zh/engine_quant.js"></script>
+<script src="locales/zh/engine_kv.js"></script>
 <script src="locales/zh/data.js"></script>
 <script src="src/engine/msg.js"></script>
 <script src="src/engine/common.js"></script>
@@ -1090,6 +1145,7 @@
 <script src="src/engine/arch.js"></script>
 <script src="src/engine/calib.js"></script>
 <script src="src/engine/trace.js"></script>
+<script src="src/engine/kv.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
 <script src="src/plane/scouter.js"></script>
@@ -1111,6 +1167,7 @@
 <script src="src/ui/releases.js"></script>
 <script src="src/ui/overview.js"></script>
 <script src="src/ui/spec.js"></script>
+<script src="src/ui/kv.js"></script>
 <script src="src/ui/rl.js"></script>
 <script src="src/ui/shell.js"></script>
 <script src="src/ui/app.js"></script>

@@ -12,6 +12,7 @@
 //   node tools/scouter.js eff                                       per-kernel-class efficiency table and the data point behind each cell
 //   node tools/scouter.js calib    --set h200_kernels --basis ideal  model against measured points (also cookbook_tpot, cookbook_ttft)
 //   node tools/scouter.js serve    --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   closed-loop benchmark estimate
+//   node tools/scouter.js kv       --model qwen35 --hw H200 --N 8 --sessions 128 --hostGB 200   KV cache: bytes, hit rate, TTFT per turn
 //   node tools/scouter.js trace    --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   measured kernels by category
 // Options: --model --hw --topo pick the tables; --basis ideal|modeled (default modeled); --g.<key> overrides one efficiency
 // parameter; --pick a,b.c keeps only those fields; --over.<key> v1,v2 and --where.<key> v are lists and filters. Every other

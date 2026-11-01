@@ -35,6 +35,8 @@ PUBLIC = {
  "sglang_cookbook": dict(file="sglang_cookbook.json", stage="infer", title="推理：SGLang cookbook 的公开测速",
    conditions="sgl-project/sglang 文档里各模型的 benchmarks 文件（tools/import_cookbook.py 钉在一个 commit 上导入）：随机 token 输入、ignore_eos、"
    "并发固定的闭环压测；TTFT / TPOT 是均值，tok/s/GPU 含输入 token。接受长度由 SGLANG_SIMULATE_ACC_LEN 定死的行只说明吞吐机制。"),
+ "kv_public": dict(file="kv.json", stage="infer", title="KV cache：前缀缓存、分层存储与缓存感知路由的公开数字",
+   conditions="各家公布的数字，模型、负载和测法各不相同，只看量级和方向。"),
  "releases": dict(file="releases.json", stage="meta", title="过去一年的发布与博客",
    conditions="LMSYS 博客，SGLang / vLLM / slime / Miles / AReaL 的 GitHub release；只摘和推理、训练、低精度、投机解码、RL 相关的要点。"),
 }

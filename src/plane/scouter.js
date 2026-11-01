@@ -58,7 +58,13 @@ function serve(q){
   q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Infer.BASE, rest(q));
   return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, Infer.serve(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
 }
-const RUN = { roofline, infer, train, module, serve };
+/* KV cache（KV.plan）：每种层每个 token / 每个请求存多少、agent 多轮会话在 HBM / 主机内存 / 远端池里的驻留比例、命中率和每轮 TTFT；
+   覆盖 Infer.BASE 和 KV.BASE（会话形状、缓存层级、路由） */
+function kv(q){
+  q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Infer.BASE, KV.BASE, rest(q));
+  return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, KV.plan(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
+}
+const RUN = { roofline, infer, train, module, serve, kv };
 /* 扫参：run 是上面的一个函数名，over 的每个字段给一组值（多个字段取笛卡儿积），pick 选出每一行要的字段 */
 function sweep(q){
   q = q || {}; const f = pick(RUN, q.run || "infer", "run"), over = q.over || {}, keys = Object.keys(over);
@@ -134,9 +140,9 @@ function catalog(){
   return { version: VERSION, sources: SOURCES, basis: BASIS,
     models: Object.fromEntries(Object.keys(MODELS).map(k => [k, { name: MODELS[k].name, family: MODELS[k].family }])),
     hw: HW, topo: TOPO, engines: Object.keys(Infer.ENGINES), spec: Object.keys(Infer.SPEC), prec: Object.keys(Train.PREC), epBackends: Object.keys(Par.EP),
-    quant: Quant.ORDER, defaults: { infer: Infer.BASE, train: Train.BASE, module: Arch.defaults(MODELS.qwen35) },
+    quant: Quant.ORDER, defaults: { infer: Infer.BASE, kv: KV.BASE, train: Train.BASE, module: Arch.defaults(MODELS.qwen35) },
     runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
 }
 
-return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, sweep, sets, points, kernels, eff, calib, trace });
+return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, kv, sweep, sets, points, kernels, eff, calib, trace });
 })();

@@ -20,6 +20,7 @@ node tools/scouter.js catalog                                    # models, GPUs,
 node tools/scouter.js infer  --model kimik3 --hw B300 --N 8 --B 64 --pick stepT,tComp,tComm,bound
 node tools/scouter.js train  --model qwen35 --fw megatron --ep 8 --pick stepT,mfu,mem.used
 node tools/scouter.js serve  --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024 --pick tpot,ttft0
+node tools/scouter.js kv     --model qwen35 --hw H200 --N 8 --sessions 256 --hostGB 200 --pick hitRate,ttft,frac
 node tools/scouter.js sweep  --run infer --model qwen35 --over.B 1,8,64,256 --pick stepT
 node tools/scouter.js calib  --set cookbook_tpot --pick median,n   # model vs. measured points
 node tools/scouter.js trace  --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json
@@ -33,6 +34,7 @@ In Node: `const { Scouter } = require("./src/plane/node.js")();`. Collective tra
 |---|---|
 | Model / GPU / topology tables, roofline, collectives, `G0` (modeled) and `IDEAL` (lower bound) | `src/engine/common.js` |
 | Inference step, `serve` | `src/engine/infer.js` |
+| KV cache: bytes per layer type, prefix hits across tiers, TTFT per turn | `src/engine/kv.js` |
 | Training step | `src/engine/train.js`, `src/engine/par.js` |
 | Calibration against measured sets | `src/engine/calib.js` |
 | Public / anonymized data points | `data/public/*.json`, `data/anon/*.json`, then `uv run --no-project tools/build_db.py` |

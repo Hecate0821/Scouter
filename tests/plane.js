@@ -41,8 +41,9 @@ for (const model of Object.keys(cat.models)) for (const hw of Object.keys(cat.hw
       trn: bad(`train ${model} ${hw} ${basis}`, S.train(Object.assign({ basis }, q))),
       mod: bad(`module ${model} ${hw} ${basis}`, S.module(Object.assign({ basis }, q))),
       srv: bad(`serve ${model} ${hw} ${basis}`, S.serve(Object.assign({ basis, N: 8, conc: 32, isl: 2048, osl: 512 }, q))),
+      kv: bad(`kv ${model} ${hw} ${basis}`, S.kv(Object.assign({ basis, N: 8, sessions: 256, turns: 20 }, q))),
     };
-    n += 6;
+    n += 7;
   }
   const slower = (a, b, what) => { if (!(a <= b * (1 + 1e-9))) problems.push(`${model} ${hw}: ideal ${what} ${a} > modeled ${b}`); };
   slower(r.ideal.inf.stepT, r.modeled.inf.stepT, "decode step");
@@ -50,6 +51,9 @@ for (const model of Object.keys(cat.models)) for (const hw of Object.keys(cat.hw
   slower(r.ideal.trn.stepT, r.modeled.trn.stepT, "train step");
   slower(r.ideal.roof.kernel.t, r.modeled.roof.kernel.t, "kernel");
   slower(r.ideal.srv.tpot, r.modeled.srv.tpot, "serve TPOT");
+  slower(r.ideal.kv.ttft, r.modeled.kv.ttft, "kv TTFT per turn");
+  slower(r.ideal.kv.ttftHit, r.modeled.kv.ttftHit, "kv TTFT on a hit");
+  if (!(r.ideal.kv.hitRate >= r.modeled.kv.hitRate - 1e-9)) problems.push(`${model} ${hw}: ideal kv hit rate below modeled`);
   for (const k of Object.keys(r.ideal.mod.measure.mods)) slower(r.ideal.mod.measure.mods[k].t, r.modeled.mod.measure.mods[k].t, "module " + k);
 }
 // the per-kernel efficiency table: every cell points at a data point whose value / peak is that η, and every public row marked
@@ -86,6 +90,23 @@ for (const p of ALL) if (p.set === "kernel_public" && p.keff && KEFF.filter(r =>
 // serve: one request alone has no prefill interference; more concurrency never lowers TPOT
 const one = S.serve({ model: "kimik3", hw: "B300", N: 8, conc: 1 }), many = S.serve({ model: "kimik3", hw: "B300", N: 8, conc: 64 });
 if (one.interf !== 0 || !(many.tpot > one.tpot) || !(many.tokPerGpu > one.tokPerGpu)) problems.push("serve: concurrency should raise TPOT and throughput, and conc 1 has no interference");
+// kv: hits never cost more than recomputing; hit rate falls with sessions and rises with a host tier; random routing over
+// replicas cuts local hits; vLLM puts linear-attention states on blocks at least one state page long; sliding windows cap at W
+{
+  const base = { model: "qwen35", hw: "H200", N: 8 }, r = S.kv(base);
+  for (const x of r.turns) if (!(x.hbm <= x.miss * (1 + 1e-9) && x.miss <= x.none * (1 + 1e-9))) problems.push(`kv: turn ${x.t} hit ${x.hbm} / miss ${x.miss} / none ${x.none} out of order`);
+  for (let i = 1; i < r.sweep.length; i++) if (r.sweep[i].hitRate > r.sweep[i - 1].hitRate + 1e-12) problems.push("kv: hit rate rose with more sessions");
+  const busy = Object.assign({ sessions: 4096 }, base), hbm = S.kv(Object.assign({ hostGB: 0 }, busy)), host = S.kv(Object.assign({ hostGB: 400 }, busy));
+  if (!(host.hitRate > hbm.hitRate)) problems.push("kv: a host tier should raise the hit rate once HBM is full");
+  const rnd = S.kv(Object.assign({ replicas: 4, routing: "random" }, base));
+  if (Math.abs(rnd.frac.hbm + rnd.frac.host - (r.frac.hbm + r.frac.host) / 4) > 1e-9) problems.push("kv: random routing over 4 replicas should keep 1/4 of local hits");
+  const v = S.kv({ model: "qwen35", hw: "H200", N: 1, engine: "vllm" }), per = v.perTok;
+  if (v.page % 16 || v.page * per.kvTokRank < per.snap / v.layers.lin || v.gran !== v.page) problems.push(`kv: vLLM hybrid block ${v.page} should hold one state page`);
+  if (S.kv({ model: "qwen35", hw: "H200", N: 1, engine: "tokenspeed" }).gran !== 1) problems.push("kv: TokenSpeed tails should hit at the exact turn end");
+  const sw = S.kv({ model: "musespark", hw: "B300", N: 8 }), at = L => sw.space.find(x => x.L === L);
+  if (sw.perTok.W <= 0 || at(1048576).swa !== at(65536).swa) problems.push("kv: sliding-window bytes should stop growing past the window");
+  n += 9;
+}
 const cli = args => JSON.parse(execFileSync(process.execPath, [path.join(ROOT, "tools/scouter.js"), ...args], { encoding: "utf8" }));
 // trace: common public kernel names land in the right category, and a trace built from the engine's own step compares at 1.0
 const NAMES = { comm: ["ncclDevKernel_AllReduce_Sum_bf16_RING_LL", "cross_device_reduce_1stage", "deep_ep::internode_ll::dispatch"],

@@ -59,6 +59,7 @@ node tools/scouter.js eff                                        # the per-kerne
 node tools/scouter.js calib  --set h200_kernels --basis ideal    # the model replaying measured points
 node tools/scouter.js calib  --set cookbook_tpot                 # SGLang cookbook benchmark rows against serve
 node tools/scouter.js serve  --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   # closed-loop benchmark estimate
+node tools/scouter.js kv     --model qwen35 --hw H200 --N 8 --sessions 256 --hostGB 200       # KV cache of multi-turn agent sessions
 node tools/scouter.js trace  --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   # a profiler trace by kernel category
 echo '{"model":"kimik3","hw":"GB300","topo":"nvl64","B":256}' | node tools/scouter.js infer --json -
 ```
@@ -97,7 +98,8 @@ printed as the string `"Infinity"`.
 | `train` | `stepT`, `mfu`, `tokPerGpu`, `ops[]` (`fwd` / `dgrad` / `wgrad` each with time), `comm[]`, `mem`, `warn[]`, `query.cfg`. |
 | `module` | `measure.mods.<full\|lin\|moe\|dense>` with `t`, `flops`, `bytes`, `byBound` and `ops[]` for one layer; `modules`; `facts`. |
 | `serve` | A closed-loop benchmark of `conc` requests with `isl` input and `osl` output tokens: `tpot` (decode step plus the prefills of the other requests spread over the `osl − 1` decode steps, `tpotDecode` + `interf`; TPOT is (E2E − TTFT) / (osl − 1) as in bench_serving and genai-bench), `ttft0` (unloaded prefill), `tokPerGpu` (input + output tokens per second per GPU, the SGLang cookbook convention), `outTokPerS`, `N`, `mem`, `warn[]`. |
-| `sweep` | `rows[]`: the varied keys plus the picked fields. `run` can be `roofline`, `infer`, `train`, `module` or `serve`. |
+| `kv` | KV cache of multi-turn agent sessions (config = `Infer.BASE` + `KV.BASE`: `sys`, `turnIn`, `turnOut`, `turns`, `sessions`, `hostGB`, `remoteGB`, `inclusive`, `replicas`, `routing`). All bytes per GPU. `perTok` (`full` KV per token over full-attention layers, `swa` per token over sliding-window layers capped at `W`, `snap` = one linear-attention state snapshot), `page` (physical block; vLLM enlarges it for hybrid models until one attention page holds one state page) and `gran` (where the next turn can hit), `ws1` (bytes a session leaves between turns), `cap` / `fit` per tier, `frac` (`hbm`, `host`, `remote`, `miss`: share of sessions, capacity / working set as in the Che approximation), `hitRate` (by input tokens), `ttft` / `ttftNone` / `ttftHit` (mean per turn), `turns[]` (per sampled turn: `hbm`, `host`, `remote`, `miss`, `none` TTFT and the load times), `sweep[]` over sessions, `space[]` over context, `dtypes[]`. |
+| `sweep` | `rows[]`: the varied keys plus the picked fields. `run` can be `roofline`, `infer`, `train`, `module`, `serve` or `kv`. |
 | `sets` | Per set: `origin`, `stage`, `confidence`, `asOf`, hardware, size, dims, metrics, and the `calib` sets that use it. |
 | `points` | `meta` (title, origin, stage, hardware, conditions) and `points[]`. Public points carry `src` and `url`. |
 | `kernels` | `points[]` (`op`, `I`, `TFLOPs`, `GBs`, and the SOL efficiencies `etaC` = FLOPs / time / peak and `etaM` = bytes / time / HBM peak), `measured` (the best of each), `profile` (how the set was measured), and the `ideal` and `modeled` rooflines. `--set` picks another kernel set (for example one made by `tools/import_ncu.py`); `points` with `hw` and `dtype` passes points directly. |

@@ -48,8 +48,9 @@ const problems = [];
     ["infer/step", "Infer.step(S.model,HW[S.hw],TOPO[S.topo],S.inf,S.glob).stepT", () => setSel("[data-bind='inf.engine']", "vllm")],
     ["train/step", "Train.run(S.model,HW[S.hw],TOPO[S.topo],Object.assign({N:TOPO[S.topo].gpus},S.trn),S.glob).stepT", () => setSel("[data-bind='trn.fw']", "torchtitan")],
     ["arch/module", "Arch.measure(S.model,HW[S.hw],S.glob,S.arch).mods.full.t", () => setSel("[data-bind='arch.phase']", "prefill")],
+    ["infer/kv", "KV.plan(S.model,HW[S.hw],TOPO[S.topo],Object.assign({},S.inf,S.kv),S.glob).ttft", () => setSel("[data-bind='kv.routing']", "random")],
   ];
-  const PICK = { infer: "stepT", train: "stepT", module: "measure.mods.full.t" };
+  const PICK = { infer: "stepT", train: "stepT", module: "measure.mods.full.t", kv: "ttft" };
   setSel("#g-model", "kimik3"); setSel("#g-hw", "B200");
   for (const [view, expr, tweak] of CASES) for (const s of ["modeled", "ideal"]) {
     go(view); tweak(); src(s);

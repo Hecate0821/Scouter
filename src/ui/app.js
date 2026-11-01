@@ -1,12 +1,12 @@
 /* ---------- 页面与渲染：hash = 页 / 子页 / 锚点 ---------- */
 I18N.apply(document);
-const NAV = { overview:[], arch:["overview","module","compare"], train:["step","par","quant","calib"], infer:["step","deploy","quant","spec","calib"], rl:["mismatch","determinism","lowprec","qat"], appendix:["data","quant","method"] };
+const NAV = { overview:[], arch:["overview","module","compare"], train:["step","par","quant","calib"], infer:["step","deploy","quant","spec","kv","calib"], rl:["mismatch","determinism","lowprec","qat"], appendix:["data","quant","method"] };
 const OLD = { models:"arch/overview", "appendix/models":"arch/overview", par:"train/par", "par/calib":"train/calib", quant:"infer/quant", public:"appendix/data", method:"appendix/method" };   // 旧的七个 tab
 const VIEW = {
   "overview": renderOverview,
   "arch/overview": renderArchOverview, "arch/module": renderArchModule, "arch/compare": renderArchCompare,
   "train/step": renderTrain, "train/par": ()=>{ syncTrnRack(); renderTrnComm(); renderPar(); }, "train/quant": renderQuantTrain, "train/calib": renderCalib,
-  "infer/step": renderInfer, "infer/deploy": ()=>{ syncInfRack(); renderInfComm(); renderInferTO(); }, "infer/quant": renderQuantInfer, "infer/spec": ()=>{ syncInfRack(); renderSpec(); }, "infer/calib": renderInfCalib,
+  "infer/step": renderInfer, "infer/deploy": ()=>{ syncInfRack(); renderInfComm(); renderInferTO(); }, "infer/quant": renderQuantInfer, "infer/spec": ()=>{ syncInfRack(); renderSpec(); }, "infer/kv": ()=>{ syncInfRack(); renderKV(); }, "infer/calib": renderInfCalib,
   "rl/mismatch": renderMismatch, "rl/determinism": renderDeterminism, "rl/lowprec": renderLowprec, "rl/qat": renderQat,
   "appendix/data": ()=>{ renderKernels(); renderEff(); renderPublic(); renderReleases(); renderDB(); }, "appendix/quant": renderFormats, "appendix/method": ()=>{} };
 const lastSub = {};

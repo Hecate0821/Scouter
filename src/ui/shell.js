@@ -89,6 +89,7 @@ function planeCall(){
   if(S.src === "measured" || key === "appendix/data") return ["sets", {}];
   if(key.startsWith("arch/")){ const a = Object.assign({}, S.arch); delete a.mod; return ["module", calc(diffOf(a, Arch.defaults(S.model)))]; }
   if(key.startsWith("train/")) return ["train", calc(diffOf(S.trn, Object.assign({}, Train.BASE, { N: TOPO[S.topo].gpus })))];
+  if(key === "infer/kv") return ["kv", calc(Object.assign(diffOf(S.inf, Infer.BASE), diffOf(S.kv, KV.BASE)))];
   if(key.startsWith("infer/") || key === "overview") return ["infer", calc(diffOf(S.inf, Infer.BASE))];
   return ["roofline", { hw: S.hw, ...(basis === "ideal" ? { basis } : {}) }];
 }

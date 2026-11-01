@@ -35,7 +35,7 @@ const load = require("./load");
       setSel("[data-bind='inf.phase']", "decode");
       snap[m + " rack " + eng] = { text: norm(rack.textContent) };
       go("infer/deploy"); take(`${m} infer/deploy ${eng}`, "infer/deploy");
-      go("infer/spec"); take(`${m} infer/spec ${eng}`, "infer/spec");
+      go("infer/spec"); take(`${m} infer/spec ${eng}`, "infer/spec"); go("infer/kv"); take(`${m} infer/kv ${eng}`, "infer/kv");
     }
     setSel("[data-bind='inf.engine']", "sglang");
   }

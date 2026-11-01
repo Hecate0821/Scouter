@@ -37,7 +37,7 @@ The top-bar switch (and `--basis` on the CLI) picks where a number comes from:
 | Overview | One decode step and one post-training step of the same model, side by side. |
 | Model architecture | Layer stack, per-module roofline and knobs, mechanism diagrams, and all models compared. |
 | Post-training | One step (fwd / dgrad / wgrad, recompute, comm, optimizer, memory), parallelism, low-precision recipes. |
-| Inference | Decode / prefill, deployment and parallelism, low precision, speculative decoding, and checks against the SGLang cookbook and your own profiler trace. |
+| Inference | Decode / prefill, deployment and parallelism, low precision, speculative decoding, the KV cache (bytes per layer type, prefix hit rate of multi-turn agent sessions across HBM / host / remote tiers, how SGLang, vLLM, TRT-LLM and TokenSpeed manage it), and checks against the SGLang cookbook and your own profiler trace. |
 | RL | Train/inference mismatch, deterministic rollout, low-precision rollout and QAT. |
 | Appendix | Measured kernels vs. the rooflines, the efficiency table, public data points, and the modeling method. |
 
