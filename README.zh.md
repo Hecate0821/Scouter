@@ -26,7 +26,7 @@ cd tests && npm install && npm test
 
 | 口径 | 含义 |
 |---|---|
-| **理想下限** | 这个配置不可能更快的时间：按峰值、没有固定开销、只算必须搬的流量，一步不短于关键路径和每种资源的总量。所有校准实测点都在它之上。约定参考 [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator)（Apache-2.0），推广到所有模型。 |
+| **理想下限** | 这个配置不可能更快的时间：按峰值、没有固定开销、只算必须搬的流量，一步不短于关键路径和每种资源的总量。所有校准实测点都在它之上。约定参考 [k3-inference-calculator](#致谢)，推广到所有模型。 |
 | **现实建模**（默认） | 尽量贴近现实：按 kernel 类别的可达效率、launch 和同步开销、期望碰到的 expert、负载不均、各引擎实际用的集合通信。 |
 | **实测** | 只看数据点：公开数字（带出处链接）和匿名实测。 |
 
@@ -65,6 +65,19 @@ tests/                      Node 检查：计算核心、数据平面、FLOPs、
 - [docs/modeling.md](docs/modeling.md)：每类 kernel 参考的实现、roofline 公式、校准、数据点格式（英文）。
 - [docs/engine.md](docs/engine.md)、[docs/i18n.md](docs/i18n.md)：计算核心和文字的约定。
 
-## 来源
+## 致谢
 
-以 SGLang、vLLM、TensorRT-LLM、Megatron-LM、torchtitan、TorchRL、slime、Miles、AReaL 的公开代码、PR、文档，以及公开博客和论文为准；每个模块页都链接到它参考的代码。机制示意图复现了 [Attention Lab](https://divagr.com/attention-lab/) 的可视化思路。
+Scouter 建立在这些开源项目公开的代码、PR、文档和基准之上；公开博客和论文则标在它们支撑的数字旁边。每个模块页和数据点都链接到具体出处。列在这里不代表这些项目审阅或认可过 Scouter 的数字。
+
+| 方向 | 项目 |
+|---|---|
+| 推理引擎 | [SGLang](https://github.com/sgl-project/sglang), [vLLM](https://github.com/vllm-project/vllm), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), [TokenSpeed](https://github.com/lightseekorg/tokenspeed), [DeepInfer](https://github.com/deepseek-ai/DeepInfer) |
+| 训练和 RL | [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), [torchtitan](https://github.com/pytorch/torchtitan), [TorchRL](https://github.com/pytorch/rl), [slime](https://github.com/THUDM/slime), [Miles](https://github.com/radixark/miles), [AReaL](https://github.com/areal-project/AReaL), [PyTorch](https://github.com/pytorch/pytorch) |
+| Kernel | [FlashAttention](https://github.com/Dao-AILab/flash-attention), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [FlashMLA](https://github.com/deepseek-ai/FlashMLA), [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM), [flash-linear-attention](https://github.com/fla-org/flash-linear-attention), [CUTLASS](https://github.com/NVIDIA/cutlass), [TransformerEngine](https://github.com/NVIDIA/TransformerEngine), [Liger-Kernel](https://github.com/linkedin/Liger-Kernel), [ring-flash-attention](https://github.com/zhuzilin/ring-flash-attention) |
+| MoE 并行 | [DeepEP](https://github.com/deepseek-ai/DeepEP), [dist_moe](https://github.com/meta-pytorch/dist_moe), [mixture-of-kittens](https://github.com/cursor/mixture-of-kittens) |
+| KV cache | [Dynamo](https://github.com/ai-dynamo/dynamo), [LMCache](https://github.com/LMCache/LMCache), [Mooncake](https://github.com/kvcache-ai/Mooncake), [llm-d](https://github.com/llm-d/llm-d) |
+| 低精度、投机解码 | [torchao](https://github.com/pytorch/ao), [SpecForge](https://github.com/sgl-project/SpecForge) |
+| 基准和 profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
+| 模型结构 | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
+| 理想下限 | [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0) |
+| 机制示意图 | [Attention Lab](https://divagr.com/attention-lab/) |

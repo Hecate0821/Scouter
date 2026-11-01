@@ -26,7 +26,7 @@ The top-bar switch (and `--basis` on the CLI) picks where a number comes from:
 
 | Source | Meaning |
 |---|---|
-| **Ideal lower bound** | The time this configuration cannot beat: peak throughput, no overheads, only necessary traffic, and a step at least as long as the critical path and each resource's total. It stays below every measured calibration point. Conventions follow [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0), generalized to all models. |
+| **Ideal lower bound** | The time this configuration cannot beat: peak throughput, no overheads, only necessary traffic, and a step at least as long as the critical path and each resource's total. It stays below every measured calibration point. Conventions follow [k3-inference-calculator](#acknowledgements), generalized to all models. |
 | **Modeled** (default) | As close to reality as the model gets: per-kernel-class efficiency, launch and sync costs, expected expert coverage, load imbalance, and the collectives each engine actually uses. |
 | **Measured** | Data points only: public numbers (with source links) and anonymized measurements. |
 
@@ -65,6 +65,19 @@ tests/                      Node checks: engine, plane, FLOPs, sim, i18n, shell,
 - [docs/modeling.md](docs/modeling.md): what each kernel follows, the roofline formulas, calibration and the data-point format.
 - [docs/engine.md](docs/engine.md), [docs/i18n.md](docs/i18n.md): engine and text conventions (Chinese).
 
-## Sources
+## Acknowledgements
 
-Ground truth is the public code, PRs and docs of SGLang, vLLM, TensorRT-LLM, Megatron-LM, torchtitan, TorchRL, slime, Miles and AReaL, plus public blogs and papers. Every module page links to the code its assumptions follow. Mechanism diagrams reimplement the visual ideas of [Attention Lab](https://divagr.com/attention-lab/).
+Scouter is built on what these open-source projects publish: their code, PRs, docs and benchmarks. Public blogs and papers are cited next to the numbers they support. Every module page and data point links to the exact source. Being listed here does not mean a project has reviewed or endorsed Scouter's numbers.
+
+| Area | Projects |
+|---|---|
+| Inference engines | [SGLang](https://github.com/sgl-project/sglang), [vLLM](https://github.com/vllm-project/vllm), [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), [TokenSpeed](https://github.com/lightseekorg/tokenspeed), [DeepInfer](https://github.com/deepseek-ai/DeepInfer) |
+| Training and RL | [Megatron-LM](https://github.com/NVIDIA/Megatron-LM), [torchtitan](https://github.com/pytorch/torchtitan), [TorchRL](https://github.com/pytorch/rl), [slime](https://github.com/THUDM/slime), [Miles](https://github.com/radixark/miles), [AReaL](https://github.com/areal-project/AReaL), [PyTorch](https://github.com/pytorch/pytorch) |
+| Kernels | [FlashAttention](https://github.com/Dao-AILab/flash-attention), [FlashInfer](https://github.com/flashinfer-ai/flashinfer), [FlashMLA](https://github.com/deepseek-ai/FlashMLA), [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM), [flash-linear-attention](https://github.com/fla-org/flash-linear-attention), [CUTLASS](https://github.com/NVIDIA/cutlass), [TransformerEngine](https://github.com/NVIDIA/TransformerEngine), [Liger-Kernel](https://github.com/linkedin/Liger-Kernel), [ring-flash-attention](https://github.com/zhuzilin/ring-flash-attention) |
+| MoE parallelism | [DeepEP](https://github.com/deepseek-ai/DeepEP), [dist_moe](https://github.com/meta-pytorch/dist_moe), [mixture-of-kittens](https://github.com/cursor/mixture-of-kittens) |
+| KV cache | [Dynamo](https://github.com/ai-dynamo/dynamo), [LMCache](https://github.com/LMCache/LMCache), [Mooncake](https://github.com/kvcache-ai/Mooncake), [llm-d](https://github.com/llm-d/llm-d) |
+| Low precision, speculative decoding | [torchao](https://github.com/pytorch/ao), [SpecForge](https://github.com/sgl-project/SpecForge) |
+| Benchmarks and profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
+| Model layouts | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
+| Ideal lower bound | [k3-inference-calculator](#acknowledgements) |
+| Mechanism diagrams | [Attention Lab](https://divagr.com/attention-lab/) |

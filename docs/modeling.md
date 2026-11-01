@@ -29,7 +29,7 @@ The roofline model:
 - **Kernel-level overheads:** 0.45 µs of idle time between kernels inside a CUDA graph, removed by programmatic dependent launch (`pdl`), following [vLLM #64846](https://github.com/vllm-project/vllm/pull/64846) and [FlashInfer #8135](https://github.com/flashinfer-ai/flashinfer/pull/8135); NVFP4 / MXFP4 MoE pads the expert hidden size to a multiple of 256 on Blackwell, following [vLLM #39510](https://github.com/vllm-project/vllm/pull/39510).
 - **Serving benchmark:** `serve` runs `conc` requests with `isl` input and `osl` output tokens in a closed loop. TPOT is the decode step plus the other requests' prefills spread over the output. Against the 16 calibratable SGLang cookbook rows (GLM-5.3-Flash on GB300, Kimi K3 on B300; rows that are a single burst of requests are left out), the median predicted / measured TPOT is 1.00 and 10 rows are within ±25%. MTP at concurrency 1 is about 2.3× too fast, because per-step scheduling and draft overheads are not modeled. Measured TTFT is 95–185 ms above the model, which covers only GPU time.
 
-The mechanism diagrams reimplement the visual ideas of [Attention Lab](https://divagr.com/attention-lab/), credited under each diagram.
+The mechanism diagrams reimplement the visual ideas of Attention Lab, credited under each diagram and in the [README](../README.md#acknowledgements).
 
 ## Data points
 
