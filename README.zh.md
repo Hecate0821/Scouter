@@ -16,8 +16,8 @@
 
 - **左侧栏**：按页分组，按 `/` 搜索。
 - **顶栏**：模型、GPU、拓扑，以及**口径**开关：
-  - **理想屋顶**：硬件 roofline，按峰值、没有固定开销；
-  - **建模**：可达效率加固定开销，按开源引擎的默认做法（默认）；
+  - **理想下限**：这个配置不可能更快的时间。每个算子按峰值、没有固定开销，只算必须搬的流量：不补齐 CUDA graph、只读一定会碰到的 expert、负载完全均衡、all-reduce 按消息的 1×。一步至少是关键路径和各资源总量（计算、HBM、通信）里最大的那个，重叠不会把共用的带宽藏掉。口径参考 [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator)（Apache-2.0），这里推广到所有模型。它在所有校准数据集里都低于实测（最多是实测的 0.88）；
+  - **现实建模**：尽量贴近现实（默认）：按 kernel 类别的可达效率、launch 和同步的固定开销、均匀路由下期望碰到的 expert、负载不均、引擎实际用的通信算法；
   - **实测**：只看公开来源和匿名实测的数据点。
 - **右侧参数栏**：这一页的控件。
 - **命令行 / JSON 按钮**：显示这一页背后的 `Scouter.*` 调用，分别是 `tools/scouter.js` 命令和它的输出。
@@ -29,7 +29,7 @@
 | 总览 | 同一个模型的推理一步 decode 和后训练一个 step 并排对比。 |
 | 模型架构 | **模型总览**：层的排布（全注意力 / 滑窗 / 线性注意力，MoE / dense MLP）、每个模块一张卡片、参数量、KV 与状态缓存随上下文的变化。**一个模块**：机制示意图，架构旋钮（滑块），这个模块随 batch、上下文或序列长度变化在 roofline 上的轨迹（改过参数时原预设作为虚影），吞吐曲线，算子表，以及每条假设对应的开源代码。**跨模型对比**：所有模型的模块画在同一张 roofline 上，attention 和 MLP 的曲线，每层时间拆分。 |
 | 后训练 | 一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）；并行（一两层样例里每次通信的顺序和字节，FSDP、CP、EP 一维一维拆开）；低精度训练（只列 Megatron / TE / torchtitan 的默认配方）；和匿名实测对照。 |
-| 推理 | 一步 decode / prefill；部署与并行（TP、DP-attention、EP、PD 分离的取舍）；低精度推理；投机解码（MTP、EAGLE-3、DFlash、DSpark）。**和实测对照**：SGLang cookbook 公开的压测行按闭环压测复现（TPOT、TTFT）；Kimi K3 和 [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) 的解析下限逐模块对照；也可以载入一份 profiler trace，按 kernel 类别和一步的估计逐类对比。 |
+| 推理 | 一步 decode / prefill；部署与并行（TP、DP-attention、EP、PD 分离的取舍）；低精度推理；投机解码（MTP、EAGLE-3、DFlash、DSpark）。**和实测对照**：SGLang cookbook 公开的压测行按闭环压测复现（TPOT、TTFT）；也可以载入一份 profiler trace，按 kernel 类别和一步的估计逐类对比。 |
 | RL | 训推不一致；确定性 rollout（batch invariance、可复现、训推逐位一致）；低精度 rollout 和权重同步；低精度训练与 QAT。 |
 | 附录 | 实测 H200 kernel 和理想 / 建模屋顶的对照（按 Nsight Compute 的 SOL 口径给效率）；按 kernel 类别的效率表和每一格背后的公开数字；公开数据（带可信度）与过去一年的发布；量化基础；建模口径和参考的开源实现。 |
 
@@ -75,7 +75,6 @@ roofline 模型：
 - **按 kernel 类别：** 推理里的 GEMM 和注意力核心按类别、精度和 GPU 代际（Hopper、Blackwell SM100、Blackwell Ultra SM103）查一张小表取效率，每一格写明来自哪个公开或实测数字（比如 B200 上的 cuBLAS BF16、FlashAttention-3 / 4、FlashMLA、DeepGEMM、CUTLASS SM103 NVFP4）。`kEff` 设成 0 就回到统一的 0.7 / 0.8。
 - **kernel 级开销：** CUDA graph 里相邻 kernel 之间空 0.45 µs，开 PDL（`pdl`）就没有（依据 [vLLM #64846](https://github.com/vllm-project/vllm/pull/64846)、[FlashInfer #8135](https://github.com/flashinfer-ai/flashinfer/pull/8135)）；Blackwell 上 NVFP4 / MXFP4 的 MoE 把 expert 隐藏维补齐到 256 的倍数（依据 [vLLM #39510](https://github.com/vllm-project/vllm/pull/39510)）。
 - **压测估计：** `serve` 按闭环压测算：`conc` 条请求并发，每条 `isl` 输入、`osl` 输出；TPOT = decode 一步 + 其他请求的 prefill 摊到输出上。和 SGLang cookbook 里能校准的 16 行（GB300 上的 GLM-5.3-Flash、B300 上的 Kimi K3；一波突发、不是稳态的行不算）比，TPOT 预测 / 实测的中位数 1.00，10 行在 ±25% 以内；并发 1 开 MTP 时快了约 2.3 倍，因为每步的调度和 draft 开销没算。TTFT 实测比本页多 95–185 ms，本页只算 GPU 时间。
-- **和 k3-inference-calculator 对照：** [ByronHsu/k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator)（Apache-2.0）按 SGLang 的实现一个算子一个算子地数 Kimi K3，给下限。两边口径一致的模块，11 个场景里逐模块的 FLOPs 差在 0.1% 以内，decode 的 HBM 字节在 0.95–1.01。步长差在口径不同的地方：它只读确定会被选中的 routed expert、all-reduce 按 1× 字节算，所以 batch 16–256 时本页 ideal 口径的 decode 步长是它的 2.2–3.2 倍。
 
 机制示意图借鉴并重新实现了 [Attention Lab](https://divagr.com/attention-lab/) 的画法，每张图下方注明出处。
 
@@ -133,7 +132,6 @@ tools/build_db.py       生成 data/db.json 和 src/data/db.js
 tools/scouter.js        命令行调用数据平面，输出 JSON
 tools/import_cookbook.py   从固定 commit 的 SGLang cookbook 重新生成 data/public/sglang_cookbook.json
 tools/import_ncu.py     把 Nsight Compute 的原始 CSV 导成一个匿名 kernel 数据集
-tools/import_k3calc.py  导入 k3-inference-calculator 的结果（在它的网页里跑 tools/k3calc_snippet.js 打印出来）
 tools/reduce_trace.py   把很大的 profiler trace（.json / .json.gz）缩成只剩 GPU kernel 事件
 sim/                    独立的 Python 项目：在 CPU gloo 进程上用 PyTorch FSDP2 / TP / EP 跑训练布局，
                         把每一次集合通信记成 JSON trace（sim/README.md）

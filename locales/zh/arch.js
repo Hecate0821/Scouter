@@ -317,7 +317,7 @@ I18N.add("zh", "arch", {
   "src.name.sglK3": "SGLang · models/kimi_k3.py",
   "src.what.sglK3": "Kimi K3 在 SGLang 里的实现：KDA 的低秩 f 门（f_a_proj / f_b_proj）、attention residual 每层两次聚合、MoE 前端合并的 GEMM",
   "src.name.k3calc": "ByronHsu/k3-inference-calculator",
-  "src.what.k3calc": "照上面这个文件逐算子数 Kimi K3 的 roofline 下限（Apache-2.0）；本页逐模块和它对过 FLOPs 与字节（推理 · 和实测对照）",
+  "src.what.k3calc": "照上面这个文件逐算子数 Kimi K3 的 roofline 下限（Apache-2.0）。本页“理想下限”口径的做法参考它：只算一定会碰到的 expert、all-reduce 按 1×、一步取关键路径和各资源总量里最大的，并推广到所有模型",
   "src.name.owc": "NickLucche/open-weights-carousel",
   "src.what.owc": "从 HF config 画出的逐层排布、和 vLLM 对过；GLM-5.3-Flash、Kimi K3 的层数、expert 数和本页的模型表一致（只作链接对照）",
   "src.name.fa": "Dao-AILab/flash-attention",

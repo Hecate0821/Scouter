@@ -15,7 +15,7 @@
 | `train.js` | `Train` | 训练一步 `run`、默认配置 `BASE`、精度配方 `PREC` |
 | `quant.js` | `Quant` | 低精度 GEMM、一层 MoE、训练的三个 GEMM、理想加速比 |
 | `arch.js` | `Arch` | 架构页：模块划分 `present`、每个模块一层的 `measure`、`facts`、示意图和读数用的机制量 `explain` |
-| `calib.js` | `Calib` | 和实测对照：每个数据集筛哪些点、实测是哪个字段、预测怎么算（`SETS`；`set` 字段指向别的数据集，比如 cookbook 的两个视图都读 `sglang_cookbook`），公开数据的 replay（`mokRatio`），cookbook 行到推理配置的映射 `serveCfg`，k3-inference-calculator 的场景到推理配置的映射 `k3Cfg` 和按模块汇总 `k3Group` |
+| `calib.js` | `Calib` | 和实测对照：每个数据集筛哪些点、实测是哪个字段、预测怎么算（`SETS`；`set` 字段指向别的数据集，比如 cookbook 的两个视图都读 `sglang_cookbook`），公开数据的 replay（`mokRatio`），cookbook 行到推理配置的映射 `serveCfg` |
 | `trace.js` | `Trace` | 实测 trace 对照：kernel 名按正则归类（`CAT`、`catOf`），本页算子归到同样的类别（`OPCAT`），`scan` / `kernelsOf` 汇总 trace（按 rank 平均、每条 stream 取独占时间、kernel 并集与首尾跨度、通信下限），`compare` 逐类比每步时间 |
 
 ## 接口约定
@@ -24,7 +24,7 @@
 - **输出**：普通对象，能 JSON 序列化。时间是秒，字节和 FLOPs 是原始数，带宽是 GB/s。
 - **文字**：名字、警告、说明都是 `Msg`。渲染由调用方决定：界面启动时设 `Msg.render = m => t(m.key, m.p)`；Node 里不设，渲染成 key。key 登记在 `locales/<语言>/engine_*.js`。输出里的普通字符串只能是标识符（key、枚举值）或引擎表里的名字（模型、GPU、引擎、kernel、格式），不能是要翻译的文字。
 - **警告**：`r.warn` 是消息列表，`w.bad` 为真表示配置不可行。
-- **口径**：`g` 用 `Common.BASIS.ideal`（硬件屋顶）或 `Common.BASIS.modeled`（= `G0`）；实测不是计算，走数据点库（`Scouter.points` / `kernels` / `calib`）。
+- **口径**：`g` 用 `Common.BASIS.ideal`（理想下限，`lb = 1`：效率 1、没有开销、只算必要的流量，一步取关键路径和各资源总量里最大的）或 `Common.BASIS.modeled`（= `G0`，尽量贴近现实）；凡是两种口径算法不同的地方，计算核心里都看 `g.lb`；实测不是计算，走数据点库（`Scouter.points` / `kernels` / `calib`）。
 - **按 kernel 类别的效率**：`Common.KEFF` 每一格是（类别、`c` 算力 / `m` 带宽、精度、SM 版本、η、出处 `ref`）。`gK(g, 类别, 精度, hw)` 把 `g.etaC` / `g.etaM` 按 η ÷ `G0` 的比例缩放（不超过 1）；`g.kEff` 为 0（理想屋顶就是 0）时不查表。moe 查不到用 gemm，SM103 查不到用 SM100。只用在推理的算子上，训练不变。`ref` 指向的数据点由 `tests/plane.js` 核对。
 - **默认值归计算核心**：`Common.G0`、`Common.IDEAL`、`Infer.BASE`、`Train.BASE`、`Calib.BASE` 都是冻结的，调用方复制后再改。
 - **不读数据点库**：`Calib.SETS` 只给筛选条件和预测函数，数据点由调用方传进来（界面从 `DB` 取，测试直接读 `data/db.json`）。

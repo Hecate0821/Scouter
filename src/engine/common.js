@@ -68,10 +68,19 @@ const linkRidge = (peak, gbs, g) => peak*g.etaC/(gbs*1e9*g.etaAg);             /
 const freeze = o => { for(const v of Object.values(o)) if(v && typeof v==="object") freeze(v); return Object.freeze(o); };
 /* gapUs：CUDA graph 里前一个 kernel 结束到下一个开始的间隔（vLLM PR 64846、flashinfer PR 8135 在 H200 上量到约 0.45 µs；推理配置 pdl = true 时去掉）。 */
 const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, gapUs:0.45, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5,
-  kEff:1 });
-/* 理想 roofline：只看硬件峰值，可达比例都是 1、固定开销和延迟都是 0；kernel 序列、重叠规则还是所选引擎 / 框架自己的。
-   BASIS 是界面和命令行的“口径”开关：ideal = 硬件屋顶，modeled = 上面的默认效率（实测走数据点库，不在计算核心里） */
-const IDEAL = freeze(Object.fromEntries(Object.keys(G0).map(k => [k, k.startsWith("eta") ? 1 : 0])));
+  kEff:1, lb:0 });
+/* 理想下限：这个配置（模型、并行切法、批大小、引擎的 kernel 序列和重叠方式）不可能更快的时间。可达比例都是 1、固定开销和延迟都是 0，
+   另外 lb = 1 换成下限的口径（计算核心里凡是 g.lb 的地方）：
+   - 只算必要的量：不补齐 CUDA graph / FP4 hidden，routed expert 只读一定会碰到的最少 expert（TP 切时 top-k 个切片，按 expert 切时最忙的
+     rank 上 ceil(k / EP) 个），负载完全均衡（EP 不均、CP 不均都按 1）；
+   - 集合通信按信息量的下限：all-reduce 每个 rank 至少收一份完整结果（逻辑字节 1×，交换机内归约 NVLS / SHARP 可以做到），
+     all-gather / reduce-scatter 是 (n − 1) / n，all-to-all 是发出去的 (n − 1) / n；
+   - 一步的时间除了按依赖和重叠排出来的关键路径，还要满足资源守恒：所有算子的计算时间之和、HBM 时间之和、通信时间之和都不能被重叠藏掉
+     （两个重叠的分支不能各自吃满同一份算力或带宽）。
+   这些口径参考 ByronHsu/k3-inference-calculator（Apache-2.0）对 Kimi K3 的做法，这里推广到所有模型；没有搬它的代码。
+   BASIS 是界面和命令行的“口径”开关：ideal = 理想下限，modeled = 尽量贴近现实的建模（上面的默认效率和开销、期望的 expert 覆盖、
+   引擎实际用的通信算法）。实测走数据点库，不在计算核心里 */
+const IDEAL = freeze(Object.assign(Object.fromEntries(Object.keys(G0).map(k => [k, k.startsWith("eta") ? 1 : 0])), { lb:1 }));
 const BASIS = freeze({ ideal: IDEAL, modeled: G0 });
 
 /* 按 kernel 类别和 GPU 架构的效率表（g.kEff = 1 时生效；ideal 口径 kEff = 0）。每一格是一个公开或匿名实测点：达到的 TFLOP/s（或 GB/s）÷ 规格峰值，
@@ -177,6 +186,7 @@ function link(hw, topo, n, stride){
 function agT(msg, n, lk, g){ if(n<=1||msg<=0) return 0; return (lk.intra?g.alphaNv:g.alphaIb)*1e-6*Math.log2(n)+ msg*(n-1)/n/(lk.bw*(g.etaAg||g.etaN)); }
 function arT(msg, n, lk, g, algo){
   if(n<=1||msg<=0) return 0; const a=(lk.intra?g.alphaNv:g.alphaIb)*1e-6;
+  if(g.lb) return a + msg/(lk.bw*g.etaN);                           // 下限：每个 rank 至少要收到一份完整的归约结果
   if(algo==="oneshot") return a + msg*(n-1)/(lk.bw*g.etaN);        // 每个 rank 读其余 n−1 份整消息，受单卡带宽限制
   if(algo==="twoshot") return 2*a + 2*msg*(n-1)/n/(lk.bw*g.etaN);
   return 2*a*Math.log2(n) + 2*msg*(n-1)/n/(lk.bw*g.etaN);         // NCCL ring

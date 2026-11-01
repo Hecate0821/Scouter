@@ -15,7 +15,7 @@
 // term and DSA's top-k + 3 window).
 // Conventions, where other public counts differ: softmax costs nothing (attn-viz adds 5 FLOPs per score); the DSA indexer
 // is causal, ctx + T/2 keys per query (attn-viz counts the full square); the linear-attention recurrence is 8 FLOPs per
-// state element per token (attn-viz agrees; k3-inference-calculator counts 1, a lower bound); GDN / KDA prefill uses the
+// state element per token (attn-viz agrees); GDN / KDA prefill uses the
 // chunked algorithm, which does more work than the recurrence (1.39x at dk = dv = 128, chunk 64).
 // Usage: node flops.js
 const load = require("../src/engine/node.js");

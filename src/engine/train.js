@@ -30,7 +30,7 @@ function run(m, hw, topo, c, g){
   const tok=c.tok, T=tok*cp, Tc=tok, Tl=tok/tp;    // T：TP×CP 组一个 micro-batch 的 token；Tc：本 CP rank；Tl：SP 下本 rank 驻留
   const PR=PREC[c.prec]||PREC.bf16, fq=PR.f!=="bf16", bq=PR.b!=="bf16";
   const S=c.S, wbF=dtB(PR.f), wbB=dtB(PR.b), pkF=peakOf(hw,PR.f), pkB=peakOf(hw,PR.b), pkA=peakOf(hw,"bf16");
-  const pkAt = c.etaA>0 ? pkA*c.etaA/g.etaC : pkA;          // attention 核心单独给效率（0 = 和 GEMM 一样用 η_c）
+  const pkAt = c.etaA>0 && !g.lb ? pkA*c.etaA/g.etaC : pkA;   // attention 核心单独给效率（0 = 和 GEMM 一样用 η_c；理想下限不打折）
   if(fq && PR.f!=="fp8" && hw.sm<100) warn.push(Msg.of("engine_train.warn.needBlackwell",{prec:PR.name}));
   // TE 不支持优化器 CPU offload 和 --fp8-param-gather 一起开（slime 的 FP8 笔记）：端到端 FP8 要么关 offload，要么参数按 BF16 gather
   if(mg && fq && c.offload) warn.push(Msg.of("engine_train.warn.fp8Offload",{prec:PR.name}));
@@ -124,7 +124,7 @@ function run(m, hw, topo, c, g){
   }
 
   /* ---- MoE ---- */
-  const nM=d.nMoe, De=d.De, imb=c.imb||1;
+  const nM=d.nMoe, De=d.De, imb=g.lb ? 1 : c.imb||1;     // 理想下限：EP 负载完全均衡
   const dedup = ["deepep","hybridep","ncclep","distmoe"].includes(c.dispatcher);
   const perRankExp = e.E/ep;
   const kEff = dedup ? ep*Par.pDest(e.E, ep, e.k) : e.k;     // 去重后每 token 发往的不同 rank 数（含本 rank）
@@ -170,7 +170,7 @@ function run(m, hw, topo, c, g){
   const cpMeth = mg ? ({p2p:"ring",allgather:"allgather",a2a:"ulysses"}[c.cpType]||"ring") : (Par.CP[c.cpType] ? c.cpType : "allgather");
   const cpLB = mg || c.cpLB!==false;                               // Megatron 的 CP 总是按 2C 段首尾配对
   const docs = T/S;                                                // 这一组 CP rank 一个 micro-batch 里的文档数
-  const imbCP = (cp===1 || cpMeth==="ulysses" || cpLB) ? 1 : 2-1/cp;
+  const imbCP = (cp===1 || cpMeth==="ulysses" || cpLB || g.lb) ? 1 : 2-1/cp;   // 理想下限：CP 也按均衡
   let cpFull=null, cpSwa=null;
   if(cp>1 && f.n>0){
     if(imbCP>1 && coreFullOp){ coreFullOp.fwd.t*=imbCP; coreFullOp.dgrad.t*=imbCP; coreFullOp.imb=imbCP; }
@@ -202,7 +202,7 @@ function run(m, hw, topo, c, g){
     const be = Par.EP[c.dispatcher] ? c.dispatcher : "standard";
     let tEF=0, tEB=0;
     for(const o of ops) if(["moe1","act","moe2"].includes(o.key)){ tEF+=o.fwd.t/nM; tEB+=(o.dgrad.t+o.wgrad.t+(rc(o.key)?o.fwd.t:0))/nM; }
-    epL = Par.epLayer(be, { n:Tl, K:e.k, Z:e.E, E:ep, De, stride:1, hw, topo, g, ac:rcFull, prec:PR.f, imb, tExpF:tEF, tExpB:tEB, syncUs:c.hostSyncUs, mokF:c.mokF });
+    epL = Par.epLayer(be, { n:Tl, K:e.k, Z:e.E, E:ep, De, stride:1, hw, topo, g, ac:rcFull, prec:PR.f, imb, tExpF:tEF, tExpB:tEB, syncUs:g.lb?0:c.hostSyncUs, mokF:c.mokF });
     if(!epL.ok) warn.push(epL.why);
     a2aPerLayer = epL.tw + epL.tAlpha;
     const ibShare = epL.wire>0 ? Math.min(1, epL.ib/epL.wire) : 0;
@@ -220,7 +220,7 @@ function run(m, hw, topo, c, g){
     if(rcA2A) xs.push(xc("rc","A2A",Msg.of("engine_train.ep.rcDispatch"),b1,t1), xc("rc","A2A",Msg.of("engine_train.ep.rcCombine"),b1,t1));
     xs.push(xc("bwd","A2A",Msg.of("engine_train.ep.bwdCombine"),b1,t1), xc("bwd","A2A",Msg.of("engine_train.ep.bwdDispatch"),b1,t1));
     cmX("a2a",Msg.of("engine_train.ep.a2a",{be:name,n:nA}),"ep",nM,"moe",xs,{exch:nA,ovl: c.dispatcher==="distmoe"?"moe" : (mg&&c.epOverlap?"comp":false),fused:c.dispatcher==="distmoe"});
-    if(!["hybridep","distmoe"].includes(c.dispatcher)){ const one=xc("fwd","sync",Msg.of("engine_train.ep.cntWhat"),ep*e.E*8/(1+(rcA2A?1:0)),(lkEP.intra?g.alphaNv:g.alphaIb)*1e-6+c.hostSyncUs*1e-6);
+    if(!["hybridep","distmoe"].includes(c.dispatcher)){ const one=xc("fwd","sync",Msg.of("engine_train.ep.cntWhat"),ep*e.E*8/(1+(rcA2A?1:0)),(lkEP.intra?g.alphaNv:g.alphaIb)*1e-6+(g.lb?0:c.hostSyncUs)*1e-6);
       cmX("cnt",Msg.of("engine_train.ep.cnt"),"ep",nM,"moe",rcA2A?[one,Object.assign({},one,{pass:"rc",what:Msg.of("engine_train.ep.cntRc")})]:[one]); }
   }
   if(mg && etp>1){ const msg=R*etp*De*2, eX=(pass,op,what,m2)=>xc(pass,op,what,m2*(etp-1)/etp,agT(m2,etp,lkTP,g));
@@ -301,7 +301,8 @@ function run(m, hw, topo, c, g){
     const rs = agT(PlD*4,dd,lkDP,g) + agT(PlE*4,edp,lkEDP,g), ag = agT(PlD*2,dd,lkDP,g)+agT(PlE*2,edp,lkEDP,g);
     tDP = rs+ag;
     const lastBwd = (tD+tW)/pp, firstFwd=tF/pp;
-    tDPexp = (c.overlapGrad? Math.max(0,rs-lastBwd*0.9) : rs) + (c.overlapParam? Math.max(0,ag-firstFwd*0.9) : ag);
+    const hid = g.lb ? 1 : 0.9;                                       // 能藏到最后一段反向 / 第一段前向里的比例（下限按全部）
+    tDPexp = (c.overlapGrad? Math.max(0,rs-lastBwd*hid) : rs) + (c.overlapParam? Math.max(0,ag-firstFwd*hid) : ag);
     dpNote=Msg.of("engine_train.dp.noteMg",{dd,edp});
   }
   const shardD = mg ? PlD/(dp*cp) : Pdense/(tp*pp)/fsdp.fs, shardE = mg ? PlE/edp : Pexp/(ep*pp)/fsdp.fe;
@@ -316,7 +317,7 @@ function run(m, hw, topo, c, g){
   } else { tOpt = Pshard*30/(hw.hbm*1e9*g.etaM) + Pshard*4/(hw.hbm*1e9*g.etaM); optNote=Msg.of("engine_train.opt.gpu"); }
   const tSmallAR = 4*((lkDP.intra?g.alphaNv:g.alphaIb)*1e-6)*2;       // grad norm、aux-free bias、loss finite 等标量 all-reduce
   let tAR = 0;
-  if(fsdp && fsdp.R>1){ tAR = Par.wireT(2*(fsdp.R-1)/fsdp.R*Pshard*fsdp.gB, fsdp.lkR, g.etaAg, 1, g); tDP = tAR; tDPexp = Math.max(0, tAR - (tD+tW)/pp*0.9);
+  if(fsdp && fsdp.R>1){ tAR = Par.wireT((g.lb ? 1 : 2*(fsdp.R-1)/fsdp.R)*Pshard*fsdp.gB, fsdp.lkR, g.etaAg, 1, g); tDP = tAR; tDPexp = Math.max(0, tAR - (tD+tW)/pp*(g.lb?1:0.9));
     stepX.push(Object.assign(xc("step","AR",Msg.of("engine_train.dp.arRep",{dt:fsdp.gB===4?"FP32":"BF16"}),2*(fsdp.R-1)/fsdp.R*Pshard*fsdp.gB,tAR),{dim:"rep",n:fsdp.R,lk:fsdp.lkR}));
     dpNote = Msg.of("engine_train.dp.noteHsdp",{r:fsdp.R,link:fsdp.lkR.kind}); }
   const stepT = tPipe + tDPexp + tOpt + tSmallAR;

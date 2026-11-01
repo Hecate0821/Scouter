@@ -35,9 +35,6 @@ PUBLIC = {
  "sglang_cookbook": dict(file="sglang_cookbook.json", stage="infer", title="推理：SGLang cookbook 的公开测速",
    conditions="sgl-project/sglang 文档里各模型的 benchmarks 文件（tools/import_cookbook.py 钉在一个 commit 上导入）：随机 token 输入、ignore_eos、"
    "并发固定的闭环压测；TTFT / TPOT 是均值，tok/s/GPU 含输入 token。接受长度由 SGLANG_SIMULATE_ACC_LEN 定死的行只说明吞吐机制。"),
- "k3_calculator": dict(file="k3_calculator.json", stage="infer", confidence="derived", title="推理：k3-inference-calculator 的解析下限（Kimi K3）",
-   conditions="ByronHsu/k3-inference-calculator（Apache-2.0）在它自己网页里跑出的结果（tools/k3calc_snippet.js、tools/import_k3calc.py）："
-   "TP8，效率 100%、集合通信无启动延迟，expert 权重只算确定的最少 expert 数，是下限不是预测。每个场景一行步长下限，再按模块给 FLOPs、HBM 字节。"),
  "releases": dict(file="releases.json", stage="meta", title="过去一年的发布与博客",
    conditions="LMSYS 博客，SGLang / vLLM / slime / Miles / AReaL 的 GitHub release；只摘和推理、训练、低精度、投机解码、RL 相关的要点。"),
 }

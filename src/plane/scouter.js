@@ -1,7 +1,7 @@
 /* 数据平面的入口：计算核心（src/engine）加数据点库（src/data），给界面、命令行（tools/scouter.js）和 agent 用同一套接口。
    输入是普通对象：模型 / GPU / 拓扑写 key，其余字段覆盖默认配置；输出是能 JSON 序列化的普通对象（文字是 Msg）。
    不碰 DOM、不调 t()、不读界面状态；浏览器里和 Node 里（src/plane/node.js）跑的是同一份代码。
-   口径 basis：ideal = 硬件屋顶（Common.IDEAL），modeled = 默认效率与固定开销（Common.G0）。实测不是算出来的，走 points / calib。 */
+   口径 basis：ideal = 理想下限（Common.IDEAL：效率 1、没有开销、只算必要的流量、资源守恒），modeled = 尽量贴近现实的建模（Common.G0）。实测不是算出来的，走 points / calib。 */
 const Scouter = (function(){
 const { MODELS, HW, TOPO, BASIS, G0, KEFF } = Common;
 const VERSION = 1;

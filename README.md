@@ -16,8 +16,8 @@ The layout follows a developer console:
 
 - **Sidebar:** the pages, grouped by tab. Press `/` to search them.
 - **Top bar:** the model, GPU and topology, plus the **source** switch:
-  - **Ideal:** the hardware roofline, at peak with no overheads;
-  - **Modeled:** reachable efficiency plus fixed costs, following the open-source engines (the default);
+  - **Ideal lower bound:** the time this configuration cannot beat. Every op runs at peak with no overheads and moves only the traffic it must: no CUDA graph padding, only the experts certain to be hit, perfect load balance, and all-reduce at 1× its message. The step is at least the critical path and each resource's total (compute, HBM, communication), so overlapping two ops never hides shared bandwidth. The conventions follow [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0), generalized here to every model. It stays below every measured point in the calibration sets (at most 0.88 of the measurement);
+  - **Modeled:** as close to reality as the model gets (the default): reachable efficiency per kernel class, fixed launch and sync costs, the expected expert coverage under uniform routing, load imbalance, and the collective algorithms the engines actually use;
   - **Measured:** only real data points from public sources and anonymized measurements.
 - **Parameter panel** on the right: the controls for the current page.
 - **CLI** and **JSON** buttons: show the `Scouter.*` call behind the current page, as a `tools/scouter.js` command and as its output.
@@ -29,7 +29,7 @@ The layout follows a developer console:
 | Overview | One decode step and one post-training step of the same model, side by side. |
 | Model architecture | **Model overview:** the layer stack (full, sliding-window and linear attention; MoE and dense MLP), one card per module, parameter counts, and KV/state cache versus context. **One module:** a diagram of the mechanism; sliders for its architecture knobs; the module's roofline as batch, context or sequence length changes, with the unedited preset as a ghost; throughput curves; the kernel list; and links to the code each assumption follows. **Compare:** every model's modules on one roofline, attention and MLP curves, and the per-layer time split. |
 | Post-training | One step (fwd, dgrad, wgrad, recompute, communication, optimizer, memory). Parallelism: every collective in a one- or two-layer sample, with FSDP, CP and EP shown one dimension at a time. Low-precision recipes: Megatron, Transformer Engine and torchtitan defaults only. A comparison with anonymized measurements. |
-| Inference | One decode or prefill step. Deployment and parallelism: TP, DP-attention, EP and PD disaggregation. Low-precision inference. Speculative decoding: MTP, EAGLE-3, DFlash and DSpark. **Against measurements:** the SGLang cookbook's published benchmark rows replayed as closed-loop runs (TPOT and TTFT); Kimi K3 against [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator)'s analytical lower bound, module by module; and a profiler trace you load, compared with the step kernel category by kernel category. |
+| Inference | One decode or prefill step. Deployment and parallelism: TP, DP-attention, EP and PD disaggregation. Low-precision inference. Speculative decoding: MTP, EAGLE-3, DFlash and DSpark. **Against measurements:** the SGLang cookbook's published benchmark rows replayed as closed-loop runs (TPOT and TTFT); and a profiler trace you load, compared with the step kernel category by kernel category. |
 | RL | Train/inference mismatch. Deterministic rollout: batch invariance, reproducibility and bitwise train/inference match. Low-precision rollout and weight sync. Low-precision training and QAT. |
 | Appendix | Measured H200 kernels against the ideal and modeled rooflines, with Nsight-Compute-style SOL efficiency; the per-kernel-class efficiency table and the public number behind each cell; public data points with their confidence, and the past year's releases; quantization basics; and the modeling method with the open-source code it follows. |
 
@@ -75,7 +75,6 @@ The roofline model:
 - **Per kernel class:** in inference, GEMMs and attention cores take their efficiency from a small table by class, precision and GPU generation (Hopper, Blackwell SM100, Blackwell Ultra SM103). Each cell names the public or measured number it comes from, for example cuBLAS BF16 on B200, FlashAttention-3 / 4, FlashMLA, DeepGEMM and CUTLASS SM103 NVFP4. Setting `kEff` to 0 goes back to the flat 0.7 / 0.8.
 - **Kernel-level overheads:** 0.45 µs of idle time between kernels inside a CUDA graph, removed by programmatic dependent launch (`pdl`), following [vLLM #64846](https://github.com/vllm-project/vllm/pull/64846) and [FlashInfer #8135](https://github.com/flashinfer-ai/flashinfer/pull/8135); NVFP4 / MXFP4 MoE pads the expert hidden size to a multiple of 256 on Blackwell, following [vLLM #39510](https://github.com/vllm-project/vllm/pull/39510).
 - **Serving benchmark:** `serve` runs `conc` requests with `isl` input and `osl` output tokens in a closed loop. TPOT is the decode step plus the other requests' prefills spread over the output. Against the 16 calibratable SGLang cookbook rows (GLM-5.3-Flash on GB300, Kimi K3 on B300; rows that are a single burst of requests are left out), the median predicted / measured TPOT is 1.00 and 10 rows are within ±25%. MTP at concurrency 1 is about 2.3× too fast, because per-step scheduling and draft overheads are not modeled. Measured TTFT is 95–185 ms above the model, which covers only GPU time.
-- **Cross-check with k3-inference-calculator:** [ByronHsu/k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0) counts Kimi K3 on SGLang operator by operator as a lower bound. On the modules both count the same way, per-module FLOPs agree within 0.1% over 11 scenarios and decode HBM bytes within 0.95–1.01. Step times differ where the conventions do: it reads only the routed experts certain to be hit and counts all-reduce bytes at 1×, so Scouter's ideal decode step is 2.2–3.2× its bound at batch 16–256.
 
 The mechanism diagrams reimplement the visual ideas of [Attention Lab](https://divagr.com/attention-lab/), credited under each diagram.
 
@@ -134,7 +133,6 @@ tools/build_db.py       builds data/db.json and src/data/db.js
 tools/scouter.js        the data plane from the command line, printing JSON
 tools/import_cookbook.py   regenerates data/public/sglang_cookbook.json from the SGLang cookbook at a pinned commit
 tools/import_ncu.py     turns an Nsight Compute raw CSV into an anonymized kernel data set
-tools/import_k3calc.py  stores k3-inference-calculator results (printed by tools/k3calc_snippet.js on its page)
 tools/reduce_trace.py   shrinks a large profiler trace (.json / .json.gz) to its GPU kernel events
 sim/                    separate Python project: the training layouts on CPU gloo processes with PyTorch FSDP2 / TP / EP,
                         recording every collective as a JSON trace (sim/README.md)

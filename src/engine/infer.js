@@ -63,7 +63,8 @@ function step(m, hw, topo, c, g){
   const N=c.N, dpA=Math.max(1,c.dpA), tpA=N/dpA, dec=c.phase==="decode";
   const wbE=dtB(c.wDt), wbD=dtB(c.dDt), kvb=dtB(c.kvDt), sb=c.stateDt==="bf16"?2:4;
   const pkD=peakOf(hw,c.dAct||c.dDt), pkE=peakOf(hw,eActOf(c,hw)), pkA=peakOf(hw,"bf16");   // eAct / dAct：expert / 其余线性层的激活精度（W4A16 / W4A8 时 MMA 跑在激活的峰值上）
-  const slow=(c.bi?c.biFactor:1)/(c.implEff||1);
+  const lb=!!g.lb;                                         // 理想下限口径（Common.IDEAL 的注释）
+  const slow=lb ? 1 : (c.bi?c.biFactor:1)/(c.implEff||1);
   const specK = dec ? (c.specK||0) : 0, w = specK>0 ? specK+1 : 1;
   const warn=[];
   // 批大小与 CUDA graph 补齐
@@ -74,12 +75,12 @@ function step(m, hw, topo, c, g){
   if(dec){
     const units = c.engine==="vllm"||c.engine==="titan" ? Breq*w : Breq;
     graph = c.graph && units<=maxG;
-    const unitsPad = graph ? padTo(ladder, units) : units;
+    const unitsPad = graph && !lb ? padTo(ladder, units) : units;
     rowsG = c.engine==="vllm"||c.engine==="titan" ? unitsPad : unitsPad*w;
     rowsR = Breq*w;
   } else {
     graph = c.graph && P.prefillGraph(m) && c.C<=8192;
-    rowsR = c.C; rowsG = graph ? Math.ceil(c.C*(1+P.prefillPad*0.5)) : c.C;
+    rowsR = c.C; rowsG = graph && !lb ? Math.ceil(c.C*(1+P.prefillPad*0.5)) : c.C;
   }
   const Bp = dec ? rowsG/w : 1;   // 补齐后的请求数（只影响随行数缩放的算子）
   const ops=[], comm=[];
@@ -188,14 +189,17 @@ function step(m, hw, topo, c, g){
   const routerT = moePar==="replicated" ? Tg : Tloc;
   op("router",Msg.of("engine_infer.op.router"),"moe",nMoe,2*routerT*D*e.E + 8*routerT*e.E, D*e.E*2 + routerT*(D*2+e.E*4), pkA, 2);
   if(e.Dlat) op("latd",Msg.of("engine_infer.op.latd",{dim:e.Dlat}),"moe",nMoe,2*Tloc*D*e.Dlat, D*e.Dlat*2 + Tloc*(D+e.Dlat)*2, pkA,1);
-  const Eloc=(e.E+(c.redundant||0))/N, cv=cover(e.k,e.E,Tg);
+  const Eloc=(e.E+(c.redundant||0))/N;
+  // 碰到的 expert：建模按均匀路由的期望覆盖；下限只算一定会碰到的——每个 token 选 k 个不同的 expert，所有 token 可以选同一组，
+  // TP 切时每卡是这 k 个的切片，按 expert 切时最忙的 rank 至少有 ceil(k / N) 个
+  const cv = lb ? (moePar==="tp" ? Math.min(1, e.k/e.E) : Math.min(1, Math.ceil(e.k/N)/Eloc)) : cover(e.k,e.E,Tg);
   const touched = moePar==="tp" ? e.E*cv : Eloc*cv;   // tp：每卡持有全部 expert 的 F/N 切片
   const wSlice = moePar==="tp" ? 3*De*e.F/N : 3*De*e.F;
-  const rowsExp = Tg*e.k/N*(moePar==="tp" ? 1 : c.imb||1);   // tp：每卡都有全部 expert 的切片，负载天然均衡
+  const rowsExp = Tg*e.k/N*(moePar==="tp" || lb ? 1 : c.imb||1);   // tp：每卡都有全部 expert 的切片，负载天然均衡
   const eA = eActOf(c,hw);
   if(c.qSep && eA!=="bf16") op("moeq",Msg.of("engine_infer.op.moeq"),"moe",nMoe,4*Tloc*De, Tloc*De*(2+dtB(eA)), pkA,1);
   // Blackwell 上 FP4 MoE（TRT-LLM-gen）的 hidden 维按 256 补零（vLLM PR 39510）：补出来的部分照样算、照样读
-  const dPad = (c.wDt==="nvfp4"||c.wDt==="mxfp4") && hw.sm>=100 ? Math.ceil(De/256)*256/De : 1;
+  const dPad = !lb && (c.wDt==="nvfp4"||c.wDt==="mxfp4") && hw.sm>=100 ? Math.ceil(De/256)*256/De : 1;
   op("moe",Msg.of("engine_infer.op.moe",{kernel:P.kernels.moe}),"moe",nMoe, 2*rowsExp*3*De*e.F*dPad, touched*wSlice*wbE*dPad + rowsExp*(De*2+3*e.F*2/(moePar==="tp"?N:1)), pkE, 3,{touched,cover:cv,dPad});
   if(e.Fs>0){ const Fl=e.Fs/tpA;
     op("shared",e.sharedGate?Msg.of("engine_infer.op.sharedGate"):Msg.of("engine_infer.op.shared"),"moe",nMoe,6*Tloc*D*Fl, 3*D*Fl*wbD + Tloc*(D+3*Fl)*2, pkD,2,
@@ -225,7 +229,7 @@ function step(m, hw, topo, c, g){
       const tag = moePar==="deepep" ? (dec?Msg.of("engine_infer.comm.a2a.deepepLL"):Msg.of("engine_infer.comm.a2a.deepepNormal")) : moePar==="standard" ? Msg.of("engine_infer.comm.a2a.standard") : moePar==="hybridep" ? Msg.of("engine_infer.comm.a2a.hybridep") : Msg.of("engine_infer.comm.a2a.fused");
       cm("disp",Msg.of("engine_infer.comm.dispatch",{a2a:tag}),nMoe,a2aT(sentD,N,lkE,g,al),sentD*(N-1)/N,{overlap:fusedA2A?"moe":(c.tbo?"tbo":false)});
       cm("comb",Msg.of("engine_infer.comm.combine",{a2a:tag}),nMoe,a2aT(sentC,N,lkE,g,al),sentC*(N-1)/N,{overlap:fusedA2A?"moe":(c.tbo?"tbo":false)});
-      if(moePar==="standard") cm("cnt",Msg.of("engine_infer.comm.cnt"),nMoe,(lkE.intra?g.alphaNv:g.alphaIb)*1e-6 + (c.hostSyncUs||20)*1e-6, N*e.E*8/N);
+      if(moePar==="standard" && !lb) cm("cnt",Msg.of("engine_infer.comm.cnt"),nMoe,(lkE.intra?g.alphaNv:g.alphaIb)*1e-6 + (c.hostSyncUs||20)*1e-6, N*e.E*8/N);
     }
   }
 
@@ -245,15 +249,20 @@ function step(m, hw, topo, c, g){
   for(const x of comm){ if(x.overlap==="moe") fusedComm+=x.t; else if(x.overlap==="tbo") tboComm+=x.t; else tComm+=x.t; }
   const exposedOverlap = Math.max(0, sharedT + fusedComm - moeT);  // 共享 expert 与融合 a2a 都藏在 routed expert 后面
   const tComp = tOps;
-  let gpu = tComp + tComm + exposedOverlap + (c.tbo ? Math.max(0,tboComm - tComp*0.5) : tboComm);
+  // TBO：一个 micro-batch 的通信和另一个的计算重叠；建模按能藏一半，下限按全部能藏
+  let gpu = tComp + tComm + exposedOverlap + (c.tbo ? Math.max(0,tboComm - tComp*(lb?1:0.5)) : tboComm);
   const nKern = ops.reduce((s,o)=>s+o.kernels,0) + comm.length*1;
   // graph 里 kernel 之间的间隔：开 PDL（programmatic dependent launch）时下一个 kernel 的开头和上一个的结尾重叠，按全部去掉算（上限）
   const gapT = graph && !c.pdl ? nKern*g.gapUs*1e-6 : 0;
   gpu += gapT;
+  // 下限的资源守恒：关键路径之外，计算、HBM、通信各自的总量也是下限（重叠的算子不能各自吃满同一份资源）
+  let bound = null;
+  if(lb){ bound = { path:gpu, compute:ops.reduce((s,o)=>s+o.tc,0), hbm:ops.reduce((s,o)=>s+o.tm,0), comm:comm.reduce((s,x)=>s+x.t,0) };
+    gpu = Math.max(bound.path, bound.compute, bound.hbm, bound.comm); bound.by = Object.keys(bound).find(k => bound[k]===gpu); }
   const cpuLaunch = graph ? g.graphLaunchUs*1e-6 : nKern*g.launchUs*1e-6;
   const dpSync = (c.engine==="vllm"||c.engine==="titan") && dpA>1 ? g.dpSyncUs*1e-6 : 0;
   const stepT = Math.max(gpu + (graph?g.graphLaunchUs*1e-6:0), cpuLaunch, g.schedUs*1e-6) + dpSync;
-  return { ops, comm, tComp, tComm, exposedOverlap, gpu, gapT, stepT, graph, rowsG, rowsR, Breq, Bp, w, specK, tpA, dpA, N, Tg, kvTokRank, idxTok, Sl, Cl, nKern, cpuLaunch, fused, warn, moePar, P };
+  return { ops, comm, tComp, tComm, exposedOverlap, gpu, gapT, stepT, bound, graph, rowsG, rowsR, Breq, Bp, w, specK, tpA, dpA, N, Tg, kvTokRank, idxTok, Sl, Cl, nKern, cpuLaunch, fused, warn, moePar, P };
 }
 
 /* 投机解码的 draft 一项，按方法分开算。MTP：目标模型一层的平均代价（第一步按验证宽度，之后每步 1 行）+ 每步一次 lm_head。

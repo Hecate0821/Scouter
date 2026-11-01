@@ -125,10 +125,15 @@ for (const [c, ns] of Object.entries(NAMES)) for (const nm of ns) { const got = 
 const sw = S.sweep({ run: "infer", model: "qwen35", over: { B: [1, 8, 64], phase: ["decode", "prefill"] }, pick: ["stepT", "tComp"] });
 if (sw.rows.length !== 6 || sw.rows.some(x => !(x.stepT > 0))) problems.push("sweep: expected 6 rows with stepT");
 for (const id of Object.keys(cat.sets)) { const p = S.points({ set: id }); if (p.points.length !== cat.sets[id].n) problems.push(`points ${id}: ${p.points.length} != ${cat.sets[id].n}`); n++; }
-for (const id of Object.keys(P.Calib.SETS)) for (const basis of ["ideal", "modeled"]) { const c = S.calib({ set: id, basis }); if (!c.n || !(c.median > 0)) problems.push(`calib ${id} ${basis}: no points`); n++; }
-// k3-inference-calculator: where both sides count the same thing (k3calc_flops), per-module FLOPs agree within 1%
-{ const c = S.calib({ set: "k3calc_flops", basis: "ideal" }), bad = c.rows.filter(r => Math.abs(r.ratio - 1) > 0.01);
-  if (c.n < 70 || bad.length) problems.push(`k3calc_flops: ${bad.length} of ${c.n} modules off by more than 1% (${bad.slice(0, 3).map(r => r.p.id).join(", ")})`); n++; }
+for (const id of Object.keys(P.Calib.SETS)) for (const basis of ["ideal", "modeled"]) { const c = S.calib({ set: id, basis }); if (!c.n || !(c.median > 0)) problems.push(`calib ${id} ${basis}: no points`); n++;
+  // a lower bound never exceeds a measurement
+  if (basis === "ideal") for (const r of c.rows) if (r.ratio > 1) problems.push(`calib ${id}: ideal lower bound above the measurement at ${r.p.id} (${r.ratio.toFixed(3)})`); }
+// ideal is a strict lower bound: TP MoE reads only the top-k expert slices, no CUDA graph padding, and the step is at least
+// the critical path and each resource's total (compute, HBM, comm); an all-reduce moves its message once
+{ const r = S.infer({ model: "kimik3", hw: "B300", N: 8, B: 60, basis: "ideal" }), moe = r.ops.find(o => o.key === "moe"), k = P.Common.MODELS.kimik3.moe.k;
+  const lk = P.Common.link(P.Common.HW.B300, P.Common.TOPO.hgx8, 8, 1), ar = P.Common.arT(1e6, 8, lk, P.Common.IDEAL);
+  if (Math.abs(moe.touched - k) > 1e-9 || r.rowsG !== r.rowsR || !r.bound || r.stepT < Math.max(r.bound.path, r.bound.compute, r.bound.hbm, r.bound.comm) * (1 - 1e-12) || Math.abs(ar - 1e6 / lk.bw) > 1e-15)
+    problems.push(`ideal lower bound: touched ${moe.touched} (k ${k}), rows ${r.rowsG}/${r.rowsR}, bound ${JSON.stringify(r.bound)}, AR ${ar}`); n++; }
 for (const [f, q] of [["infer", { model: "nope" }], ["train", { hw: "X1" }], ["points", {}], ["calib", { set: "nope" }], ["sweep", { run: "nope" }], ["infer", { basis: "measured" }]]) {
   let threw = false; try { S[f](q); } catch (e) { threw = true; } if (!threw) problems.push(`${f}(${JSON.stringify(q)}) should throw`);
 }

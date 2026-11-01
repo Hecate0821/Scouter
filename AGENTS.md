@@ -22,8 +22,8 @@ Every computed number has a **basis**. Measurements are separate:
 
 | Source | Meaning |
 |---|---|
-| `ideal` | Hardware roofline. Each kernel takes `max(FLOPs / peak, bytes / HBM bandwidth)`, with 100% efficiency and no launch, sync or collective latency. This is a lower bound for the GPU. The kernel sequence and overlap rules are still those of the chosen engine or framework. |
-| `modeled` (default) | The roofline at the reachable fractions `η` (`Common.G0`: GEMM 0.7, HBM 0.8, network 0.7), plus fixed kernel, launch, sync and collective costs. These follow the open-source engines' defaults. Inference GEMMs and attention cores also take a per-class, per-GPU efficiency from `Common.KEFF` (see below). |
+| `ideal` | A strict lower bound for this configuration (model, parallel layout, batch, the engine's kernel sequence and overlap). Each op takes `max(FLOPs / peak, bytes / HBM bandwidth, link bytes / link bandwidth)` with 100% efficiency and no launch, sync or collective latency (`Common.IDEAL`, `lb: 1`). Only necessary traffic counts: no CUDA graph or FP4 padding, routed experts limited to those certain to be hit (top-k slices under TP, `ceil(k / EP)` experts on the busiest rank under EP), perfect EP / CP balance, all-reduce at 1× its message (the receive floor, reachable with in-switch reduction). The step is the largest of the critical path and the total compute, HBM and communication time (`bound`), so overlap never hides shared resources. The conventions follow [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0), generalized to all models; no code is taken from it. `tests/plane.js` checks that it stays below every measured point in every calibration set. |
+| `modeled` (default) | As close to reality as the model gets: the roofline at the reachable fractions `η` (`Common.G0`: GEMM 0.7, HBM 0.8, network 0.7), plus fixed kernel, launch, sync and collective costs, the expected expert coverage under uniform routing, load imbalance, CUDA graph padding, and the collective algorithm each engine uses (one-shot / two-shot / ring). Inference GEMMs and attention cores also take a per-class, per-GPU efficiency from `Common.KEFF` (see below). |
 | `measured` | Data points, not a computation. Public numbers from SGLang, vLLM, TensorRT-LLM, Megatron, torchtitan, slime, Miles, AReaL PRs, docs, blogs and papers, plus anonymized single-node measurements. Use `points`, `kernels`, `eff`, `calib` and `trace`. |
 
 Every data set has a **confidence**, returned by `sets` and shown in the appendix:
@@ -58,7 +58,6 @@ node tools/scouter.js kernels                                    # measured H200
 node tools/scouter.js eff                                        # the per-kernel-class efficiency table and the point behind each cell
 node tools/scouter.js calib  --set h200_kernels --basis ideal    # the model replaying measured points
 node tools/scouter.js calib  --set cookbook_tpot                 # SGLang cookbook benchmark rows against serve
-node tools/scouter.js calib  --set k3calc_flops --basis ideal    # k3-inference-calculator's per-module FLOPs against infer
 node tools/scouter.js serve  --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   # closed-loop benchmark estimate
 node tools/scouter.js trace  --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   # a profiler trace by kernel category
 echo '{"model":"kimik3","hw":"GB300","topo":"nvl64","B":256}' | node tools/scouter.js infer --json -
@@ -94,7 +93,7 @@ printed as the string `"Infinity"`.
 | Call | Main fields |
 |---|---|
 | `roofline` | `peaks.{bf16,fp8,fp4}.{peakTFLOPs, attainableTFLOPs, ridge}`, `hbmGBs`, `attainableGBs`. With `flops` / `bytes`, also `kernel.{t, tc, tm, bound, I, TFLOPs}`. |
-| `infer` | `stepT`, `tComp`, `tComm`, `ops[]` (`key`, `name`, `group`, `layers`, `flops`, `bytes`, `t`, `tc`, `tm`, `tf`, `bound`, `I`), `comm[]`, `warn[]`, `query.cfg` (the full config used). |
+| `infer` | `stepT`, `tComp`, `tComm`, `bound` (ideal only: `path`, `compute`, `hbm`, `comm` and which one set the step), `ops[]` (`key`, `name`, `group`, `layers`, `flops`, `bytes`, `t`, `tc`, `tm`, `tf`, `bound`, `I`), `comm[]`, `warn[]`, `query.cfg` (the full config used). |
 | `train` | `stepT`, `mfu`, `tokPerGpu`, `ops[]` (`fwd` / `dgrad` / `wgrad` each with time), `comm[]`, `mem`, `warn[]`, `query.cfg`. |
 | `module` | `measure.mods.<full\|lin\|moe\|dense>` with `t`, `flops`, `bytes`, `byBound` and `ops[]` for one layer; `modules`; `facts`. |
 | `serve` | A closed-loop benchmark of `conc` requests with `isl` input and `osl` output tokens: `tpot` (decode step plus the prefills of the other requests spread over the `osl − 1` decode steps, `tpotDecode` + `interf`; TPOT is (E2E − TTFT) / (osl − 1) as in bench_serving and genai-bench), `ttft0` (unloaded prefill), `tokPerGpu` (input + output tokens per second per GPU, the SGLang cookbook convention), `outTokPerS`, `N`, `mem`, `warn[]`. |
@@ -107,16 +106,11 @@ printed as the string `"Infinity"`.
 | `trace` | Per kernel category (`gemm`, `attn`, `lin`, `moe`, `comm`, `samp`, `elem`, `other`): measured and predicted seconds per step, their ratio and the top kernels; `total`; `ranks`; `overlap` (time two kernels on one stream overlapped, as with PDL, counted once); `gpu` (`busy` = union of kernel time, `wall`, `idle`, and the model's `step`); `comm` (`floor` = each comm kernel's fastest 10% of calls × its calls, `wait` = measured − floor, the time spent waiting for slower ranks); and `unmatched`, the most expensive kernels no rule recognized. The trace is a torch profiler / Chrome trace (`{traceEvents}`, GPU kernel events only; merged multi-rank traces are split by `args.source_idx`, a `[TPxx]` pid, or pid, and averaged per rank) or a list `[{name, us, calls}]`; `steps` is how many steps it covers. The prediction per category includes ops that overlap on another stream, because their kernels are in the trace too. |
 
 Calibration sets (`catalog.calib`): the anonymized `cp_attention`, `cp_full_model`, `efsdp_full_model`, `efsdp_comm` and
-`h200_kernels`, the public `cookbook_tpot` / `cookbook_ttft`, and `k3calc_step` / `k3calc_flops` / `k3calc_bytes`.
+`h200_kernels`, and the public `cookbook_tpot` / `cookbook_ttft`.
 The cookbook sets replay the SGLang cookbook benchmark rows marked `calib: true` (`tools/import_cookbook.py` documents which
 rows and why) through `serve`. Rows with `num_prompts` under twice the concurrency are one burst, not a steady state, and are
 not calibrated. Accept lengths measured on the random dataset are upper bounds: random prompts make outputs loop, and
 bench_serving reports a cumulative server-side average.
-The `k3calc_*` sets compare against [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator)
-(Apache-2.0), an analytical lower bound for Kimi K3 on SGLang (100% efficiency, all-reduce link bytes at 1×, routed-expert
-weights only for the experts certain to be hit). `tools/k3calc_snippet.js` runs its own page; `tools/import_k3calc.py` stores
-the result. Compare the step at `--basis ideal`. FLOPs and bytes are compared only for modules where both sides count the same
-thing (`flops_same`, `bytes_same`); the KDA recurrence (8 FLOP per state element here, 1 there) and elementwise ops are not.
 
 ## Efficiency knobs
 
@@ -152,7 +146,6 @@ warnings are messages `{ key, p }`; their text is in `locales/<lang>/engine_*.js
 - Data goes into `data/public/*.json` (with `src` and `url`) or `data/anon/*.json`. Rebuild with `uv run --no-project tools/build_db.py`.
   - `tools/import_cookbook.py --ref <sha>` regenerates `data/public/sglang_cookbook.json` from the SGLang cookbook at that commit.
   - `tools/import_ncu.py report.csv --name ... --hw ...` turns an Nsight Compute raw CSV into an anonymized kernel set.
-  - `tools/import_k3calc.py lines.txt --ref <sha>` stores k3-inference-calculator results printed by `tools/k3calc_snippet.js`.
   - `tools/reduce_trace.py trace.json.gz` shrinks a profiler trace too large to load (hundreds of MB) to its GPU kernel events.
 - A new `Common.KEFF` cell must name a data point (`ref: "<set>:<id>"`) whose measured efficiency matches it; `tests/plane.js` checks.
 - Run `cd tests && npm install && npm test` before you push. It runs the engine, data-plane, FLOPs parity, collective, i18n, shell and regression checks.
