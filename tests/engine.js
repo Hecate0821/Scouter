@@ -84,10 +84,10 @@ for (const mk of Object.keys(MODELS)) {
       for (const fw of ["megatron", "torchtitan"]) {
         const layouts = G > 8 ? [{ tp: 1, cp: 1, ep: 8 }, { tp: 2, cp: 4, ep: 16 }, { tp: 1, cp: 1, ep: 64 }] : [{ tp: 1, cp: 1, ep: 8 }, { tp: 2, cp: 2, ep: 4 }, { tp: 1, cp: 8, ep: 8 }];
         for (const lay of layouts) {
-          const c = Object.assign({}, Train.BASE, { fw, N: G }, lay, fw === "torchtitan" ? { dispatcher: "standard", cpType: "allgather", linCP: "state" } : {});
+          const c = Object.assign({}, Train.BASE, Train.FW_DEF[fw], { fw, N: G }, lay);
           run(`train ${mk} ${hk} ${tk} ${fw} ${JSON.stringify(lay)}`, () => Train.run(m, hw, topo, c, g));
         }
-        const c0 = Object.assign({}, Train.BASE, { fw, N: G }, fw === "torchtitan" ? { dispatcher: "standard", cpType: "allgather", linCP: "state" } : {});
+        const c0 = Object.assign({}, Train.BASE, Train.FW_DEF[fw], { fw, N: G });
         for (const prec of Object.keys(Train.PREC)) run(`train ${mk} ${hk} ${tk} ${fw} prec ${prec}`, () => Train.run(m, hw, topo, Object.assign({}, c0, { prec }), g));
         if (fw === "torchtitan") for (const d of Object.keys(Par.EP)) run(`train ${mk} ${hk} ${tk} tt ep ${d}`, () => Train.run(m, hw, topo, Object.assign({}, c0, { dispatcher: d }), g));
       }

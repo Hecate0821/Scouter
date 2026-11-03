@@ -1,5 +1,5 @@
 /* ---------- 状态 ---------- */
-const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"H200", topo:"hgx8", glob:clone(GLOB),
+const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"GB300", topo:"nvl64", glob:clone(GLOB),
   inf:clone(BASE_INF), trn:clone(BASE_TRN), kv:clone(KV.BASE),
   infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"", anchor:"",
   arch:Object.assign({ mod:"full" }, Arch.defaults(MODELS.qwen35)),

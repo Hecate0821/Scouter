@@ -70,6 +70,7 @@ These options apply to every command:
 - `--basis ideal|modeled` picks the source for computed numbers.
 - `--g.<key>` overrides one efficiency parameter, such as `--g.etaC 0.6`.
 - `--pick a,b.c` keeps only those fields; a dot means a nested field.
+- With no `--model`, `--hw` or `--topo`: Qwen3.5-35B-A3B, GB300, 64 GPUs in one NVL72 rack, and torchtitan for `train`. `--hw` alone picks the topology that GPU comes in: GB series in NVL72, the rest in one HGX.
 - Any other `--key value` overrides the run's default config (`catalog.defaults`). Values are parsed as JSON when possible.
 - `--json '{...}'` passes the whole query as one object; `--json -` reads it from stdin. A custom model can be passed as an object in `model`.
 - `--file.<key> path` reads a JSON file into one field of the query, for example `--file.trace` or `--file.points`.

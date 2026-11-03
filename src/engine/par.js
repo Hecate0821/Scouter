@@ -63,8 +63,10 @@ function cpLayer(meth, x){
     o.calls = ac?12:8; o.tw = wireT(det.reduce((s,x)=>s+x.bytes,0), l, g.etaN, o.calls, g); split(det);
     if(H % C){ o.ok=false; o.why = Msg.of("engine_par.cp.uly.why", { H, C }).invalid(); }
   }
-  // Ring / AllGather 可以和分块计算重叠，只露出第一块和盖不住的部分；Ulysses 的两次 all-to-all 全部阻塞
-  o.exposed = meth==="ulysses" ? o.tw : o.tw/C + Math.max(0, o.tw - tCore*(C-1)/C);
+  // Ring / AllGather 可以和分块计算重叠，只露出第一块和盖不住的部分。Ulysses 的 all-to-all 也能按头分块重叠：
+  // 理想下限按重叠算（否则不是下限），建模口径保守地按全部露出
+  o.ulyOverlap = meth==="ulysses" && !!g.lb;
+  o.exposed = meth==="ulysses" && !g.lb ? o.tw : o.tw/C + Math.max(0, o.tw - tCore*(C-1)/C);
   return o;
 }
 

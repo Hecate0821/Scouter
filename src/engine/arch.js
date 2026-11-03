@@ -30,7 +30,7 @@ function infCfg(wl, over){
 }
 /* 训练：Megatron 默认，单卡、一条长 S 的序列，不切并行、不卸载、不重算 */
 function trnCfg(wl){
-  return Object.assign({}, Train.BASE, { fw:"megatron", N:1, tp:1, cp:1, pp:1, vpp:1, ep:1, etp:1,
+  return Object.assign({}, Train.BASE, Train.FW_DEF.megatron, { fw:"megatron", N:1, tp:1, cp:1, pp:1, vpp:1, ep:1, etp:1,
     tok:wl.S, S:wl.S, Gtok:wl.S, prec:wl.prec, recompute:"selective", rcModules:[], offload:false, overlapOffload:false,
     reshard:false, imb:1, hostSyncUs:0, workspaceGB:0 });
 }

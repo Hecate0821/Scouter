@@ -75,6 +75,7 @@ const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb
      rank 上 ceil(k / EP) 个），负载完全均衡（EP 不均、CP 不均都按 1）；
    - 集合通信按信息量的下限：all-reduce 每个 rank 至少收一份完整结果（逻辑字节 1×，交换机内归约 NVLS / SHARP 可以做到），
      all-gather / reduce-scatter 是 (n − 1) / n，all-to-all 是发出去的 (n − 1) / n；
+   - Ulysses 的 all-to-all 和 Ring / AllGather 一样按能和分块计算重叠算（建模口径按全部露出）；
    - 一步的时间除了按依赖和重叠排出来的关键路径，还要满足资源守恒：所有算子的计算时间之和、HBM 时间之和、通信时间之和都不能被重叠藏掉
      （两个重叠的分支不能各自吃满同一份算力或带宽）。
    这些口径参考 ByronHsu/k3-inference-calculator（Apache-2.0）对 Kimi K3 的做法，这里推广到所有模型；没有搬它的代码。

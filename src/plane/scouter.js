@@ -13,21 +13,23 @@ const pick = (table, key, what) => {
   return table[key];
 };
 /* 效率参数：口径的那一套，再用 q.g 覆盖个别项 */
+/* 不指定时：GB300、64 卡。只指定 GPU 时拓扑跟着它走，和页面的规则一样：GB 系列在 NVL72 机柜，其余在单台 HGX */
+const DEF_HW = "GB300", topoOf = q => q.topo || (/^GB/.test(q.hw || DEF_HW) ? "nvl64" : "hgx8");
 const gOf = q => Object.assign({}, pick(BASIS, (q && q.basis) || "modeled", "basis"), (q && q.g) || {});
 const ctxOf = q => ({
   m: q.model && typeof q.model === "object" ? q.model : pick(MODELS, q.model || "qwen35", "model"),
-  hw: pick(HW, q.hw || "H200", "hw"), topo: pick(TOPO, q.topo || "hgx8", "topo"), g: gOf(q) });
+  hw: pick(HW, q.hw || DEF_HW, "hw"), topo: pick(TOPO, topoOf(q), "topo"), g: gOf(q) });
 const rest = q => { const o = Object.assign({}, q); for(const k of KEYS) delete o[k]; return o; };
 const get = (o, path) => path.split(".").reduce((x, k) => x == null ? x : x[k], o);
 /* pick: ["stepT", "mem.total"] → 只留这些字段（点号是嵌套） */
 const select = (r, keys) => keys && keys.length ? Object.fromEntries(keys.map(k => [k, get(r, k)])) : r;
-const echo = (q, ctx) => ({ model: q.model && typeof q.model === "object" ? "custom" : q.model || "qwen35", hw: ctx.hw.name, topo: q.topo || "hgx8",
+const echo = (q, ctx) => ({ model: q.model && typeof q.model === "object" ? "custom" : q.model || "qwen35", hw: ctx.hw.name, topo: topoOf(q),
   basis: (q && q.basis) || "modeled" });
 
 /* 一个 GPU 的屋顶：各精度的峰值、口径下的可达峰值和拐点；给了 flops / bytes 就再算这一个 kernel */
 function roofline(q){
   q = q || {};
-  const hw = pick(HW, q.hw || "H200", "hw"), g = gOf(q), bw = hw.hbm * 1e9 * g.etaM;
+  const hw = pick(HW, q.hw || DEF_HW, "hw"), g = gOf(q), bw = hw.hbm * 1e9 * g.etaM;
   const peaks = {};
   for(const d of ["bf16", "fp8", "fp4"]){ const p = Common.peakOf(hw, d);
     peaks[d] = { peakTFLOPs: p / 1e12, attainableTFLOPs: p * g.etaC / 1e12, ridge: Common.ridge(p, hw, g) }; }

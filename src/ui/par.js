@@ -41,7 +41,7 @@ function layerSeq(r, which){
   const tpAll=sum(r.comm.filter(x=>x.cls==="tp"),x=>x.t)/m.L, tpL=Common.link(hw,topo,r.tp,1).intra?"nvl":"ib", H=d.Hattn/r.tp;
   const cpFwd=(arr,coreT,wireT)=>{
     if(C<=1||!cp){ arr.push(["sm",t("par.seg.core"),coreT,"attn"]); return; }
-    if(meth==="ulysses"){ arr.push([lane,t("par.seg.uly.in"),wireT/2,"cp"],["sm",t("par.seg.uly.core", { h: Math.floor(H/C) }),coreT,"attn"],[lane,t("par.seg.uly.out"),wireT/2,"cp"]); return; }
+    if(meth==="ulysses"){ arr.push([lane,t("par.seg.uly.in"),wireT/2,"cp"],["sm",t("par.seg.uly.core", { h: Math.floor(H/C) }),coreT,"attn",cp.ulyOverlap],[lane,t("par.seg.uly.out"),wireT/2,"cp"]); return; }
     if(meth==="allgather"){ arr.push([lane,t("par.seg.ag.gather"),wireT,"cp"],["sm",t("par.seg.ag.core"),coreT,"attn",true]); return; }
     const st=Math.min(C,8); for(let i=0;i<st;i++){ arr.push(["sm",t("par.seg.ring.block", { i: i+1, total: i===st-1&&C>st ? t("par.seg.ring.total", { n: C }) : "" }),coreT/st,"attn"]); if(i<st-1) arr.push([lane,t("par.seg.ring.send"),wireT/(st-1),"cp",true]); }
   };
@@ -59,7 +59,7 @@ function layerSeq(r, which){
     b.push(["sm",t("par.seg.oBwd"),P.post.b,"proj"]);
     const coreB=P.core.b+(which==="attn"?P.core.rc:0);
     if(C<=1||!cp) b.push(["sm",t("par.seg.coreBwd"),coreB,"attn"]);
-    else if(meth==="ulysses") b.push([lane,"all-to-all dO",cwB/2,"cp"],["sm",t("par.seg.coreBwd"),coreB,"attn"],[lane,"all-to-all dQ / dK / dV",cwB/2,"cp"]);
+    else if(meth==="ulysses") b.push([lane,"all-to-all dO",cwB/2,"cp"],["sm",t("par.seg.coreBwd"),coreB,"attn",cp.ulyOverlap],[lane,"all-to-all dQ / dK / dV",cwB/2,"cp"]);
     else if(meth==="allgather") b.push([lane,t("par.seg.ag.regather"),cwB/2,"cp"],["sm",t("par.seg.coreBwd"),coreB,"attn",true],[lane,"reduce-scatter dK / dV",cwB/2,"cp"]);
     else { const st=Math.min(C,8); for(let i=0;i<st;i++){ b.push(["sm",t("par.seg.ring.blockBwd", { i: i+1 }),coreB/st,"attn"]); if(i<st-1) b.push([lane,t("par.seg.ring.sendBwd"),cwB/(st-1),"cp",true]); } }
     b.push(["sm",t("par.seg.qkvBwd"),P.pre.b,"proj"]);

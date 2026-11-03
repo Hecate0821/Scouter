@@ -418,13 +418,14 @@ function run(m, hw, topo, c, g){
 }
 
 /* 默认的训练配置（界面的初始值；预设和架构页都在它上面改）。卡数 N 由调用方按拓扑给 */
-const BASE = Common.freeze({ fw:"megatron", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"alltoall", cpType:"p2p", linCP:"chunkwise", tok:16384, S:8192, Gtok:2097152,
-  prec:"bf16", recompute:"full", rcModules:[], offload:true, overlapOffload:true, cpuAdamGBs:30, overlapGrad:true, overlapParam:true,
+const BASE = Common.freeze({ fw:"torchtitan", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"standard", cpType:"allgather", linCP:"state", tok:16384, S:8192, Gtok:2097152,
+  prec:"bf16", recompute:"default", rcModules:[], offload:false, overlapOffload:true, cpuAdamGBs:30, overlapGrad:true, overlapParam:true,
   epOverlap:false, sharedOverlap:false, tpOverlap:false, reshard:true, imb:1.15, hostSyncUs:20, workspaceGB:6,
   cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0 });
 
-/* torchtitan 的默认选项：BASE 是 Megatron 的枚举，切到 torchtitan 时用这份盖上去，否则 BASE 的值在 torchtitan 下没有定义 */
-const FW_DEF = Common.freeze({ megatron:{}, torchtitan:{ dispatcher:"standard", cpType:"allgather", linCP:"state", recompute:"default", offload:false } });
+/* 每个框架自己的默认选项：枚举值不通用，切框架时用这份盖到 BASE 上（BASE 是 torchtitan 的） */
+const FW_DEF = Common.freeze({ megatron:{ dispatcher:"alltoall", cpType:"p2p", linCP:"chunkwise", recompute:"full", offload:true },
+  torchtitan:{ dispatcher:"standard", cpType:"allgather", linCP:"state", recompute:"default", offload:false } });
 
 return { run, linFlops, PREC, BASE, FW_DEF, inert };
 })();
