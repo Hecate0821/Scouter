@@ -1,11 +1,11 @@
 /* par：index.html 里的静态文字（由迁移脚本从 index.html 抽出） */
 I18N.add("zh", "par", {
-  "b1.h2": "一层里的通信：先后顺序和每卡字节",
-  "b1.lede": "从上往下是发出的先后。左边一列是本卡的计算，右边每个并行维度一条道，每个格子是一次集合通信：类型（AG / RS / AR / A2A / P2P）、搬的是什么、每卡发出多少字节、线上多久。单击任何一个格子（通信或计算）在下面展开：组成员、等效带宽、这一项由什么决定，以及它怎么随 token、序列长度和并行度变化。可以同时开多个，再点一下收起。格子上的 T×2→×n 表示每卡 token 翻倍后这一项变成几倍。拓扑只算两种：单机 8 卡（HGX）和一个 NVL72 里的 64 卡，所有组都在 NVLink 内。",
+  "b1.h2": "一层里的通信：时间线和每卡字节",
+  "b1.lede": "横轴是时间，和看 Perfetto 一样：最上面一条道是本卡 SM 上的计算，下面每个并行维度一条道，每个条是一次集合通信，标着类型（AG / RS / AR / A2A / P2P）和每卡字节。单击任何一个条（通信或计算）在下面展开：搬的是什么、组成员、等效带宽、这一项由什么决定，以及它怎么随 token、序列长度和并行度变化。可以同时开多个，再点一下收起。拓扑只算两种：单机 8 卡（HGX）和一个 NVL72 里的 64 卡，所有组都在 NVLink 内。",
   "attr.x-t-n.aria-label": "样例层数",
   "attr.x-t-show.aria-label": "前向 / 反向",
-  "b1.div": "<span><span class=\"sw xk block\"></span>实心：阻塞，这一行的计算要等它做完</span><span><span class=\"sw xk ov\"></span>虚线 + 色带：重叠，和色带连着的这段计算同时跑</span><span>条的长度：这次调用的每卡字节（全图同一把尺子）</span>",
-  "b1.overlap": "<b>通信可以和计算重叠。</b>Ring、AllGather、Ulysses 这类 CP 通信，还有 TP userbuffers、FSDP 预取，都能一边传一边算。图里的色带只表示两者有重叠，具体叠多少取决于分块粒度、kernel 调度、链路和实现，step 时间里用的只是简化估计。另外通信也要占用 SM（打包、拷贝），会影响同时在跑的计算，这部分没有单独计入。",
+  "b1.div": "<span>条长是线上时间，上下对齐就是同时在跑</span><span><span class=\"sw xk wait\"></span>斜线：SM 在等通信</span><span><span class=\"sw xk block\"></span>实心：阻塞</span><span><span class=\"sw xk ov\"></span>虚线：和计算重叠，相对位置是示意</span><span><span class=\"sw xk sm\"></span>计算条顶部的点线：这段时间通信也占用 SM（示意）</span>",
+  "b1.overlap": "<b>通信可以和计算重叠。</b>Ring、AllGather、Ulysses 这类 CP 通信，还有 TP userbuffers、FSDP 预取，都能一边传一边算。图里上下对齐的条只表示两者有重叠，相对位置是示意，具体叠多少取决于分块粒度、kernel 调度、链路和实现，step 时间里用的只是简化估计。另外通信也要占用 SM（打包、拷贝），会影响同时在跑的计算，这部分没有单独计入。",
   "b1.h3": "每个样例层搬了多少",
   "b2.h2": "训练的并行：FSDP、CP、EP 一维一维拆开",
   "attr.b2.nav.aria-label": "并行维度",

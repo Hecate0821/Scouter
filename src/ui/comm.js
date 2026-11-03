@@ -1,8 +1,8 @@
-/* ---------- 一层里的通信：先后顺序和每卡字节（后训练 · 并行、推理 · 部署各一张） ----------
-   行按发出的先后排。左边是本卡的计算流，右边每个并行维度一条道；通信挂在“等它”或“和它重叠”的那段计算的同一行。
-   实心格是阻塞的：这一行的计算要等它做完才开始。虚线格和这一行的计算重叠，一条色带从计算格连到最右边的重叠格。图只说有重叠，不说叠多少。
-   每个格子的字节和时间都取自 Train.run / Infer.step 里同一组逐次记录（Par.xc），所以和“一个 step”的通信表加起来一致。
-   单击一个格子（通信或计算）在下面展开：换 token 数、序列长度、并行度重跑同一个引擎，画这一项怎么变。可以同时开多个。 */
+/* ---------- 一层里的通信：时间线和每卡字节（后训练 · 并行、推理 · 部署各一张） ----------
+   读法和 Perfetto 一样：横轴是时间，最上面一条道是本卡 SM 上的计算，下面每个并行维度一条道。上下对齐就是同时在跑，SM 道上的斜线是在等通信。
+   实心条是阻塞的，虚线条和计算重叠。条长是引擎给的线上时间，重叠时的相对位置只是示意：图只说有重叠，不说叠多少。
+   每个条的字节和时间都取自 Train.run / Infer.step 里同一组逐次记录（Par.xc），所以和“一个 step”的通信表加起来一致。
+   单击一个条（通信或计算）在下面展开：换 token 数、序列长度、并行度重跑同一个引擎，画这一项怎么变。可以同时开多个。 */
 const XD = { tp:[t("comm.dim.tp"),"c-ar"], cp:[t("comm.dim.cp"),"c-cp"], ep:[t("comm.dim.ep"),"c-a2a"], etp:[t("comm.dim.etp"),"c-moe"], fsdp:[t("comm.dim.fsdp"),"c-fsdp"], efsdp:[t("comm.dim.efsdp"),"c-moe"],
   pp:[t("comm.dim.pp"),"c-dp"], dp:[t("comm.dim.dp"),"c-fsdp"], edp:[t("comm.dim.edp"),"c-moe"], rep:[t("comm.dim.rep"),"c-attn"], dpa:[t("comm.dim.dpa"),"c-dp"] };
 const XORDER = ["tp","dpa","cp","ep","etp","fsdp","efsdp","pp","dp","edp","rep"];
@@ -21,6 +21,7 @@ function xRows(ev){
     if(e.k==="s"){ flushWait(); rows.push({sec:e}); last=prev=null; continue; }
     if(e.k==="x"){ if(e.after&&e.mode!=="block"&&prev){ prev.chips.push(e); last=null; } else pend.push(e); continue; }
     if(!(e.t>0) && !e.ghost) continue;
+    if(e.ghost) flushWait();   // 占位行归下一段；上一段没发完的阻塞调用留在上一段
     if(last && !pend.length && !e.ghost && !e.solo){ last.comp=Object.assign({},last.comp,{label:last.comp.label+" → "+e.label,t:last.comp.t+e.t}); continue; }
     const row={comp:e,chips:pend}; pend=[]; rows.push(row); last=e.ghost||e.solo?null:row; prev=e.ghost?null:row;
   }
@@ -36,48 +37,76 @@ function xSigned(ev){
     r.chips=r.chips.map(x=>{ const y=Object.assign({},x,{sig:sig(["x",x.dim,x.op,x.pass,x.lay].join("|"))}); map.set(y.sig,{v:x.bytes,t:x.t}); return y; }); }
   return { rows, map };
 }
-/* P：{ st（open 集合）, alt(over)→事件列表或 null, gain:{over,key}（格子上的 ×2 标记）, knobs(item)→要扫的量, why(item)→一句话 } */
-function xGrid(elId, ev, groups, P){
+/* 行 → 段，每段一张图。不展开的上一层接到下一段开头：它的后台流就是给下一段预取的 */
+function xSections(rows){
+  const out=[]; let cur=null, carry=[];
+  rows.forEach((r,i)=>{ const nx=rows[i+1];
+    if(r.sec){ cur={sec:r.sec,rows:carry}; carry=[]; out.push(cur); return; }
+    if(r.comp&&r.comp.ghost&&nx&&nx.sec&&!nx.sec.sub){ carry.push(r); return; }
+    if(!cur){ cur={sec:null,rows:[]}; out.push(cur); }
+    cur.rows.push(r); });
+  return out.filter(s=>s.rows.length);
+}
+/* 排到时间轴上。阻塞的通信排在计算前面；分块和融合的通信与计算一起收尾，前后都有时计算跨在两次之间（Ulysses、dispatch / combine）；
+   后台流从这一行开头起跑，后面不等它。这里只决定画在哪，字节和时间都是引擎给的 */
+function xPlace(sec){
+  const bars=[], free={}; let t=0;
+  const most=a=>{ const m={}; for(const x of a) m[x.dim]=(m[x.dim]||0)+x.t; return Math.max(0,...Object.values(m)); };
+  const put=(x,s)=>{ bars.push({it:x,lane:x.dim,t0:s,t1:s+x.t}); return free[x.dim]=s+x.t; };
+  for(const r of sec.rows){
+    const r0=t, c=r.comp, by=m=>r.chips.filter(x=>x.mode===m), tied=by("part").concat(by("fused")), pre=tied.filter(x=>!x.after), post=tied.filter(x=>x.after), left={};
+    by("bg").forEach(x=>put(x,Math.max(r0,free[x.dim]||0)));
+    by("block").forEach(x=>{ t=put(x,Math.max(t,free[x.dim]||0)); });
+    const a=most(pre), b=most(post), T=c?(c.ghost?Math.max(most(by("bg")),a,2e-5):c.t):0; let end=t+Math.max(a+b,T);
+    const c0=a&&b?Math.min(Math.max(t+a-T/2,t),end-T):t;
+    pre.forEach(x=>{ end=Math.max(end,put(x,Math.max(t,free[x.dim]||0))); });
+    post.forEach(x=>left[x.dim]=(left[x.dim]||0)+x.t);
+    post.forEach(x=>{ const s=Math.max(end-left[x.dim],free[x.dim]||0); left[x.dim]-=x.t; end=Math.max(end,put(x,s)); });
+    if(c) bars.push({it:c,lane:"sm",t0:c0,t1:c0+T,ghost:!!c.ghost});
+    t=end;
+  }
+  const comps=bars.filter(b=>b.lane==="sm").sort((p,q)=>p.t0-q.t0), over=bars.filter(b=>b.lane!=="sm"&&b.it.mode!=="block");
+  /* 计算条上和重叠通信相交的部分：这段时间通信也占用 SM */
+  for(const c of comps) if(!c.ghost) c.busy=over.map(o=>[Math.max(c.t0,o.t0),Math.min(c.t1,o.t1)]).filter(([p,q])=>q>p).sort((p,q)=>p[0]-q[0])
+    .reduce((m,p)=>{ const l=m[m.length-1]; if(l&&p[0]<=l[1]) l[1]=Math.max(l[1],p[1]); else m.push(p.slice()); return m; },[]);
+  /* SM 这条道空着的地方：在等通信 */
+  const waits=[]; let cur=0; for(const c of comps){ if(c.t0-cur>1e-12) waits.push([cur,c.t0]); cur=c.t1; } if(t-cur>1e-12) waits.push([cur,t]);
+  return { bars, waits, reach:Math.max(t,...bars.map(b=>b.t1)) };
+}
+/* P：{ st（open 集合）, alt(over)→事件列表或 null, gain:{over,key}（展开里的 ×2）, knobs(item)→要扫的量, why(item)→一句话 } */
+function xTrace(elId, ev, groups, P){
   const {rows}=xSigned(ev), lanes=XORDER.filter(k=>ev.some(e=>e.k==="x"&&e.dim===k)), el=$(elId);
-  if(!lanes.length){ el.style.setProperty("--k",1); el.innerHTML='<div class="xs">'+t("comm.grid.none")+'</div>'; return lanes; }
-  const mx=Math.max(1,...ev.filter(e=>e.k==="x").map(e=>e.bytes));
+  if(!lanes.length){ el.innerHTML='<p class="hint">'+t("comm.grid.none")+'</p>'; return lanes; }
   P.memo=P.memo||new Map();
   const look=over=>{ const k=JSON.stringify(over); if(!P.memo.has(k)){ const e=P.alt(over); P.memo.set(k,e?xSigned(e).map:null); } return P.memo.get(k); };
   const g2=look(P.gain.over);
   const gain=it=>{ const a=g2&&g2.get(it.sig), b=it.sig[0]==="c"?it.t:it.bytes; return a&&b>0 ? t(P.gain.key,{x:(a.v/b).toFixed(a.v/b>=10?0:a.v/b>=2?1:2)}) : ""; };
-  let n=0, h='<div class="xr xh"><div class="xn">#</div><div class="xc0">'+t("comm.grid.comp")+'</div>'+lanes.map(k=>{ const G=groups[k]||{};
-    return '<div class="xl" style="--c:'+css(XD[k][1])+'"><b>'+esc(XD[k][0])+'</b> '+t("comm.cards",{n:G.n||""})+(G.lk?' · '+esc(G.lk):'')+(G.mem?'<span>'+t("comm.grid.mem",{mem:esc(G.mem)})+'</span>':'')+'</div>'; }).join("")+'</div>';
-  for(const r of rows){
-    if(r.sec){ h+='<div class="xs'+(r.sec.sub?' sub':'')+'">'+r.sec.label+'</div>'; continue; }
-    const c=r.comp, on=x=>P.st.open.has(x.sig), btn=x=>' role="button" tabindex="0" data-xk="'+esc(x.sig)+'" aria-expanded="'+on(x)+'"';
-    /* 这一行和计算重叠的通信：色带从计算格连到其中最右边的一条道 */
-    const ov=c?r.chips.filter(x=>x.mode!=="block"):[], end=ov.length?Math.max(...ov.map(x=>lanes.indexOf(x.dim))):-1;
-    h+='<div class="xr"><div class="xn">'+(++n)+'</div>'+(c ? '<div class="xc0'+(c.ghost?' ghost':'')+(c.sig?' xhit':'')+(c.sig&&on(c)?' on':'')+(end>=0?' xb':'')+'" style="--cc:'+css(CAT[c.cat]||"c-oth")+'"'+(c.sig?btn(c):'')+'><span>'+esc(c.label)+(end>=0?'<em class="xw">'+t("comm.ov.with",{dims:esc([...new Set(ov.map(x=>XD[x.dim][0]))].join(" / "))})+'</em>':'')+'</span>'+(c.t>0?'<span class="t">'+fT(c.t)+(c.sig?'<em class="xg">'+gain(c)+'</em>':'')+'</span>':'')+'</div>'
-      : '<div class="xc0 wait"><span>'+t("comm.grid.wait")+'</span></div>');
-    lanes.forEach((k,j)=>{ h+='<div class="xl'+(j<=end?' xb':'')+(j===end?' xbe':'')+'">'+r.chips.filter(x=>x.dim===k).map(x=>xChip(x,mx,on(x),btn(x),gain(x))).join("")+'</div>'; });
-    h+='</div>';
-    if(c&&c.sig&&on(c)) h+=xPanel(c,P,look);
-    for(const x of r.chips) if(on(x)) h+=xPanel(x,P,look,groups[x.dim]||{});
-  }
-  el.style.setProperty("--k",lanes.length); el.innerHTML=h;
-  const toggle=k=>{ P.st.open.has(k)?P.st.open.delete(k):P.st.open.add(k); xGrid(elId,ev,groups,P); const b=Array.from(el.querySelectorAll("[data-xk]")).find(x=>x.dataset.xk===k); if(b) b.focus({preventScroll:true}); };
+  const secs=xSections(rows).map(s=>Object.assign(s,xPlace(s))), common=Math.max(1e-12,...secs.filter(s=>!(s.sec&&s.sec.sub)).map(s=>s.reach)), on=x=>P.st.open.has(x.sig);
+  el.innerHTML=secs.map(s=>{ const sub=!!(s.sec&&s.sec.sub), S=sub?Math.max(s.reach,1e-12):common, X=v=>(v/S*100).toFixed(3)+"%", W=(p,q)=>'left:'+X(p)+';width:'+X(q-p);
+    const ticks=niceTicks(0,S,6), opened=s.bars.filter(b=>b.it.sig&&on(b.it)).sort((p,q)=>p.t0-q.t0);
+    const bar=b=>{ const x=b.it, comm=b.lane!=="sm", col=comm?XD[b.lane][1]:(CAT[x.cat]||"c-oth"), cls=comm?(x.mode==="block"?"block":"over"):b.ghost?"ghost":CAT[x.cat]&&col!=="c-oth"?"comp":"comp lo", txt=comm?x.op+" "+fB(x.bytes):x.label;
+      if(b.ghost) return '<span class="xtb ghost" style="--c:'+css(col)+';'+W(b.t0,b.t1)+'">'+esc(txt)+'</span>';
+      return '<button type="button" class="xtb '+cls+(on(x)?" on":"")+'" style="--c:'+css(col)+';'+W(b.t0,b.t1)+'" data-xk="'+esc(x.sig)+'" aria-expanded="'+on(x)+'" aria-label="'+esc(comm?t("comm.chip.title",{dim:XD[b.lane][0],op:XOP[x.op],what:x.what}):x.label)+'">'+esc(txt)+(b.busy||[]).map(([p,q])=>'<i style="left:'+((p-b.t0)/(b.t1-b.t0)*100).toFixed(2)+'%;width:'+((q-p)/(b.t1-b.t0)*100).toFixed(2)+'%"></i>').join("")+'</button>'; };
+    const track=(cls,lab,small,col,inner)=>'<div class="xtr'+cls+'"><div class="xtl"'+(col?' style="border-left:3px solid '+css(col)+'"':'')+'>'+esc(lab)+(small?'<small>'+esc(small)+'</small>':'')+'</div><div class="xtp">'+inner+'</div></div>';
+    const used=lanes.filter(k=>s.bars.some(b=>b.lane===k));
+    return '<div class="xsec">'+(s.sec?'<div class="xs'+(sub?' sub':'')+'">'+s.sec.label+(sub?'<small>'+t("comm.trace.ownScale")+'</small>':'')+'</div>':'')+
+      '<div class="xwrap"><div class="xst"><div class="xtg">'+ticks.map(v=>'<i style="left:'+X(v)+'"></i>').join("")+opened.map(b=>'<i class="gd" style="left:'+X(b.t0)+'"></i><i class="gd" style="left:'+X(b.t1)+'"></i>').join("")+'</div>'+
+      '<div class="xta">'+ticks.map(v=>'<span style="left:'+X(v)+(v/S>0.93?';transform:translateX(-100%)':'')+'">'+esc(fT(v))+'</span>').join("")+'</div>'+
+      track(" sm",t("comm.trace.sm"),"","",s.waits.map(([p,q])=>'<i class="xtw" style="'+W(p,q)+'"></i>').join("")+s.bars.filter(b=>b.lane==="sm").map(bar).join(""))+
+      used.map(k=>{ const G=groups[k]||{}; return track("",XD[k][0],t("comm.cards",{n:G.n||""})+(G.lk?" · "+G.lk:""),XD[k][1],s.bars.filter(b=>b.lane===k).map(bar).join("")); }).join("")+'</div></div>'+
+      opened.map(b=>xPanel(b.it,P,look,groups[b.it.dim]||{},gain(b.it))).join("")+'</div>'; }).join("");
+  const toggle=k=>{ P.st.open.has(k)?P.st.open.delete(k):P.st.open.add(k); xTrace(elId,ev,groups,P); const b=Array.from(el.querySelectorAll("[data-xk]")).find(x=>x.dataset.xk===k); if(b) b.focus({preventScroll:true}); };
   el.onclick=e=>{ const b=e.target.closest("[data-xk]"); if(b) toggle(b.dataset.xk); };
-  el.onkeydown=e=>{ if(e.key!=="Enter"&&e.key!==" ") return; const b=e.target.closest("[data-xk]"); if(b){ e.preventDefault(); toggle(b.dataset.xk); } };
   return lanes;
 }
-function xChip(x, mx, on, btn, gain){
-  return '<div class="xchip '+x.mode+(on?' on':'')+'" style="--c:'+css(XD[x.dim][1])+'"'+btn+'><div class="x1"><b class="xo">'+x.op+'</b><span>'+esc(x.what)+'</span></div>'+
-    '<div class="x2"><b>'+fB(x.bytes)+'</b><span>'+fT(x.t)+'</span>'+(x.mode!=="block"?'<em class="xt">'+t(x.mode==="fused"?"comm.chip.tag.fused":"comm.chip.tag.ov")+'</em>':'')+'<em class="xg">'+gain+'</em><span class="xd">'+esc(XD[x.dim][0])+'</span></div>'+
-    '<i class="xbar"><i style="width:'+Math.max(1.5,x.bytes/mx*100).toFixed(1)+'%"></i></i></div>';
-}
 /* 展开的一条：这一项本身的情况，加上每个量一张小图 */
-function xPanel(it, P, look, G){
+function xPanel(it, P, look, G, g2){
   const comm=it.sig[0]==="x", col=comm?XD[it.dim][1]:(CAT[it.cat]||"c-oth");
   const charts=P.knobs(it).map(kn=>{ const pts=kn.vals.map(v=>{ const m=look(v.over), y=m&&m.get(it.sig); return y?{label:v.label,cur:v.cur,mult:v.mult,v:y.v,t:y.t}:null; }).filter(Boolean);
     return pts.length>1 ? xMini(kn,pts,comm,col) : ""; }).join("");
   const bw=comm&&it.t>0&&it.bytes>0 ? it.bytes/it.t/1e9 : 0;
-  const facts=comm ? [t("comm.chip.title",{dim:XD[it.dim][0],op:XOP[it.op],what:it.what}),fB(it.bytes)+" · "+fT(it.t)+(bw?t("comm.chip.bw",{bw:fN(bw)}):""),t("comm.cards",{n:G.n||"?"})+(G.lk?" · "+G.lk:"")+(G.mem?t("comm.chip.mem",{mem:G.mem}):""),XMODE[it.mode],it.note||""]
-    : [it.label,fT(it.t)];
+  const facts=comm ? [t("comm.chip.title",{dim:XD[it.dim][0],op:XOP[it.op],what:it.what}),fB(it.bytes)+" · "+fT(it.t)+(bw?t("comm.chip.bw",{bw:fN(bw)}):""),t("comm.cards",{n:G.n||"?"})+(G.lk?" · "+G.lk:"")+(G.mem?t("comm.chip.mem",{mem:G.mem}):""),XMODE[it.mode],it.note||"",g2]
+    : [it.label,fT(it.t),g2];
   const why=P.why(it);
   return '<div class="xp" style="--c:'+css(col)+'"><div class="xph">'+facts.filter(Boolean).map((f,i)=>i?'<span>'+esc(f)+'</span>':'<b>'+esc(f)+'</b>').join("")+'</div>'+(why?'<p>'+why+'</p>':'')+'<div class="xpg">'+charts+'</div></div>';
 }
@@ -283,13 +312,14 @@ function renderTrnComm(){
   const degOf=it=>it.sig[0]==="c" ? (it.cat==="moe"?"ep":"tp") : ({tp:"tp",cp:"cp",ep:"ep",etp:"etp",pp:"pp"})[it.dim]||"N";
   const fits=over=>!trnRun(over).warn.some(w=>w.key==="engine_train.warn.docGtBatch");
   const plan={ st:XV.trn, gain:{over:{tok:c.tok*2},key:"comm.gain.tok"},
-    alt:over=>{ const a=trnRun(over); return a.warn.some(w=>w.bad)?null:trnPlan(a,L,XV.trn.show); },
+    /* 只丢掉比当前配置多出新问题的点：当前配置自己带警告时，时间线照画，展开里的曲线也要跟着 */
+    alt:over=>{ const a=trnRun(over), had=new Set(r.warn.filter(w=>w.bad).map(w=>w.key)); return a.warn.some(w=>w.bad&&!had.has(w.key))?null:trnPlan(a,L,XV.trn.show); },
     knobs:it=>{ const dk=degOf(it), name=dk==="N"?t("comm.knob.cards"):t("comm.knob.deg",{dim:dk.toUpperCase()}), cur=dk==="N"?topo.gpus:r[dk];
       return [{title:t("comm.knob.tok"),vals:xLadder(c.tok,xK,v=>({tok:v}),v=>fits({tok:v}),1,Infinity)},
         {title:t("comm.knob.seq"),vals:xLadder(c.S,xK,(v,k)=>({S:v,tok:c.tok*k}),null,1,Infinity)},
         {title:name,vals:xLadder(cur,String,v=>({[dk]:v}),null,1,topo.gpus)}]; },
     why:it=>xWhyTrn(it) };
-  const lanes=xGrid("x-t-grid",ev,groups,plan);
+  const lanes=xTrace("x-t-grid",ev,groups,plan);
   /* 一句话回答“随 token 怎么涨”：整个 micro-batch 的计算和线上字节 */
   const mbB=a=>sum(a.comm,x=>x.bytes*(x.perStage?1:1/a.pp)), rT=trnRun({tok:c.tok*2}), rS=trnRun({tok:c.tok*2,S:c.S*2}), xf=(a,b)=>b>0?(a/b).toFixed(2):"—";
   $("x-t-scale").innerHTML=t("comm.trn.scale",{tok:V(fN(c.tok)),S:V(fN(c.S)),c:V(xf(rT.compMB,r.compMB)),b:V(xf(mbB(rT),mbB(r))),c2:V(xf(rS.compMB,r.compMB)),b2:V(xf(mbB(rS),mbB(r)))});
@@ -355,16 +385,18 @@ function infPlan(r, L){
   C("lm_head",PI.lm,"lm"); X("tp","lmg",t("comm.inf.lmg"),"step"); C(t("comm.inf.samp"),PI.samp,"lm");
   return ev;
 }
-/* 推理：默认看左侧的当前配置；它一张卡一个实例（没有通信）时，换成这个拓扑上第一个多卡的部署预设 */
+/* 推理：默认看左侧的当前配置。它一张卡一个实例（没有通信）时，只借一个多卡预设的并行布局（优先同引擎），其余仍跟着左侧；
+   下拉框选的预设会盖掉它写的那些参数，左侧再改其中任何一个，图就回到左侧配置 */
 function infCommCfg(){
-  const cfgs=toConfigs(S.topo), cur=infRun();
-  const opts=[["cur",t("comm.inf.cur",{eng:ENGN[S.inf.engine],n:S.inf.N})]].concat(cfgs.filter(cf=>cf.cfg.N>1).map(cf=>[cf.id,cf.eng+" · "+cf.label]));
-  let id=XV.inf.cfg; if(!opts.some(o=>o[0]===id)) id="cur";
-  let auto=false; if(id==="cur" && !cur.comm.length && opts.length>1 && !XV.inf.pinned){ id=opts[1][0]; auto=true; }
+  const cfgs=toConfigs(S.topo), cur=infRun(), multi=cfgs.filter(cf=>cf.cfg.N>1), owned=cf=>JSON.stringify(Object.keys(cf.cfg).map(k=>S.inf[k]));
+  const opts=[["cur",t("comm.inf.cur",{eng:ENGN[S.inf.engine],n:S.inf.N})]].concat(multi.map(cf=>[cf.id,cf.eng+" · "+cf.label]));
+  if(XV.inf.cfg!=="cur"){ const cf=multi.find(x=>x.id===XV.inf.cfg); if(!cf || owned(cf)!==XV.inf.sig){ XV.inf.cfg="cur"; XV.inf.pinned=false; } }
+  let id=XV.inf.cfg, auto=false;
+  if(id==="cur" && !cur.comm.length && multi.length && !XV.inf.pinned){ id=(multi.find(cf=>cf.cfg.engine===S.inf.engine)||multi[0]).id; auto=true; }
   const sel=$("x-i-cfg"); sel.innerHTML=opts.map(o=>'<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>').join(""); sel.value=id;
-  sel.onchange=e=>{ XV.inf.cfg=e.target.value; XV.inf.pinned=true; renderInfComm(); };
-  const cf=cfgs.find(x=>x.id===id);
-  return { over: cf ? Object.assign({},cf.cfg,{engine:cf.cfg.engine||cf.engine}) : {}, cf, auto };
+  sel.onchange=e=>{ XV.inf.cfg=e.target.value; XV.inf.pinned=true; const cf=multi.find(x=>x.id===XV.inf.cfg); XV.inf.sig=cf?owned(cf):""; renderInfComm(); };
+  const cf=cfgs.find(x=>x.id===id), o=cf&&cf.cfg;
+  return { over: !o ? {} : auto ? {N:o.N,dpA:o.dpA,moePar:o.moePar,engine:o.engine} : o, cf, auto };
 }
 function renderInfComm(){
   const {m,hw,topo}=ctx(), pick=infCommCfg(), c=Object.assign({},S.inf,pick.over), r=infRun(pick.over), {kind,name}=xKinds(m), dec=c.phase==="decode";
@@ -378,9 +410,9 @@ function renderInfComm(){
       : [{title:t("comm.knob.C"),vals:lad(c.C,"C")},{title:t("comm.knob.p"),vals:[0,c.C,4*c.C,16*c.C].map(v=>({label:xK(v),cur:v===(c.p||0),over:v===(c.p||0)?{}:{p:v}}))}],
     why:it=>it.sig[0]==="c" ? t({attn:"comm.why.c.attnInf",lin:"comm.why.c.lin",moe:"comm.why.c.moe",proj:"comm.why.c.proj",lm:"comm.why.c.lm"}[it.cat]||"comm.why.c.oth")
       : t({ar:"comm.why.ar",latar:"comm.why.ar",epag:"comm.why.ar",lmg:"comm.why.lmg",disp:"comm.why.a2a",comb:"comm.why.a2a",cnt:"comm.why.cnt",dpg:"comm.why.dpg",dps:"comm.why.dpg"}[it.ek]||"comm.why.tp") };
-  const lanes=xGrid("x-i-grid",ev,groups,plan);
+  const lanes=xTrace("x-i-grid",ev,groups,plan);
   $("x-i-lede").innerHTML=t("comm.inf.lede",{auto:pick.auto?t("comm.inf.ledeAuto"):"",eng:ENGN[c.engine],model:esc(m.short),hw:hw.name,n:c.N,tp:tpA,dp:r.dpA,moe:esc(MOENAME[r.moePar]||r.moePar),
-    work:dec?t("comm.inf.ledeDec",{b:r.Breq,rows:fN(r.rowsG),spec:r.specK?t("comm.inf.ledeSpec",{k:r.specK+1}):""}):t("comm.inf.ledePre",{c:fN(c.C)}),src:t(pick.cf?"comm.inf.srcPreset":"comm.inf.srcCur")});
+    work:dec?t("comm.inf.ledeDec",{b:r.Breq,rows:fN(r.rowsG),spec:r.specK?t("comm.inf.ledeSpec",{k:r.specK+1}):""}):t("comm.inf.ledePre",{c:fN(c.C)}),src:t(pick.auto?"comm.inf.srcAuto":pick.cf?"comm.inf.srcPreset":"comm.inf.srcCur")});
   const lay = i => ev.filter(e=>e.k==="x"&&e.lay===i);
   xVolume("x-i-vol",L.map(i=>({label:t("comm.vol.label",{i,name:"<span>"+esc(name(kind(i)))+"</span>"}),parts:lanes.map(dim=>({dim,v:sum(lay(i).filter(e=>e.dim===dim),e=>e.bytes)}))})));
   const dimOf = key => ({ar:"tp",latar:"tp",lmg:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:r.moePar==="ag"?"ep":"dpa",dps:r.moePar==="ag"?"ep":"dpa"})[key];

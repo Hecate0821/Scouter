@@ -219,42 +219,36 @@ ul.rel-hl{margin:0;padding-left:16px;max-width:none} ul.rel-hl li{margin:1px 0}
 .nw{white-space:nowrap}
 
 /* 一层里的通信：行是先后，列是本卡计算 + 每个并行维度一条道（后训练 · 并行、推理 · 部署） */
-.xwrap{overflow-x:auto;margin:6px 0 4px}
-.xplan{display:grid;grid-template-columns:2.2em minmax(13em,1.25fr) repeat(var(--k,1),minmax(10em,1fr));font-size:12.5px;line-height:1.45;border:1px solid var(--line);border-radius:0;background:var(--panel);min-width:min(100%,calc(16em + var(--k,1)*10em))}
-.xplan .xr{display:contents}
-.xplan .xr>div{padding:5px 7px;border-top:1px solid var(--grid);min-width:0}
-.xplan .xh>div{border-top:none;background:var(--soft);font-size:12px;color:var(--muted)}
-
-.xplan .xh .xl{border-top:3px solid var(--c)} .xplan .xh .xl b{color:var(--ink);font-family:var(--f-display)} .xplan .xh .xl span{display:block;font-family:var(--f-mono);font-size:10.5px}
-.xplan .xs{grid-column:1/-1;padding:9px 10px 3px;border-top:1px solid var(--line);font-family:var(--f-display);font-weight:700;font-size:13px}
-.xplan .xs span{font-weight:400;color:var(--muted)} .xplan .xs.sub{background:var(--soft)}
-.xplan .xn{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);text-align:right;padding-right:2px!important}
-.xplan .xc0{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
-.xplan .xr:not(.xh) .xc0{border-left:3px solid var(--cc,var(--c-oth));padding-left:8px}
-.xplan .xc0 .t{font-family:var(--f-mono);font-size:11px;color:var(--muted);white-space:nowrap}
-.xplan .xc0.ghost{color:var(--muted);border-left-style:dotted!important}
-.xplan .xc0.wait{color:var(--muted);font-size:11.5px;border-left-color:transparent!important;background:repeating-linear-gradient(135deg,transparent 0 6px,var(--soft) 6px 9px)}
-.xchip{position:relative;border:1px solid var(--c);border-left-width:3px;border-radius:0;padding:3px 6px 6px;margin:0 0 4px;background:color-mix(in srgb,var(--c) 13%,var(--panel));cursor:default}
-.xchip:last-child{margin-bottom:0}
-.xchip.bg,.xchip.part,.xchip.fused{background:var(--panel);border-style:dashed;border-left-style:solid}
-.xchip .x2 em.xt{color:var(--accent)}
-.xplan .xr>.xb{background:color-mix(in srgb,var(--accent) 11%,var(--panel));border-top-color:color-mix(in srgb,var(--accent) 45%,var(--panel));box-shadow:inset 0 -1px 0 color-mix(in srgb,var(--accent) 45%,var(--panel))}
-.xplan .xr>.xbe{border-right:2px solid color-mix(in srgb,var(--accent) 60%,var(--panel))}
-.xplan .xc0 .xw{display:block;font-style:normal;font-size:10.5px;color:var(--accent)}
-.xchip .x1{display:flex;gap:5px;align-items:baseline}
-.xchip .xo{font:700 10.5px var(--f-mono);color:var(--ink);flex:none}
-.xchip .x2{display:flex;flex-wrap:wrap;gap:0 7px;align-items:baseline;font-family:var(--f-mono);font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.xchip .x2 b{color:var(--ink)} .xchip .x2 em{font-style:normal;font-family:var(--f-body);font-size:10.5px}
-.xchip .xd{display:none}
-.xchip[data-xk]{cursor:pointer}
-.xchip.on{outline:2px solid var(--c);outline-offset:-1px}
-.xchip .xg,.xplan .xc0 .xg{font-family:var(--f-mono);font-size:10.5px;font-style:normal;color:var(--muted)}
-.xplan .xc0 .xg{display:block;text-align:right}
-.xplan .xc0.xhit{cursor:pointer}
-.xplan .xc0.xhit:hover,.xchip[data-xk]:hover{background:color-mix(in srgb,var(--ink) 6%,var(--panel))}
-.xplan .xc0.on{background:var(--soft);box-shadow:inset 0 -2px 0 var(--cc)}
-.xplan [data-xk]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
-.xp{grid-column:1/-1;border-top:1px solid var(--grid);border-left:3px solid var(--c);padding:8px 10px 10px;background:var(--soft)}
+.xtrace{margin:6px 0 4px}
+.xsec+.xsec{margin-top:14px}
+.xs{font-family:var(--f-display);font-weight:700;font-size:13px;margin:0 0 3px}
+.xs span{font-weight:400;color:var(--muted)} .xs small{font:400 11px var(--f-mono);color:var(--muted);margin-left:10px}
+.xwrap{overflow-x:auto}
+.xst{--gut:118px;position:relative;min-width:820px;background:var(--panel);border:1px solid var(--line);font-size:12px}
+.xta{position:relative;height:20px;margin-left:var(--gut);border-bottom:1px solid var(--line);font:10.5px var(--f-mono);color:var(--muted)}
+.xta span{position:absolute;top:2px;transform:translateX(3px);white-space:nowrap}
+.xtg{position:absolute;top:0;bottom:0;left:var(--gut);right:0;pointer-events:none;overflow:hidden}
+.xtg i{position:absolute;top:0;bottom:0;width:1px;background:var(--grid)}
+.xtg i.gd{background:var(--ink);opacity:.55}
+.xtr{position:relative;display:flex;border-bottom:1px solid var(--grid)}
+.xtr:last-child{border-bottom:0}
+.xtl{position:sticky;left:0;z-index:4;flex:0 0 var(--gut);box-sizing:border-box;background:var(--panel);padding:3px 8px;line-height:1.25;border-right:1px solid var(--line);min-width:0;font-weight:600}
+.xtl small{display:block;font:400 10px var(--f-mono);color:var(--muted)}
+.xtp{position:relative;flex:1 1 0;min-width:0;height:30px}
+.xtr.sm .xtp{height:36px}
+.xtb{position:absolute;top:4px;bottom:4px;display:block;min-width:2px;padding:0 4px;border:0;border-radius:0;font:11px/22px var(--f-body);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:var(--c);color:var(--panel)}
+.xtr.sm .xtb{line-height:28px}
+button.xtb{cursor:pointer}
+button.xtb:hover{filter:brightness(1.12)}
+.xtb.over{background:color-mix(in srgb,var(--c) 34%,var(--panel));border:1px dashed var(--c);color:var(--ink)}
+.xtb.lo{color:var(--ink)}
+.xtb.ghost{background:none;border:1px dotted var(--muted);color:var(--muted)}
+.xtb.on{outline:2px solid var(--ink);outline-offset:1px;z-index:3}
+.xtb:focus-visible{outline:2px solid var(--accent);outline-offset:1px;z-index:3}
+.xtb i{position:absolute;top:0;height:3px;background:repeating-linear-gradient(90deg,var(--panel) 0 3px,transparent 3px 5px)}
+.xtb.lo i{background:repeating-linear-gradient(90deg,var(--ink) 0 3px,transparent 3px 5px)}
+.xtw{position:absolute;top:4px;bottom:4px;background:repeating-linear-gradient(135deg,transparent 0 3px,var(--faint) 3px 5px);opacity:.75}
+.xp{margin-top:4px;border-left:3px solid var(--c);padding:8px 10px 10px;background:var(--soft)}
 .xp .xph{display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline;font-size:12px;color:var(--muted)}
 .xp .xph b{color:var(--ink);font-family:var(--f-display);flex-basis:100%}
 .xp p{margin:6px 0 4px;font-size:12.5px;color:var(--ink);max-width:72ch}
@@ -262,26 +256,22 @@ ul.rel-hl{margin:0;padding-left:16px;max-width:none} ul.rel-hl li{margin:1px 0}
 .xm{margin:4px 0 0;flex:1 1 230px;max-width:300px}
 .xm figcaption{display:flex;flex-wrap:wrap;justify-content:space-between;align-content:flex-start;gap:0 8px;min-height:4.5em;font-size:11.5px;color:var(--muted)}
 .xm figcaption b{color:var(--ink);font-weight:600}
-.xm svg{display:block;width:100%;height:auto}
+.xm svg{display:block;width:100%;height:auto;overflow:visible}
 .xm small{font-size:11px;color:var(--muted)}
 .xm .xb0{stroke:var(--line);stroke-width:1}
 .xm text{font-family:var(--f-mono);font-size:9.5px;fill:var(--muted)}
 .xm text.cur{fill:var(--ink);font-weight:700}
-.xchip .xbar{position:absolute;left:6px;right:6px;bottom:2px;height:2px;background:var(--grid);border-radius:1px}
-.xchip .xbar i{display:block;height:100%;background:var(--c);border-radius:1px}
-.xleg .xk{width:16px;height:10px;border-radius:3px;border:1px solid var(--muted)}
-.xleg .xk.block{background:color-mix(in srgb,var(--muted) 25%,var(--panel))} .xleg .xk.ov{border:1px dashed var(--accent);background:color-mix(in srgb,var(--accent) 11%,var(--panel))}
+.xleg .xk{width:18px;height:11px;border:1px solid var(--muted)}
+.xleg .xk.block{background:var(--muted)}
+.xleg .xk.ov{border:1px dashed var(--accent);background:color-mix(in srgb,var(--accent) 34%,var(--panel))}
+.xleg .xk.wait{border-color:var(--line);background:repeating-linear-gradient(135deg,transparent 0 3px,var(--faint) 3px 5px)}
+.xleg .xk.sm{border:0;background:repeating-linear-gradient(90deg,var(--panel) 0 3px,transparent 3px 5px) top/100% 3px no-repeat,var(--c-attn)}
 .xvol{display:grid;gap:6px;margin:6px 0 10px}
 .xv{display:grid;grid-template-columns:minmax(8em,15em) minmax(0,1fr) 6em;gap:10px;align-items:center;font-size:12.5px}
 .xv .lab span{color:var(--muted)} .xv .num{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
 .xv .bar{display:flex;gap:2px;height:14px} .xv .bar i{display:block;height:100%;border-radius:2px;min-width:2px}
 td .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
 @media (max-width:720px){
-  .xplan{grid-template-columns:2em minmax(0,1fr);min-width:0}
-  .xplan .xh{display:none}
-  .xplan .xr>.xl{grid-column:2;border-top:none;padding-top:0}
-  .xplan .xr>.xl:empty{display:none}
-  .xchip .xd{display:inline;font-family:var(--f-body);color:var(--ink)}
   .xv{grid-template-columns:minmax(0,1fr) 5em} .xv .bar{grid-column:1/-1;grid-row:2}
 }
 
