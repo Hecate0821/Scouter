@@ -6,7 +6,7 @@ I18N.add("en", "overview", {
   "card.train_step.h4": "Post-training",
   "card.train_step.p": "One optimizer step of Megatron-Core / torchtitan: fwd / dgrad / wgrad, recompute, TP / CP / EP / PP / FSDP communication, optimizer and GPU memory. The parallelism section takes FSDP, CP and EP apart one dimension at a time, the low-precision section looks at the three GEMM passes of training, and the last section compares against anonymized measurements.",
   "card.infer_step.h4": "Inference",
-  "card.infer_step.p": "The kernel sequence of one SGLang / vLLM / TokenSpeed decode or prefill step; the deployment section compares the tradeoffs of TP, DP-attention, EP and PD disaggregation; the low-precision section looks at one GEMM and one MoE layer; speculative decoding has its own section.",
+  "card.infer_step.p": "Where one SGLang / vLLM / TokenSpeed decode or prefill step spends its time and memory, and how the engines differ; the deployment section compares the tradeoffs of TP, DP-attention, EP and PD disaggregation; the low-precision section looks at one GEMM and one MoE layer; speculative decoding has its own section.",
   "card.rl_mismatch.p": "Rollout and training are two sets of kernels, and the log-probs do not match: where the difference comes from and how to fix it (TIS / MIS, routing replay, bitwise alignment); deterministic rollout; low-precision rollout and weight sync; low-precision training and QAT.",
   "card.appendix_data.h4": "Appendix",
   "card.appendix_data.p": "Public data points, summaries of the past year of LMSYS blog posts and SGLang / vLLM / slime / Miles / AReaL releases; quantization basics; model structure; the modeling basis and the open-source implementations referenced.",

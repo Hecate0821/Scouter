@@ -85,9 +85,9 @@
     <label class="ctl" id="ar-C"><span data-i18n="arch.rack.C"></span><input type="number" min="0" max="65536" step="1024" data-bind="arch.C"></label>
     <label class="ctl" id="ar-S"><span data-i18n="arch.rack.S"></span><input type="number" min="256" max="1048576" step="1024" data-bind="arch.S"></label>
     <div id="ar-inf">
-      <label class="ctl"><span data-i18n="arch.rack.wDt"></span><select data-bind="arch.wDt" data-i18n-attr="aria-label=arch.rack.wDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option></select></label>
-      <label class="ctl"><span data-i18n="arch.rack.eDt"></span><select data-bind="arch.eDt" data-i18n-attr="aria-label=arch.rack.eDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
-      <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="arch.kvDt" data-i18n-attr="aria-label=common.ctl.kvCache"><option value="bf16">BF16</option><option value="fp8">FP8</option></select></label>
+      <label class="ctl"><span data-i18n="arch.rack.wDt"></span><select data-bind="arch.wDt" data-i18n-attr="aria-label=arch.rack.wDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option></select></label>
+      <label class="ctl"><span data-i18n="arch.rack.eDt"></span><select data-bind="arch.eDt" data-i18n-attr="aria-label=arch.rack.eDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
+      <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="arch.kvDt" data-i18n-attr="aria-label=common.ctl.kvCache"><option value="bf16">BF16</option><option value="fp8">FP8</option><option value="nvfp4">NVFP4</option></select></label>
       <label class="ctl"><span data-i18n="arch.rack.stateDt"></span><select data-bind="arch.stateDt" data-i18n-attr="aria-label=arch.rack.stateDt"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
     </div>
     <label class="ctl" id="ar-prec"><span data-i18n="arch.rack.prec"></span><select data-bind="arch.prec" data-i18n-attr="aria-label=arch.rack.prec"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.blockFp8"></option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
@@ -609,23 +609,7 @@
     <p class="lede" data-i18n="infer.step.b2.lede"></p>
     <div class="bar" id="i-bar"></div>
     <div class="barlist" id="i-barlist"></div>
-  </div>
-  <div class="block"><h2 data-i18n="infer.step.b3.h2"></h2>
-    <p class="lede" id="i-ops-lede"></p>
-    <div class="tbl"><table id="i-ops"></table></div>
-    <div class="tbl"><table id="i-comm"></table></div>
-  </div>
-  <div class="block"><h2 data-i18n="infer.step.b4.h2"></h2>
-    <div class="fig"><svg id="i-roof" viewBox="0 0 680 380" role="img" data-i18n-attr="aria-label=infer.step.attr.i-roof.aria-label"></svg>
-      <div class="legend" id="i-roof-legend"></div></div>
-  </div>
-  <div class="block" data-phase="decode"><h2 data-i18n="infer.step.b5.h2"></h2>
-    <p class="lede" data-i18n-html="infer.step.b5.lede"></p>
-    <div class="figs">
-      <div class="fig"><svg id="i-sw-lat" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=infer.step.attr.i-sw-lat.aria-label"></svg></div>
-      <div class="fig"><svg id="i-sw-thr" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=infer.step.attr.i-sw-thr.aria-label"></svg></div>
-    </div>
-    <div class="legend" id="i-sw-legend"></div>
+    <p class="hint" id="i-to-mods" data-i18n-html="infer.step.b2.more"></p>
   </div>
   <div class="block" data-phase="prefill"><h2 data-i18n="infer.step.b6.h2"></h2>
     <p class="lede" data-i18n="infer.step.b6.lede"></p>
@@ -639,7 +623,6 @@
   <div class="block"><h2 data-i18n="infer.step.b8.h2"></h2>
     <div class="bar" id="i-mem"></div><div class="barlist" id="i-memlist"></div>
   </div>
-  <div class="block"><h2 data-i18n="infer.step.b9.h2"></h2><div id="i-analysis"></div></div>
 </section>
 
 <!-- ============ 推理 · 部署与并行 ============ -->

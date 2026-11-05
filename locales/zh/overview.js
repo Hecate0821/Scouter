@@ -6,7 +6,7 @@ I18N.add("zh", "overview", {
   "card.train_step.h4": "后训练",
   "card.train_step.p": "Megatron-Core / torchtitan 的一个 optimizer step：fwd / dgrad / wgrad、重算、TP / CP / EP / PP / FSDP 通信、优化器和显存。并行一节把 FSDP、CP、EP 一维一维拆开，低精度一节看训练三遍 GEMM，最后和匿名实测对照。",
   "card.infer_step.h4": "推理",
-  "card.infer_step.p": "SGLang / vLLM / TokenSpeed 一步 decode 或 prefill 的 kernel 序列；部署一节比较 TP、DP-attention、EP 和 PD 分离的取舍；低精度一节看一个 GEMM 和一层 MoE；投机解码单独一节。",
+  "card.infer_step.p": "SGLang / vLLM / TokenSpeed 一步 decode 或 prefill 的时间和显存花在哪里，引擎之间差在哪；部署一节比较 TP、DP-attention、EP 和 PD 分离的取舍；低精度一节看一个 GEMM 和一层 MoE；投机解码单独一节。",
   "card.rl_mismatch.p": "rollout 和训练是两套 kernel，log-prob 对不上：差异从哪来、怎么修（TIS / MIS、routing replay、逐位对齐）；确定性 rollout；低精度 rollout 和权重同步；低精度训练与 QAT。",
   "card.appendix_data.h4": "附录",
   "card.appendix_data.p": "公开数据点，过去一年 LMSYS 博客和 SGLang / vLLM / slime / Miles / AReaL 发布的摘要；量化基础；模型结构；建模口径和参考的开源实现。",

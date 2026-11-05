@@ -72,6 +72,26 @@ const problems = [];
   }
   if (errs.length) problems.push(...errs.slice(0, 5));
 
+  // --- the step page hands its workload to the module page ---
+  const sp = await load(path.join(ROOT, "index.html"), "#infer/step", null, "?model=qwen35&hw=H200&topo=hgx8&src=ideal");
+  const spSet = (k, v) => { const el = sp.d.querySelector(`[data-bind="${k}"]`); el.value = v; el.dispatchEvent(new sp.w.Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true })); };
+  const toMods = () => { sp.w.eval('showTab("infer/step")'); sp.d.querySelector("#i-to-mods a").click(); sp.w.eval('showTab("arch/module/full")'); };
+  const ACORE = 'fT((o=>o.t/o.layers)(infRun().ops.find(x=>x.key==="acore")))';
+  spSet("inf.B", 32); spSet("inf.n", 4096); toMods();
+  const paged = () => Array.from(sp.d.querySelectorAll("#am-ops tbody tr")).map(r => Array.from(r.children).map(c => c.textContent.trim())).find(r => r[0].includes("paged attention"));
+  if (sp.w.eval("[S.arch.B, S.arch.n].join()") !== "32,4096") problems.push("step page: B and context did not reach the module page");
+  const pg = paged(); if (!pg || pg[4] !== sp.w.eval(ACORE)) problems.push(`step page: attention core is ${sp.w.eval(ACORE)}, module page shows ${pg && pg[4]}`);
+  // Every precision the rack offers has to be selectable on the module page, or its dropdown goes blank
+  for (const [from, to] of [["wDt", "eDt"], ["dDt", "wDt"], ["kvDt", "kvDt"], ["stateDt", "stateDt"]])
+    for (const v of Array.from(sp.d.querySelector(`[data-bind="inf.${from}"]`).options).map(o => o.value)) {
+      const base = sp.w.eval(`S.inf.${from}`); spSet(`inf.${from}`, v); toMods();
+      if (sp.d.querySelector(`[data-bind="arch.${to}"]`).value !== v) problems.push(`step page: ${from}=${v} leaves arch.${to} blank`);
+      if (/NaN|undefined/.test(sp.d.getElementById("am-ops").textContent)) problems.push(`step page: ${from}=${v} breaks the module table`);
+      spSet(`inf.${from}`, base); }
+  spSet("inf.phase", "prefill"); spSet("inf.P", 16384); toMods();
+  if (sp.w.eval("[S.arch.phase, S.arch.n].join()") !== "prefill,16384") problems.push("step page: prefill should carry the prompt length");
+  if (sp.errs.length) problems.push(...sp.errs.slice(0, 5));
+
   // --- URL state ---
   const u = await load(path.join(ROOT, "index.html"), "#arch/module", null, "?model=glm53f&hw=H100&topo=hgx8&src=ideal");
   const st = u.w.eval("[S.modelKey, S.hw, S.topo, S.src, S.glob.etaM].join(' ')");
