@@ -38,6 +38,10 @@
     <a href="#rl/lowprec" data-route="rl/lowprec" data-i18n="shell.nav.rl.lowprec"></a>
     <a href="#rl/qat" data-route="rl/qat" data-i18n="shell.nav.rl.qat"></a>
   </div>
+  <div class="grp" data-grp="cluster"><h4 data-i18n="shell.nav.cluster"></h4>
+    <a href="#cluster/fabric" data-route="cluster/fabric" data-i18n="shell.nav.cluster.fabric"></a>
+    <a href="#cluster/impact" data-route="cluster/impact" data-i18n="shell.nav.cluster.impact"></a>
+  </div>
   <div class="grp" data-grp="appendix"><h4 data-i18n="shell.nav.appendix"></h4>
     <a href="#appendix/data" data-route="appendix/data" data-i18n="shell.nav.appendix.data"></a>
     <a href="#appendix/quant" data-route="appendix/quant" data-i18n="shell.nav.appendix.quant"></a>
@@ -261,6 +265,28 @@
     <label class="ctl"><span data-i18n="rl.rack.ctl.q.roll"></span><input type="number" min="0" max="1" step="0.05" data-bind="q.roll"></label>
   </div>
 
+  <div data-rack="cluster/fabric cluster/impact">
+    <h3 data-i18n="cluster.rack.h3"></h3>
+    <label class="ctl"><span data-i18n="cluster.rack.scale"></span><select data-bind="net.scale" data-i18n-attr="aria-label=cluster.rack.scale"></select></label>
+    <label class="ctl"><span data-i18n="cluster.rack.infN"></span><input type="number" min="1" step="1" data-bind="inf.N"></label>
+    <label class="ctl"><span data-i18n="cluster.rack.intra"></span><select data-bind="net.intra" data-i18n-attr="aria-label=cluster.rack.intra"><option value="nvswitch" data-i18n="cluster.rack.opt.nvswitch"></option><option value="pcie" data-i18n="cluster.rack.opt.pcie"></option></select></label>
+    <label class="ctl"><span data-i18n="cluster.rack.domain"></span><select data-bind="net.domain" data-i18n-attr="aria-label=cluster.rack.domain"></select></label>
+    <label class="ctl"><span data-i18n="cluster.rack.nvlFrac"></span><select data-bind="net.nvlFrac" data-i18n-attr="aria-label=cluster.rack.nvlFrac"></select></label>
+    <label class="check"><input type="checkbox" data-bind="net.nvls"><span data-i18n="cluster.rack.nvls"></span></label>
+    <h3 data-i18n="cluster.rack.h3_2"></h3>
+    <label class="ctl"><span data-i18n="cluster.rack.pcie"></span><select data-bind="net.pcie" data-i18n-attr="aria-label=cluster.rack.pcie"></select></label>
+    <label class="check"><input type="checkbox" data-bind="net.gdr"><span data-i18n="cluster.rack.gdr"></span></label>
+    <label class="ctl"><span data-i18n="cluster.rack.nic"></span><select data-bind="net.nic" data-i18n-attr="aria-label=cluster.rack.nic"></select></label>
+    <h3 data-i18n="cluster.rack.h3_3"></h3>
+    <label class="ctl"><span data-i18n="cluster.rack.ports"></span><select data-bind="net.ports" data-i18n-attr="aria-label=cluster.rack.ports"></select></label>
+    <label class="ctl"><span data-i18n="cluster.rack.over"></span><select data-bind="net.over" data-i18n-attr="aria-label=cluster.rack.over"></select></label>
+    <label class="ctl"><span data-i18n="cluster.rack.route"></span><select data-bind="net.route" data-i18n-attr="aria-label=cluster.rack.route"><option value="adaptive" data-i18n="cluster.rack.opt.adaptive"></option><option value="ecmp">ECMP</option></select></label>
+    <label class="ctl"><span data-i18n="cluster.rack.qps"></span><select data-bind="net.qps" data-i18n-attr="aria-label=cluster.rack.qps"></select></label>
+    <label class="check"><input type="checkbox" data-bind="net.sharp"><span data-i18n="cluster.rack.sharp"></span></label>
+    <button type="button" class="act" id="cl-reset" data-i18n="cluster.rack.reset"></button>
+    <p class="hint" data-i18n-html="cluster.rack.hint"></p>
+  </div>
+
   <div data-rack="overview"><p class="hint" data-i18n="overview.rack.hint"></p></div>
   <div data-rack="train/calib"><p class="hint" data-i18n="train.rack.hint_3"></p></div>
   <div data-rack="infer/calib"><p class="hint" data-i18n="calib.inf.rack"></p></div>
@@ -299,6 +325,7 @@
       <a class="card" href="#train/step"><h4 data-i18n="overview.card.train_step.h4"></h4><p data-i18n="overview.card.train_step.p"></p></a>
       <a class="card" href="#infer/step"><h4 data-i18n="overview.card.infer_step.h4"></h4><p data-i18n="overview.card.infer_step.p"></p></a>
       <a class="card" href="#rl/mismatch"><h4>RL</h4><p data-i18n="overview.card.rl_mismatch.p"></p></a>
+      <a class="card" href="#cluster/fabric"><h4 data-i18n="overview.card.cluster.h4"></h4><p data-i18n="overview.card.cluster.p"></p></a>
       <a class="card" href="#appendix/data"><h4 data-i18n="overview.card.appendix_data.h4"></h4><p data-i18n="overview.card.appendix_data.p"></p></a>
     </div>
   </div>
@@ -903,6 +930,78 @@
   </div>
 </section>
 
+<!-- ============ 集群 · 网络结构 ============ -->
+<section class="pane" data-pane="cluster/fabric" hidden>
+  <div class="block"><h2 data-i18n="cluster.fab.b1.h2"></h2>
+    <p class="lede" id="cl-ladder-lede"></p>
+    <div class="kpis" id="cl-kpis"></div>
+    <div class="fig"><svg id="cl-ladder" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=cluster.fab.b1.aria"></svg></div>
+    <div class="hint" id="cl-ladder-read"></div>
+  </div>
+  <div class="block" id="cl-nvs-b"><h2 data-i18n="cluster.fab.b2.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.fab.b2.lede"></p>
+    <div class="fig"><svg id="cl-nvs" viewBox="0 0 680 230" role="img" data-i18n-attr="aria-label=cluster.fab.b2.aria"></svg></div>
+    <p class="lede" id="cl-nvs-cap"></p>
+    <p class="lede" id="cl-ar-lede"></p>
+    <div class="fig"><svg id="cl-ar" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=cluster.fab.b2.arAria"></svg><div class="legend" id="cl-ar-legend"></div></div>
+    <div class="hint" id="cl-nvs-read"></div>
+  </div>
+  <div class="block" id="cl-pcie-b"><h2 data-i18n="cluster.fab.b3.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.fab.b3.lede"></p>
+    <div class="fig"><svg id="cl-pcie" viewBox="0 0 680 250" role="img" data-i18n-attr="aria-label=cluster.fab.b3.aria"></svg></div>
+    <p class="lede" id="cl-pcie-cap"></p>
+    <div class="tbl"><table id="cl-gen"></table></div>
+    <p class="lede" id="cl-tp-lede"></p>
+    <div class="tbl"><table id="cl-tp"></table></div>
+    <div class="hint" id="cl-pcie-read"></div>
+  </div>
+  <div class="block" id="cl-out-b"><h2 data-i18n="cluster.fab.b4.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.fab.b4.lede"></p>
+    <div class="kpis" id="cl-out-kpis"></div>
+    <p class="lede" id="cl-over-lede"></p>
+    <div class="fig"><svg id="cl-over" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=cluster.fab.b4.overAria"></svg><div class="legend" id="cl-over-legend"></div></div>
+    <p class="lede" id="cl-qp-lede"></p>
+    <div class="fig"><svg id="cl-qp" viewBox="0 0 680 260" role="img" data-i18n-attr="aria-label=cluster.fab.b4.qpAria"></svg></div>
+    <div class="hint" id="cl-out-read"></div>
+  </div>
+  <div class="block" data-src="both"><h2 data-i18n="cluster.fab.b5.h2"></h2>
+    <p class="lede" data-i18n="cluster.fab.b5.lede"></p>
+    <div class="tbl"><table id="cl-spec"></table></div>
+  </div>
+  <div class="block" data-src="measured"><h2 data-i18n="cluster.fab.b6.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.fab.b6.lede"></p>
+    <div class="tbl"><table id="cl-pub"></table></div>
+  </div>
+</section>
+
+<!-- ============ 集群 · 对训练和推理的影响 ============ -->
+<section class="pane" data-pane="cluster/impact" hidden>
+  <div class="block"><h2 data-i18n="cluster.imp.b1.h2"></h2>
+    <p class="lede" id="cl-imp-lede"></p>
+    <div class="kpis" id="cl-imp-kpis"></div>
+    <div id="cl-bars"></div>
+    <p class="lede" id="cl-grp-lede"></p>
+    <div class="tbl"><table id="cl-groups"></table></div>
+    <div class="hint" id="cl-imp-read"></div>
+  </div>
+  <div class="block"><h2 data-i18n="cluster.imp.b2.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.imp.b2.lede"></p>
+    <div class="tbl"><table id="cl-sens"></table></div>
+    <div class="hint" id="cl-sens-read"></div>
+  </div>
+  <div class="block"><h2 data-i18n="cluster.imp.b3.h2"></h2>
+    <p class="lede" id="cl-dom-lede"></p>
+    <div class="fig" id="cl-dom-t-fig"><svg id="cl-dom-t" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=cluster.imp.b3.trainAria"></svg></div>
+    <div class="fig" id="cl-dom-d-fig"><svg id="cl-dom-d" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=cluster.imp.b3.decAria"></svg></div>
+    <div class="hint" id="cl-dom-read"></div>
+  </div>
+  <div class="block"><h2 data-i18n="cluster.imp.b4.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.imp.b4.lede"></p>
+    <div class="tbl"><table id="cl-xfer"></table></div>
+    <div class="hint" id="cl-xfer-read"></div>
+  </div>
+</section>
+
 <!-- ============ 附录 · 数据与发布 ============ -->
 <section class="pane" data-pane="appendix/data" hidden>
   <div class="block" data-src="both"><h2 data-i18n="appendix.data.b1.h2"></h2>
@@ -1097,6 +1196,7 @@
 <script src="locales/zh/tradeoff.js"></script>
 <script src="locales/zh/spec.js"></script>
 <script src="locales/zh/kv.js"></script>
+<script src="locales/zh/cluster.js"></script>
 <script src="locales/zh/config.js"></script>
 <script src="locales/zh/quant.js"></script>
 <script src="locales/zh/rl.js"></script>
@@ -1119,6 +1219,7 @@
 <script src="src/engine/calib.js"></script>
 <script src="src/engine/trace.js"></script>
 <script src="src/engine/kv.js"></script>
+<script src="src/engine/fabric.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
 <script src="src/plane/scouter.js"></script>
@@ -1141,6 +1242,7 @@
 <script src="src/ui/overview.js"></script>
 <script src="src/ui/spec.js"></script>
 <script src="src/ui/kv.js"></script>
+<script src="src/ui/cluster.js"></script>
 <script src="src/ui/rl.js"></script>
 <script src="src/ui/shell.js"></script>
 <script src="src/ui/app.js"></script>

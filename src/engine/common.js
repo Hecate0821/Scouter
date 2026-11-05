@@ -176,24 +176,64 @@ function layerPlan(m){
   return out;
 }
 
-/* 链路：组内 peer 在同一个 NVLink 域就走 NVLink，否则走 IB（取最慢的那条） */
+/* ECMP：F 条流按哈希落到 U 条上行链路，最忙那条的期望流数。固定种子的蒙特卡洛，结果可复现；流很多时用正态近似 */
+const ECMP_MEMO = new Map();
+function ecmpMax(F, U){
+  F = Math.max(1, Math.round(F)); U = Math.max(1, Math.round(U));
+  if(U===1) return F;
+  const key = F+"/"+U; if(ECMP_MEMO.has(key)) return ECMP_MEMO.get(key);
+  let v;
+  if(F > 20000) v = F/U + Math.sqrt(2*(F/U)*Math.log(U));
+  else {
+    let s = 0x9e3779b9 ^ (F*31 + U), tot = 0; const trials = Math.max(64, Math.min(400, Math.floor(200000/F))), bins = new Uint32Array(U);
+    const rnd = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s>>>15, 1|s); t = t + Math.imul(t ^ t>>>7, 61|t) ^ t; return ((t ^ t>>>14)>>>0)/4294967296; };
+    for(let k=0;k<trials;k++){ bins.fill(0); let mx=0; for(let i=0;i<F;i++){ const b=(rnd()*U)|0; if(++bins[b]>mx) mx=bins[b]; } tot += mx; }
+    v = tot/trials;
+  }
+  ECMP_MEMO.set(key, v); return v;
+}
+/* 叶交换机往 spine 的上行：每个 rank 网卡流量里 upF 要上行，一个叶交换机下 P 个口、收敛比 over（上行口 U = P/over），
+   F 条流哈希到 U 条上行。返回上行比网卡本身慢多少倍（≤ 1 表示网卡先成为瓶颈）。自适应路由按均匀摊开算 */
+function spineX(net, upF, flowsPerNic){
+  if(!(upF>0)) return 0;
+  const P = net.ports||128, over = net.over||1, U = Math.max(1, Math.round(P/over));
+  const nicUp = upF*P;                                              // 这个叶交换机下等效有多少张网卡的流量要上行
+  if(!net.ecmp) return nicUp/U;
+  const F = Math.max(1, Math.round(nicUp*(flowsPerNic||1)*(net.qps||1)));
+  return nicUp/F*ecmpMax(F, U);                                     // 每条流 nicUp/F 张网卡的量，最忙的上行口装 E[max] 条
+}
+/* 链路：组内 peer 都在同一个 NVLink 域就走 NVLink。跨域时（集群页的 topo.net 给出 scale-out 参数，没有时 segment 无限大、不收敛）：
+   · 环（AG / RS / AR）：NCCL 每个 channel 从不同网卡出域（rail），域内有 d 个组员就有 d 张网卡并行，最多到域内 NVLink 的速度（不比同样的环放在域里快）。
+     按 NCCL 的环序，每个 channel 在一个 segment 只跨出一次，上行流量只占 d / m
+   · 点对点（PP、CP ring、halo）：边界那张卡自己的一张网卡；m 个组员里有一个要跨 segment
+   · all-to-all：发往本域 / 本 segment 其他域 / 其他 segment 的三部分分别走 NVLink、网卡、网卡 + spine
+   主页面的拓扑都在一个域里，这些分支只在集群页和手动加大推理卡数时用到 */
 function link(hw, topo, n, stride){
-  if(n<=1) return { bw:Infinity, intra:true, alpha:0 };
-  const span = n*(stride||1);
-  const intra = span<=topo.domain;
-  return { bw:(intra?hw.nvl:hw.ib)*1e9, intra };
+  if(n<=1) return { bw:Infinity, p2p:Infinity, a2a:Infinity, intra:true, alpha:0 };
+  const s = stride||1, nvl = hw.nvl*1e9, net = topo.net||{}, blk = Math.min(topo.domain, topo.gpus||topo.domain);
+  if(n*s<=topo.domain) return { bw:nvl, p2p:nvl, a2a:nvl, intra:true, inNet:!!net.nvls, d:n, m:n };
+  const nic = hw.ib*1e9, d = s>=blk ? 1 : Math.min(n, Math.max(1, Math.floor(blk/s)));
+  const seg = net.segment||Infinity, m = s>=seg ? 1 : Math.min(n, Math.max(d, Math.floor(seg/s)));
+  const remF = (n-d)/(n-1), farF = (n-m)/(n-1);
+  const xRing = m<n ? spineX(net, d/m, 1) : 0, xP2p = m<n ? spineX(net, 1/m, 1) : 0;
+  const xA2a = m<n ? spineX(net, farF/remF, Math.max(1, (n-m)/Math.max(1, Math.min(d, net.rails||8)))) : 0;
+  const bw = Math.min(d*nic, nvl)/Math.max(1, xRing);
+  const p2p = nic/Math.max(1, xP2p);
+  const a2a = 1/Math.max((d-1)/(n-1)/nvl, remF*Math.max(1, xA2a)/nic);
+  return { bw, p2p, a2a, intra:false, inNet:!!net.sharp, d, m, remF, farF, nic, nvl, xRing, xP2p, xA2a };
 }
 /* ring all-gather / reduce-scatter：msg 为整份张量字节 */
 function agT(msg, n, lk, g){ if(n<=1||msg<=0) return 0; return (lk.intra?g.alphaNv:g.alphaIb)*1e-6*Math.log2(n)+ msg*(n-1)/n/(lk.bw*(g.etaAg||g.etaN)); }
+/* all-reduce。lk.inNet：NVLS（NVSwitch 里做归约）或 SHARP（IB 交换机里做归约），每个 rank 只发一份、收一份 */
 function arT(msg, n, lk, g, algo){
   if(n<=1||msg<=0) return 0; const a=(lk.intra?g.alphaNv:g.alphaIb)*1e-6;
-  if(g.lb) return a + msg/(lk.bw*g.etaN);                           // 下限：每个 rank 至少要收到一份完整的归约结果
-  if(algo==="oneshot") return a + msg*(n-1)/(lk.bw*g.etaN);        // 每个 rank 读其余 n−1 份整消息，受单卡带宽限制
-  if(algo==="twoshot") return 2*a + 2*msg*(n-1)/n/(lk.bw*g.etaN);
+  if(g.lb || lk.inNet) return a + msg/(lk.bw*g.etaN);              // 下限：每个 rank 至少要收到一份完整的归约结果
+  if(algo==="oneshot") return a + msg*(n-1)/(lk.a2a*g.etaN);       // 每个 rank 读其余 n−1 份整消息，受单卡带宽限制
+  if(algo==="twoshot") return 2*a + 2*msg*(n-1)/n/(lk.a2a*g.etaN);
   return 2*a*Math.log2(n) + 2*msg*(n-1)/n/(lk.bw*g.etaN);         // NCCL ring
 }
-/* all-to-all：每卡发 sent 字节，(n−1)/n 离开本卡；组跨域时只按最慢链路 */
-function a2aT(sent, n, lk, g, alphaUs){ if(n<=1||sent<=0) return 0; return (alphaUs ?? (lk.intra?g.alphaNv:g.alphaIb))*1e-6 + sent*(n-1)/n/(lk.bw*g.etaN); }
+/* all-to-all：每卡发 sent 字节，(n−1)/n 离开本卡；跨域时按 link 给的 a2a 带宽（三段里最慢的那段） */
+function a2aT(sent, n, lk, g, alphaUs){ if(n<=1||sent<=0) return 0; return (alphaUs ?? (lk.intra?g.alphaNv:g.alphaIb))*1e-6 + sent*(n-1)/n/(lk.a2a*g.etaN); }
 
 /* 单个算子的 roofline：t = max(FLOPs/峰值, 字节/带宽, kernel 数 × 最短 kernel 时间) */
 function roof(flops, bytes, peak, hw, g, kernels){
@@ -202,5 +242,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, capKeys, swaKeys, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, capKeys, swaKeys, ecmpMax, spineX, link, agT, arT, a2aT, roof };
 })();

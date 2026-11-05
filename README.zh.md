@@ -39,6 +39,7 @@ cd tests && npm install && npm test
 | 后训练 | 一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）、并行、低精度配方。 |
 | 推理 | decode / prefill、部署与并行、低精度、投机解码、KV cache（每种层存多少、多轮 agent 会话在 HBM / 主机 / 远端三层里的前缀命中率、SGLang / vLLM / TRT-LLM / TokenSpeed 各怎么管），以及和 SGLang cookbook、自己的 profiler trace 对照。 |
 | RL | 训推不一致、确定性 rollout、低精度 rollout 与 QAT。 |
+| 集群 | 网络结构：每张卡从 HBM 到 spine 每一层的带宽，NVSwitch 和 NVLS，机内 PCIe 和 GPUDirect，只有 PCIe 的机器，rail、收敛比和 ECMP；以及在一套组网上训练和推理的时间花在哪、怕带宽还是怕延迟、NVLink 域多大合适、PD 分离和权重同步的传输。 |
 | 附录 | 实测 kernel 对照屋顶、效率表、公开数据点、建模方法。 |
 
 **模型：** Qwen3.5-35B-A3B、Kimi K3、GLM-5.3-Flash、Muse Spark Open、Qwen3.8-27B（dense 基线）。**GPU：** H100、H200、B200、B300、GB200、GB300。**拓扑：** HGX 单机 8 卡、NVL72 机柜（64 卡）。
@@ -81,3 +82,4 @@ Scouter 建立在这些开源项目公开的代码、PR、文档和基准之上�
 | 模型结构 | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
 | 理想下限 | [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0) |
 | 机制示意图 | [Attention Lab](https://divagr.com/attention-lab/) |
+| 网络 | [NCCL](https://github.com/NVIDIA/nccl)（NVLS、CollNet / SHARP 和 rail 组网的文档），[zartbot/micro_arch](https://github.com/zartbot/micro_arch)（MIT；只有 PCIe 的机器的测量，作者注明那一章由 AI 生成、未经审阅） |

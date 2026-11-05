@@ -1,6 +1,6 @@
 /* ---------- 状态 ---------- */
 const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"GB300", topo:"nvl64", glob:clone(GLOB),
-  inf:clone(BASE_INF), trn:clone(BASE_TRN), kv:clone(KV.BASE),
+  inf:clone(BASE_INF), trn:clone(BASE_TRN), kv:clone(KV.BASE), net:clone(Fabric.DEF),
   infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"", anchor:"",
   arch:Object.assign({ mod:"full" }, Arch.defaults(MODELS.qwen35)),
   q:{ scheme:"nvfp4", fuse:"fused", shape:"up", N:1024, K:2048, M:64, T:512, ep:8, align:"auto", recipe:"mxfp8", Mt:8192, nMicro:4, tokFused:false, roll:0.7, deqRate:40, BM:128 } };

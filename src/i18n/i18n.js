@@ -8,7 +8,7 @@ const I18N = (function(){
 const FALLBACK = "zh";
 const LOCALES = { zh: { name: "中文", html: "zh-CN" }, en: { name: "English", html: "en" } };
 /* 每种语言都按这个顺序加载同名文件；zh 的 <script> 写在 index.html 里 */
-const FILES = ["common", "shell", "overview", "arch", "train", "par", "calib", "comm", "infer", "tradeoff", "spec", "kv", "config",
+const FILES = ["common", "shell", "overview", "arch", "train", "par", "calib", "comm", "infer", "tradeoff", "spec", "kv", "cluster", "config",
   "quant", "rl", "appendix", "releases", "engine_common", "engine_infer", "engine_train", "engine_par", "engine_quant", "engine_kv", "data"];
 const dict = {}, missing = new Set();
 

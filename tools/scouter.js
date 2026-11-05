@@ -14,6 +14,7 @@
 //   node tools/scouter.js serve    --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   closed-loop benchmark estimate
 //   node tools/scouter.js kv       --model qwen35 --hw H200 --N 8 --sessions 128 --hostGB 200   KV cache: bytes, hit rate, TTFT per turn
 //   node tools/scouter.js trace    --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   measured kernels by category
+//   node tools/scouter.js cluster  --model kimik3 --hw H200 --net.scale 16 --net.over 4 --pick train,decode   network fabric: bandwidth per level, time split
 // Options: --model --hw --topo pick the tables; --basis ideal|modeled (default modeled); --g.<key> overrides one efficiency
 // parameter; --pick a,b.c keeps only those fields; --over.<key> v1,v2 and --where.<key> v are lists and filters. Every other
 // --key value overrides the run's default config. Values are parsed as JSON when they can be, otherwise kept as strings.

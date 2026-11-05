@@ -8,6 +8,8 @@ const pDest = (Z, E, K) => E<=1 ? 1 : 1-binomRatio(Z, Z/E, K);   // 一个 token
 const pow2Dom = topo => Math.pow(2, Math.floor(Math.log2(topo.domain)));   // 2 的幂的组能用满的 NVLink 域：HGX 8，NVL72 64
 const lk = (hw, topo, n, stride) => { const l=link(hw,topo,n,stride); return Object.assign({ n, kind: n<=1 ? "—" : l.intra ? "NVLink" : "IB" }, l); };
 /* 一段线上传输：calls 次调用的固定延迟 + 字节 / 有效带宽 */
+/* 同一条链路换成点对点或 all-to-all 的带宽（域内三者相同） */
+const via = (l, k) => l[k]==null || l[k]===l.bw ? l : Object.assign({}, l, { bw:l[k] });
 const wireT = (bytes, l, eff, calls, g) => (l.n<=1||bytes<=0) ? 0 : (calls||1)*(l.intra?g.alphaNv:g.alphaIb)*1e-6 + bytes/(l.bw*eff);
 /* 一次集合通信：pass（fwd / rc / bwd）、op（AG / RS / AR / A2A / P2P）、张量、每卡线上字节、时间。调用方的总字节和总时间都由这些加出来 */
 const xc = (pass, op, what, bytes, t) => ({ pass, op, what, bytes, t:t||0 });
@@ -38,7 +40,7 @@ function cpLayer(meth, x){
     const w1 = 2*Math.min(f.W, S/C)*kvTok, det = [xc("fwd","P2P",Msg.of("engine_par.cp.swa.fwd", { W: f.W }),w1)];
     if(ac) det.push(xc("rc","P2P",Msg.of("engine_par.cp.swa.rc"),w1));
     det.push(xc("bwd","P2P",Msg.of("engine_par.cp.swa.bwd"),w1), xc("bwd","P2P",Msg.of("engine_par.cp.swa.bwdGrad"),w1));
-    o.buf = 2*w1; o.calls = det.length; o.tw = wireT(det.length*w1, l, g.etaAg, o.calls, g); split(det); o.exposed = o.tw; return o;
+    o.buf = 2*w1; o.calls = det.length; o.tw = wireT(det.length*w1, via(l,"p2p"), g.etaAg, o.calls, g); split(det); o.exposed = o.tw; return o;
   }
   o.buf = meth==="allgather" ? C*Lb : meth==="ring" ? 2*Lb : 0;   // 这一层一篇文档要放下多少别人的 K / V：AllGather 整篇，Ring 收发各一段；Ulysses 在下面按头算
   if(meth==="allgather"){
@@ -50,7 +52,7 @@ function cpLayer(meth, x){
     const det = [xc("fwd","P2P",Msg.of("engine_par.cp.ring.fwd", { kv, n: C-1 }),(C-1)*Lb)];
     if(ac) det.push(xc("rc","P2P",Msg.of("engine_par.cp.ring.rc", { kv }),(C-1)*Lb));
     det.push(xc("bwd","P2P",Msg.of("engine_par.cp.ring.bwd", { kv }),(C-1)*Lb), xc("bwd","P2P",Msg.of("engine_par.cp.ring.bwdGrad", { n: C }),2*C*Lb));
-    o.calls = 2*(C-1)+C + (ac?C-1:0); o.tw = wireT(det.reduce((s,x)=>s+x.bytes,0), l, g.etaAg, o.calls, g); split(det);
+    o.calls = 2*(C-1)+C + (ac?C-1:0); o.tw = wireT(det.reduce((s,x)=>s+x.bytes,0), via(l,"p2p"), g.etaAg, o.calls, g); split(det);
   } else {
     const H = d.Hattn/tp;
     // 一次 a2a 发出 (C−1)/C：Q/K/V 序列 → 头，输出 O 头 → 序列。MLA 的 latent 不能按头切，按 C 份复制
@@ -60,7 +62,7 @@ function cpLayer(meth, x){
     const det = [xc("fwd","A2A",Msg.of("engine_par.cp.uly.qkv"),a(uQKV)), xc("fwd","A2A",Msg.of("engine_par.cp.uly.o"),a(uO))];
     if(ac) det.push(xc("rc","A2A",Msg.of("engine_par.cp.uly.rcQkv"),a(uQKV)), xc("rc","A2A",Msg.of("engine_par.cp.uly.rcO"),a(uO)));
     det.push(xc("bwd","A2A",Msg.of("engine_par.cp.uly.dO"),a(uO)), xc("bwd","A2A",Msg.of("engine_par.cp.uly.dQkv"),a(uQKV)));
-    o.calls = ac?12:8; o.tw = wireT(det.reduce((s,x)=>s+x.bytes,0), l, g.etaN, o.calls, g); split(det);
+    o.calls = ac?12:8; o.tw = wireT(det.reduce((s,x)=>s+x.bytes,0), via(l,"a2a"), g.etaN, o.calls, g); split(det);
     if(H % C){ o.ok=false; o.why = Msg.of("engine_par.cp.uly.why", { H, C }).invalid(); }
   }
   // Ring / AllGather 可以和分块计算重叠，只露出第一块和盖不住的部分。Ulysses 的 all-to-all 也能按头分块重叠：
@@ -87,13 +89,15 @@ function epLayer(be, x){
   const replay = ac && (be==="standard"||be==="ag");                                      // 重算时 NCCL 路径要重放 dispatch / combine
   o.exch = 4 + (replay?2:0);
   o.wire = disp + comb + dispB + combB + (replay ? disp+comb : 0);
-  const effN = be==="ag" ? g.etaAg : g.etaN, dom = pow2Dom(topo);
-  /* 线上时间：跨域时 NCCL a2a 按均匀路由的远端比例；DeepEP 每个远端节点只发一次再 NVLink 扇出；AG 环全程按最慢链路 */
+  const effN = be==="ag" ? g.etaAg : g.etaN;
+  /* 线上时间：跨域时 NCCL a2a 按均匀路由分成域内 / 网卡 / spine 三段（link 的 a2a 带宽）；DeepEP 每个远端域只发一次再 NVLink 扇出；
+     AG 后端是环，按 rail 条带化的环带宽 */
   const tWire = w => {
-    if(l.intra) return w/(hw.nvl*1e9*effN);
-    if(be==="ag"){ o.ib += w; return w/(hw.ib*1e9*g.etaAg); }
-    if(be==="deepep"){ const nodes=E/dom, rn=(nodes-1)*(1-binomRatio(Z, Z/nodes, K)); const ibw = w*rn/Math.max(dE,1e-9); o.ib += ibw; return Math.max(ibw/(hw.ib*1e9*g.etaN), w/(hw.nvl*1e9*effN)); }
-    const rf=(E-dom)/(E-1); o.ib += w*rf; return Math.max(w*rf/(hw.ib*1e9*g.etaN), w*(1-rf)/(hw.nvl*1e9*effN));
+    if(l.intra) return w/(l.bw*effN);
+    if(be==="ag"){ o.ib += w; return w/(l.bw*g.etaAg); }
+    if(be==="deepep"){ const nodes=E/l.d, rn=(nodes-1)*(1-binomRatio(Z, Z/nodes, K)); const ibw = w*rn/Math.max(dE,1e-9); o.ib += ibw;
+      return Math.max(ibw*Math.max(1, l.xA2a)/(l.nic*g.etaN), w/(l.nvl*effN)); }
+    o.ib += w*l.remF; return w/(l.a2a*g.etaN);
   };
   const a = (l.intra ? g.alphaNv : g.alphaIb)*1e-6;
   const callsPer = be==="standard"||be==="ag" ? 2 : be==="deepep" ? 1 : 0;
@@ -150,5 +154,5 @@ const fsdpDet = (P, F, l, g, aG, gB) => { if(F<=1||P<=0) return [];
   return [xc("fwd","AG",Msg.of("engine_par.fsdp.fwd"),ag,wt(ag))].concat(aG===2?[xc("bwd","AG",Msg.of("engine_par.fsdp.bwdAg"),ag,wt(ag))]:[], [xc("bwd","RS",Msg.of("engine_par.fsdp.grad", { dt: gB===4?"FP32":"BF16" }),rs,wt(rs))]); };
 const fsdpT = (P, F, l, g, aG, gB) => fsdpDet(P,F,l,g,aG,gB).reduce((s,x)=>s+x.t,0);
 
-return { EP, CP, xc, pDest, binomRatio, pow2Dom, lk, wireT, cpLayer, epLayer, fsdpBytes, fsdpDet, fsdpT };
+return { EP, CP, xc, pDest, binomRatio, pow2Dom, lk, via, wireT, cpLayer, epLayer, fsdpBytes, fsdpDet, fsdpT };
 })();

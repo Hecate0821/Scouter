@@ -1,6 +1,6 @@
 /* ---------- 附录 · 数据与发布：数据点库浏览 ---------- */
 let dbSel = "cp_attention";
-const DB_STAGE = { train:t("appendix.db.stage.train"), infer:t("appendix.db.stage.infer"), quant:t("appendix.db.stage.quant"), kernel:t("appendix.db.stage.kernel"), rl:t("appendix.db.stage.rl"), meta:t("appendix.db.stage.meta") };
+const DB_STAGE = { train:t("appendix.db.stage.train"), infer:t("appendix.db.stage.infer"), quant:t("appendix.db.stage.quant"), kernel:t("appendix.db.stage.kernel"), rl:t("appendix.db.stage.rl"), meta:t("appendix.db.stage.meta"), cluster:t("appendix.db.stage.cluster") };
 const DB_HIDE = ["id","set","m","replay","chk","url","tags","dk","arch","nature","kind"];
 const DB_CONF = { measured:t("appendix.db.conf.measured"), reported:t("appendix.db.conf.reported"), derived:t("appendix.db.conf.derived") };
 const dbVal = v => v==null ? "—" : typeof v==="number" ? (Number.isInteger(v)?v.toLocaleString("en-US"):String(+v.toPrecision(4))) : typeof v==="boolean" ? (v?t("appendix.db.yes"):t("appendix.db.no")) : String(v);

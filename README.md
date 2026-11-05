@@ -39,6 +39,7 @@ The top-bar switch (and `--basis` on the CLI) picks where a number comes from:
 | Post-training | One step (fwd / dgrad / wgrad, recompute, comm, optimizer, memory), parallelism, low-precision recipes. |
 | Inference | Decode / prefill, deployment and parallelism, low precision, speculative decoding, the KV cache (bytes per layer type, prefix hit rate of multi-turn agent sessions across HBM / host / remote tiers, how SGLang, vLLM, TRT-LLM and TokenSpeed manage it), and checks against the SGLang cookbook and your own profiler trace. |
 | RL | Train/inference mismatch, deterministic rollout, low-precision rollout and QAT. |
+| Cluster | The network fabric: bandwidth per GPU from HBM to the spine, NVSwitch and NVLS, in-node PCIe and GPUDirect, PCIe-only machines, rails, oversubscription and ECMP; then where training and inference time goes on a given fabric, bandwidth versus latency, NVLink domain size, and PD / weight-sync transfers. |
 | Appendix | Measured kernels vs. the rooflines, the efficiency table, public data points, and the modeling method. |
 
 **Models:** Qwen3.5-35B-A3B, Kimi K3, GLM-5.3-Flash, Muse Spark Open, Qwen3.8-27B (dense baseline). **GPUs:** H100, H200, B200, B300, GB200, GB300. **Topologies:** HGX 8-GPU node, NVL72 rack (64 GPUs).
@@ -81,3 +82,4 @@ Scouter is built on what these open-source projects publish: their code, PRs, do
 | Model layouts | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
 | Ideal lower bound | [k3-inference-calculator](#acknowledgements) |
 | Mechanism diagrams | [Attention Lab](https://divagr.com/attention-lab/) |
+| Networking | [NCCL](https://github.com/NVIDIA/nccl) (docs on NVLS, CollNet / SHARP and rail layouts), [zartbot/micro_arch](https://github.com/zartbot/micro_arch) (MIT; PCIe-only machine measurements from a chapter its author marks as AI-generated and unreviewed) |

@@ -94,6 +94,9 @@ function planeCall(){
   if(key.startsWith("arch/")){ const a = Object.assign({}, S.arch); delete a.mod; return ["module", calc(diffOf(a, Arch.defaults(S.model)))]; }
   if(key.startsWith("train/")) return ["train", calc(diffOf(S.trn, Object.assign({}, Train.BASE, Train.FW_DEF[S.trn.fw], { N: TOPO[S.topo].gpus })))];
   if(key === "infer/kv") return ["kv", calc(Object.assign(diffOf(S.inf, Infer.BASE), diffOf(S.kv, KV.BASE)))];
+  if(key.startsWith("cluster/")){ const o = { net: diffOf(S.net, Fabric.DEF), trn: diffOf(S.trn, Object.assign({}, Train.BASE, Train.FW_DEF[S.trn.fw], { N: TOPO[S.topo].gpus })), inf: diffOf(S.inf, Infer.BASE) };
+    if(S.trn.fw !== Train.BASE.fw) o.trn.fw = S.trn.fw;
+    return ["cluster", calc(Object.fromEntries(Object.entries(o).filter(([, v]) => Object.keys(v).length)))]; }
   if(key.startsWith("infer/") || key === "overview") return ["infer", calc(diffOf(S.inf, Infer.BASE))];
   return ["roofline", { hw: S.hw, ...(basis === "ideal" ? { basis } : {}) }];
 }

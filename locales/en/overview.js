@@ -1,7 +1,7 @@
 /* overview: static text in index.html (extracted from index.html by the migration script), plus the text src/ui/overview.js renders (from grp. on) */
 I18N.add("en", "overview", {
   "rack.hint": "The overview copies the current configuration of the inference and post-training pages; to change the configuration, go to the corresponding page.",
-  "b1.h2": "What each of the five pages covers",
+  "b1.h2": "What each of the six pages covers",
   "b1.lede": "Post-training, inference and RL use the same model, but the kernels they launch, their parallelism and their precision choices all differ, so they are modeled separately and share only the model structure, the hardware table and the efficiency factors. Parallelism and low precision follow the scenario: FSDP / CP / EP in training and TP / DP-attention / EP in inference are different things, and each lives on its own page.",
   "card.arch.h4": "Model architecture",
   "card.arch.p": "The current model's layer stack, modules and parameter counts; the roofline of each module and how it changes with context and batch size; several models side by side on parameters, cache and time.",
@@ -10,6 +10,8 @@ I18N.add("en", "overview", {
   "card.infer_step.h4": "Inference",
   "card.infer_step.p": "Where one SGLang / vLLM / TokenSpeed decode or prefill step spends its time and memory, and how the engines differ; the deployment section compares the tradeoffs of TP, DP-attention, EP and PD disaggregation; the low-precision section looks at one GEMM and one MoE layer; speculative decoding has its own section.",
   "card.rl_mismatch.p": "Rollout and training are two sets of kernels, and the log-probs do not match: where the difference comes from and how to fix it (TIS / MIS, routing replay, bitwise alignment); deterministic rollout; low-precision rollout and weight sync; low-precision training and QAT.",
+  "card.cluster.h4": "Cluster network",
+  "card.cluster.p": "NVSwitch, in-node PCIe and NICs, leaf / spine: the bandwidth each GPU gets at every level; how much slower training and inference get on a different fabric, where, and whether bandwidth or latency is the issue.",
   "card.appendix_data.h4": "Appendix",
   "card.appendix_data.p": "Public data points, summaries of the past year of LMSYS blog posts and SGLang / vLLM / slime / Miles / AReaL releases; quantization basics; the modeling basis and the open-source implementations referenced.",
   "b2.h2": "Current configuration: one inference step and one training step",

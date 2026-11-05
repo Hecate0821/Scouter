@@ -238,7 +238,7 @@ function run(m, hw, topo, c, g){
       // 本卡有不止一段序列时（S < Tc）FLA 只交换首尾两段的 [S_ext | M]：(2, HV, K, V+K)；否则一段。字节和序列长度无关
       const seqs=S<Tc?2:1, msg=cp*seqs*Hv*l.dk*(l.dv+l.dk)*4, gX=(pass,what)=>xc(pass,"AG",what,msg*(cp-1)/cp,agT(msg,cp,lkCP,g));
       // 短卷积的 halo：每段开头要前一段的最后 conv−1 个 token
-      const halo=(l.conv-1)*d.linConvDim/tp*2, hX=(pass,what)=>xc(pass,"P2P",what,halo,halo/(lkCP.bw*g.etaN)+(lkCP.intra?g.alphaNv:g.alphaIb)*1e-6);
+      const halo=(l.conv-1)*d.linConvDim/tp*2, hX=(pass,what)=>xc(pass,"P2P",what,halo,halo/(lkCP.p2p*g.etaN)+(lkCP.intra?g.alphaNv:g.alphaIb)*1e-6);
       const xs=[hX("fwd",Msg.of("engine_train.cpLin.haloFwd")), gX("fwd",Msg.of("engine_train.cpLin.chunkFwd"))];
       if(rcLin) xs.push(hX("rc",Msg.of("engine_train.cpLin.haloRc")), gX("rc",Msg.of("engine_train.cpLin.chunkRc")));
       xs.push(gX("bwd",Msg.of("engine_train.cpLin.chunkBwd")), hX("bwd",Msg.of("engine_train.cpLin.haloBwd")));
@@ -274,7 +274,7 @@ function run(m, hw, topo, c, g){
   if(mg && etp>1){ const msg=R*etp*De*2, eX=(pass,op,what,m2)=>xc(pass,op,what,m2*(etp-1)/etp,agT(m2,etp,lkTP,g));
     cmX("etp",Msg.of("engine_train.etp.name"),"ep",nM,"moe",[eX("fwd","AG",Msg.of("engine_train.etp.fwdAG"),msg),eX("fwd","RS",Msg.of("engine_train.etp.fwdRS"),2*msg),eX("bwd","AG",Msg.of("engine_train.etp.bwdAG"),2*msg),eX("bwd","RS",Msg.of("engine_train.etp.bwdRS"),msg)],{dim:"etp"}); }
   // PP p2p
-  if(pp>1){ const msg=Tl*D*2, t1=(msg/(lkPP.bw*g.etaN)+(lkPP.intra?g.alphaNv:g.alphaIb)*1e-6)*vpp, v=vpp>1?Msg.of("engine_train.pp.vstage",{n:vpp}):"";
+  if(pp>1){ const msg=Tl*D*2, t1=(msg/(lkPP.p2p*g.etaN)+(lkPP.intra?g.alphaNv:g.alphaIb)*1e-6)*vpp, v=vpp>1?Msg.of("engine_train.pp.vstage",{n:vpp}):"";
     cmX("pp",Msg.of("engine_train.pp.name"),"pp",1,"stage",[xc("fwd","P2P",Msg.of("engine_train.pp.fwd",{v}),msg*vpp,t1),xc("bwd","P2P",Msg.of("engine_train.pp.bwd",{v}),msg*vpp,t1)],{ovl:"comp",perStage:true}); }
 
   if(tokB>0) op("tok",Msg.of("engine_train.op.tok"),"misc",1,{fl:tokB/4,by:tokB,pk:pkA},null,null);
@@ -368,7 +368,7 @@ function run(m, hw, topo, c, g){
   } else { tOpt = Pshard*30/(hw.hbm*1e9*g.etaM) + Pshard*4/(hw.hbm*1e9*g.etaM); optNote=Msg.of("engine_train.opt.gpu"); }
   const tSmallAR = 4*((lkDP.intra?g.alphaNv:g.alphaIb)*1e-6)*2;       // grad norm、aux-free bias、loss finite 等标量 all-reduce
   let tAR = 0;
-  if(fsdp && fsdp.R>1){ tAR = Par.wireT((g.lb ? 1 : 2*(fsdp.R-1)/fsdp.R)*Pshard*fsdp.gB, fsdp.lkR, g.etaAg, 1, g); tDP = tAR; tDPexp = Math.max(0, tAR - (tD+tW)/pp*(g.lb?1:0.9));
+  if(fsdp && fsdp.R>1){ tAR = Par.wireT((g.lb || fsdp.lkR.inNet ? 1 : 2*(fsdp.R-1)/fsdp.R)*Pshard*fsdp.gB, fsdp.lkR, g.etaAg, 1, g);   // 下限和 SHARP / NVLS：每个 rank 只发一份 tDP = tAR; tDPexp = Math.max(0, tAR - (tD+tW)/pp*(g.lb?1:0.9));
     stepX.push(Object.assign(xc("step","AR",Msg.of("engine_train.dp.arRep",{dt:fsdp.gB===4?"FP32":"BF16"}),2*(fsdp.R-1)/fsdp.R*Pshard*fsdp.gB,tAR),{dim:"rep",n:fsdp.R,lk:fsdp.lkR}));
     dpNote = Msg.of("engine_train.dp.noteHsdp",{r:fsdp.R,link:fsdp.lkR.kind}); }
   const stepT = tPipe + tDPexp + tOpt + tSmallAR;

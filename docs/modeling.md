@@ -45,6 +45,20 @@ Every key either changes the result or is reported as inert: `Train.inert(m, c, 
 
 Not verified against a measurement: the 2.5× backward factor of the attention core, and the factor of 2 for `M` in backward, which counts both sides of each matrix product.
 
+## Across NVLink domains (the cluster pages)
+
+`Common.link(hw, topo, n, stride)` decides what a group of `n` ranks, `stride` apart, gets. Inside one NVLink domain all three kinds of traffic get `hw.nvl`. When the group spans domains:
+
+- **Rings** (all-gather, reduce-scatter, all-reduce): NCCL sends each channel out of the domain through a different NIC (rails), so a group with `d` members per domain gets `min(d · NIC, NVLink)`. Before the cluster pages, a cross-domain group was charged one NIC for everything, which made FSDP across HGX nodes about 8× too slow. No preset crossed a domain, so no other page changed.
+- **Point-to-point** (pipeline stages, ring attention, short-conv halos): the boundary rank's own NIC.
+- **All-to-all**: the traffic to this domain, to other domains in the same segment, and to other segments goes over NVLink, the NIC, and the NIC plus the spine; the slowest part sets the time.
+- **The spine** (`topo.net`, only set by the cluster pages): a segment is leaf downlinks × NICs per node. Leaves have `ports / over` uplinks. With adaptive routing the uplink load is the average; with ECMP the busiest uplink holds `E[max]` of `F` flows hashed onto `U` ports (a fixed-seed Monte Carlo, `Common.ecmpMax`). In NCCL's ring order a ring leaves a segment once per channel, so rings barely load the spine. All-to-all and pipeline traffic do.
+- **In-network reduction**: NVLS inside a domain and SHARP across domains make an all-reduce send one copy and receive one (the same formula the ideal basis already uses). All-gather and reduce-scatter are not credited.
+
+`Fabric.apply` turns the cluster settings into `hw` / `topo`: NVLink times the available fraction (PCIe x16 when there is no NVSwitch), and the NIC capped by PCIe x16 with GPUDirect RDMA or by the host link without it. Training scales weakly: `N` and the global batch grow by the same factor. The defaults reproduce the main pages exactly (`tests/fabric.js`). The time split is counterfactual: the time saved by an infinitely fast, zero-latency NIC is credited to the NIC, then the same for NVLink.
+
+Not modeled: per-hop switch latency (no public numbers), the PCIe penalty across CPU sockets, congestion control and lossy fabrics, NCCL's tree and PAT algorithms, and how PXN routes traffic between rails.
+
 ## Data points
 
 ```

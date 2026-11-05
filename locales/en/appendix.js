@@ -193,6 +193,7 @@ I18N.add("en", "appendix", {
   "db.stage.rl": "rl",
   "db.stage.meta": "meta",
   "db.stage.kernel": "kernel",
+  "db.stage.cluster": "cluster",
   "db.yes": "yes",
   "db.no": "no",
   "db.sets.head.set": "Data set",

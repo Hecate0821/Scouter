@@ -61,6 +61,9 @@ I18N.add("zh", "shell", {
   "nav.rl.determinism": "确定性 rollout",
   "nav.rl.lowprec": "低精度 rollout",
   "nav.rl.qat": "低精度训练与 QAT",
+  "nav.cluster": "集群",
+  "nav.cluster.fabric": "网络结构",
+  "nav.cluster.impact": "对训练和推理的影响",
   "nav.appendix.data": "数据与发布",
   "nav.appendix.quant": "量化基础",
   "nav.appendix.method": "口径与参考",
@@ -111,4 +114,8 @@ I18N.add("zh", "shell", {
   "inert.noSpec": "没开投机解码（k = 0），这项不起作用",
   "inert.specDecode": "投机解码一节只算 decode",
   "inert.noBi": "没开 batch-invariant，这项不起作用",
+  "inert.pcieNoNvl": "只有 PCIe 交换机，没有 NVLink 域，这项不起作用",
+  "inert.oneDomain": "所有卡都在一个 NVLink 域里，训练和推理不过网卡，这项不起作用",
+  "inert.oneSegment": "所有卡都在一个 segment 里，不过 spine，这项不起作用",
+  "inert.notEcmp": "只有 ECMP 用这项",
 });

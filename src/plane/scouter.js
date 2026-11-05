@@ -67,7 +67,17 @@ function kv(q){
   q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Infer.BASE, KV.BASE, rest(q));
   return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, KV.plan(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
 }
-const RUN = { roofline, infer, train, module, serve, kv };
+/* 集群网络（Fabric）：net 覆盖 Fabric.DEF（规模、NVLink 域、机内互联、网卡、叶交换机、收敛比、路由），trn / inf 覆盖训练和推理的默认配置。
+   给每一层的带宽、scale-out 的规模、训练每个并行组走的链路，以及训练一步、prefill、decode 的时间和网卡 / NVLink 各露出多少（反事实拆分） */
+function cluster(q){
+  q = q || {}; const c = ctxOf(q), net = Object.assign({}, Fabric.DEF, q.net || {}), ti = q.trn || {};
+  const trn = Object.assign({}, Train.BASE, Train.FW_DEF[ti.fw]||{}, { N: c.topo.gpus }, ti), inf = Object.assign({}, Infer.BASE, q.inf || {});
+  return select({ query: Object.assign(echo(q, c), { net, trn, inf }), net: Fabric.resolve(c.hw, c.topo, net), inert: Fabric.inert(c.hw, c.topo, net, c.g, inf),
+    ladder: Fabric.ladder(c.hw, c.topo, net, c.g), scaleOut: Fabric.scaleOut(c.hw, c.topo, net, c.g), groups: Fabric.groups(c.m, c.hw, c.topo, trn, net, c.g),
+    train: Fabric.split("train", c.m, c.hw, c.topo, trn, net, c.g), prefill: Fabric.split("prefill", c.m, c.hw, c.topo, inf, net, c.g),
+    decode: Fabric.split("decode", c.m, c.hw, c.topo, inf, net, c.g) }, q.pick);
+}
+const RUN = { roofline, infer, train, module, serve, kv, cluster };
 /* 扫参：run 是上面的一个函数名，over 的每个字段给一组值（多个字段取笛卡儿积），pick 选出每一行要的字段 */
 function sweep(q){
   q = q || {}; const f = pick(RUN, q.run || "infer", "run"), over = q.over || {}, keys = Object.keys(over);
@@ -143,9 +153,9 @@ function catalog(){
   return { version: VERSION, sources: SOURCES, basis: BASIS,
     models: Object.fromEntries(Object.keys(MODELS).map(k => [k, { name: MODELS[k].name, family: MODELS[k].family }])),
     hw: HW, topo: TOPO, engines: Object.keys(Infer.ENGINES), spec: Object.keys(Infer.SPEC), prec: Object.keys(Train.PREC), epBackends: Object.keys(Par.EP),
-    quant: Quant.ORDER, defaults: { infer: Infer.BASE, kv: KV.BASE, train: Train.BASE, trainFw: Train.FW_DEF, module: Arch.defaults(MODELS.qwen35) },
+    quant: Quant.ORDER, defaults: { infer: Infer.BASE, kv: KV.BASE, train: Train.BASE, trainFw: Train.FW_DEF, module: Arch.defaults(MODELS.qwen35), net: Fabric.DEF },
     runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
 }
 
-return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, kv, sweep, sets, points, kernels, eff, calib, trace });
+return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, kv, cluster, sweep, sets, points, kernels, eff, calib, trace });
 })();

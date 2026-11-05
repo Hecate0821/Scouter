@@ -201,7 +201,7 @@ const problems = [];
   if (/NaN|undefined/.test(pane("arch/compare").textContent)) problems.push("arch/compare: NaN or undefined");
   // --- overview cards, glossary header, determinism citations ---
   const cards = Array.from(pane("overview").querySelectorAll(".cards a.card")).map(a => a.getAttribute("href"));
-  if (cards.join() !== "#arch/overview,#train/step,#infer/step,#rl/mismatch,#appendix/data") problems.push(`overview: cards are ${cards.join()}`);
+  if (cards.join() !== "#arch/overview,#train/step,#infer/step,#rl/mismatch,#cluster/fabric,#appendix/data") problems.push(`overview: cards are ${cards.join()}`);
   if (/模型结构|model structure/.test(pane("overview").querySelector('a[href="#appendix/data"]').textContent)) problems.push("overview: appendix card still claims the model structure");
   if (/本页|on this page/.test(pane("appendix/quant").querySelector("table thead th:nth-child(3)") ? Array.from(pane("appendix/quant").querySelectorAll("thead th")).map(x => x.textContent).join() : "")) problems.push("appendix/quant: glossary header says this page");
   tsShow("rl/determinism");

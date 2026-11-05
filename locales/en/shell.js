@@ -61,6 +61,9 @@ I18N.add("en", "shell", {
   "nav.rl.determinism": "Deterministic rollout",
   "nav.rl.lowprec": "Low-precision rollout",
   "nav.rl.qat": "Low-precision training and QAT",
+  "nav.cluster": "Cluster",
+  "nav.cluster.fabric": "Network fabric",
+  "nav.cluster.impact": "Effect on training and inference",
   "nav.appendix.data": "Data and releases",
   "nav.appendix.quant": "Quantization basics",
   "nav.appendix.method": "Basis and references",
@@ -111,4 +114,8 @@ I18N.add("en", "shell", {
   "inert.noSpec": "Speculative decoding is off (k = 0), so this does nothing",
   "inert.specDecode": "The speculative decoding page only computes decode",
   "inert.noBi": "Batch-invariant is off, so this does nothing",
+  "inert.pcieNoNvl": "PCIe switches only, no NVLink domain, so this does nothing",
+  "inert.oneDomain": "All GPUs sit in one NVLink domain and training and inference stay off the NIC, so this does nothing",
+  "inert.oneSegment": "All GPUs sit in one segment and never cross the spine, so this does nothing",
+  "inert.notEcmp": "Only ECMP uses this",
 });
