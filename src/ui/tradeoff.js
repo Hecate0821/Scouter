@@ -90,6 +90,6 @@ $("i-to-cfg").addEventListener("click",e=>{ const b=e.target.closest("[data-to-a
   else { S.inf=Object.assign(clone(BASE_INF),{n:S.inf.n,P:S.inf.P,C:S.inf.C},cf.cfg,{phase:"decode"}); S.infPreset="custom"; }
   syncInputs(); location.hash="infer/step"; render(); });
 
-$("t-mesh-dim").addEventListener("click",e=>{ const b=e.target.closest("button[data-v]"); if(!b) return; meshDim=b.dataset.v; renderMesh(trnRun()); });
-$("t-mesh").addEventListener("click",e=>{ const b=e.target.closest("button[data-k]"); if(!b) return; meshSel=+b.dataset.k; renderMesh(trnRun()); });
+$("p-mesh-dim").addEventListener("click",e=>{ const b=e.target.closest("button[data-v]"); if(!b) return; meshDim=b.dataset.v; renderMesh(trnRun()); });
+$("p-mesh").addEventListener("click",e=>{ const b=e.target.closest("button[data-k]"); if(!b) return; meshSel=+b.dataset.k; renderMesh(trnRun()); });
 $("p-e-props").addEventListener("click",e=>{ const b=e.target.closest("[data-disp]"); if(!b) return; S.trn.dispatcher=b.dataset.disp; S.trnPreset="custom"; syncInputs(); render(); });

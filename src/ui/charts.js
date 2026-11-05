@@ -107,4 +107,3 @@ function layout(seq, t0){
     segs.push({lane,label,t0:t,t1:t+dur,cat}); lastStart=t; t+=dur; }
   return { segs, end:t };
 }
-const GANTT_LEGEND = [[t("common.gantt.attn"),"attn"],[t("common.gantt.proj"),"proj"],[t("common.gantt.lin"),"lin"],[t("common.gantt.moe"),"moe"],[t("common.gantt.ep"),"ep"],[t("common.gantt.cp"),"cp"],[t("common.gantt.tp"),"tp"],["FSDP","fsdp"],[t("common.gantt.sync"),"sync"],[t("common.gantt.oth"),"oth"]];

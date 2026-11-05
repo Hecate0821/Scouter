@@ -411,32 +411,16 @@
     <p class="lede" data-i18n="train.step.b2.lede"></p>
     <div class="bar" id="t-bar"></div>
     <div class="barlist" id="t-barlist"></div>
+    <p class="hint" id="t-bar-note" hidden></p>
   </div>
   <div class="block"><h2 data-i18n="train.step.b3.h2"></h2>
     <p class="lede" id="t-step-lede"></p>
     <div class="bar" id="t-sbar"></div>
     <div class="barlist" id="t-sbarlist"></div>
   </div>
-  <div class="block"><h2 data-i18n="train.step.b4.h2"></h2>
-    <p class="lede" data-i18n="train.step.b4.lede"></p>
-    <div class="seg" id="t-mesh-dim" role="group" data-i18n-attr="aria-label=train.step.attr.t-mesh-dim.aria-label"></div>
-    <div class="fig"><div class="mesh" id="t-mesh"></div><div class="cap" id="t-mesh-cap"></div></div>
-    <div class="tbl"><table id="t-groups"></table></div>
-  </div>
-  <div class="block"><h2 data-i18n="train.step.b5.h2"></h2>
-    <p class="lede" id="t-gantt-lede"></p>
-    <div class="fig"><svg id="t-gantt" viewBox="0 0 680 200" role="img" data-i18n-attr="aria-label=train.step.attr.t-gantt.aria-label"></svg><div class="legend" id="t-gantt-legend"></div></div>
-  </div>
   <div class="block"><h2 data-i18n="train.step.b6.h2"></h2>
     <div class="tbl"><table id="t-ops"></table></div>
-  </div>
-  <div class="block"><h2 data-i18n="train.step.b7.h2"></h2>
-    <p class="lede" data-i18n="train.step.b7.lede"></p>
-    <div class="fig"><svg id="t-roof" viewBox="0 0 680 380" role="img" data-i18n-attr="aria-label=train.step.attr.t-roof.aria-label"></svg>
-      <div class="legend" id="t-roof-legend"></div></div>
-  </div>
-  <div class="block"><h2 data-i18n="train.step.b8.h2"></h2>
-    <div class="tbl"><table id="t-comm"></table></div>
+    <p class="hint" id="t-to-mods" data-i18n-html="train.step.b6.more"></p>
   </div>
   <div class="block"><h2 data-i18n="train.step.b9.h2"></h2>
     <p class="lede" data-i18n="train.step.b9.lede"></p>
@@ -452,7 +436,6 @@
   <div class="block"><h2 data-i18n="train.step.b11.h2"></h2>
     <div class="tbl"><table id="t-diff"></table></div>
   </div>
-  <div class="block"><h2 data-i18n="train.step.b12.h2"></h2><div id="t-analysis"></div></div>
 </section>
 
 <!-- ============ 后训练 · 并行 ============ -->
@@ -470,13 +453,20 @@
     <div class="tbl"><table id="x-t-tbl"></table></div>
     <p class="lede" id="x-t-note"></p>
   </div>
+  <div class="block" id="par-mesh"><h2 data-i18n="par.mesh.h2"></h2>
+    <p class="lede" data-i18n="par.mesh.lede"></p>
+    <div class="seg" id="p-mesh-dim" role="group" data-i18n-attr="aria-label=par.attr.p-mesh-dim.aria-label"></div>
+    <div class="fig"><div class="mesh" id="p-mesh"></div><div class="cap" id="p-mesh-cap"></div></div>
+    <div class="tbl"><table id="p-groups"></table></div>
+  </div>
   <div class="block"><h2 data-i18n="par.b2.h2"></h2>
     <p class="lede" id="p-lede"></p>
     <nav class="subnav" data-i18n-attr="aria-label=par.attr.b2.nav.aria-label" data-i18n-html="par.b2.nav"></nav>
     <div class="kpis" id="p-kpis"></div>
   </div>
-  <div class="block"><h2 data-i18n="par.b3.h2"></h2>
-    <p class="lede" data-i18n="par.b3.lede"></p>
+  <div class="block" id="par-roof"><h2 data-i18n="par.b3.h2"></h2>
+    <p class="lede" id="p-roof-lede"></p>
+    <div class="seg" id="p-roof-view" role="group" data-i18n-attr="aria-label=par.attr.p-roof-view.aria-label"></div>
     <div class="fig"><svg id="p-roof" viewBox="0 0 680 360" role="img" data-i18n-attr="aria-label=par.attr.p-roof.aria-label"></svg><div class="legend" id="p-roof-legend"></div></div>
   </div>
   <div class="block"><h2 data-i18n="par.b4.h2"></h2>
@@ -911,11 +901,11 @@
 
 <!-- ============ 附录 · 数据与发布 ============ -->
 <section class="pane" data-pane="appendix/data" hidden>
-  <div class="block" data-src="measured"><h2 data-i18n="appendix.data.b1.h2"></h2>
+  <div class="block" data-src="both"><h2 data-i18n="appendix.data.b1.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b1.lede"></p>
     <div class="subnav" data-i18n-html="appendix.data.b1.div"></div>
   </div>
-  <div class="block" data-src="measured" id="data-kernels"><h2 data-i18n="appendix.data.kern.h2"></h2>
+  <div class="block" data-src="both" id="data-kernels"><h2 data-i18n="appendix.data.kern.h2"></h2>
     <p class="lede" id="d-kern-lede"></p>
     <div class="fig"><svg id="d-kern"></svg><div class="legend" id="d-kern-legend"></div></div>
     <p class="hint" data-i18n-html="appendix.data.kern.sol"></p>
@@ -928,17 +918,17 @@
     <p class="hint" data-i18n-html="appendix.data.keff.ev.hint"></p>
     <div class="tbl" style="max-height:420px;overflow:auto"><table id="d-kev"></table></div>
   </div>
-  <div class="block" data-src="measured" id="data-infer"><h2 data-i18n="appendix.data.b2.h2"></h2>
+  <div class="block" data-src="both" id="data-infer"><h2 data-i18n="appendix.data.b2.h2"></h2>
     <div class="tbl"><table id="pub-infer"></table></div>
   </div>
-  <div class="block" data-src="measured" id="data-pareto"><h2 data-i18n="appendix.data.b3.h2"></h2>
+  <div class="block" data-src="both" id="data-pareto"><h2 data-i18n="appendix.data.b3.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b3.lede"></p>
     <div class="tbl"><table id="pub-pareto"></table></div>
   </div>
-  <div class="block" data-src="measured" id="data-train"><h2 data-i18n="appendix.data.b4.h2"></h2>
+  <div class="block" data-src="both" id="data-train"><h2 data-i18n="appendix.data.b4.h2"></h2>
     <div class="tbl"><table id="pub-train"></table></div>
   </div>
-  <div class="block" data-src="measured" id="data-quant"><h2 data-i18n="appendix.data.b5.h2"></h2>
+  <div class="block" data-src="both" id="data-quant"><h2 data-i18n="appendix.data.b5.h2"></h2>
     <p class="lede" data-i18n="appendix.data.b5.lede"></p>
     <div class="legend">
       <label><span data-i18n="appendix.data.b5.label.text"></span> <select id="q-ev-topic" data-i18n-attr="aria-label=appendix.data.attr.q-ev-topic.aria-label"></select></label>
@@ -947,13 +937,13 @@
     </div>
     <div class="tbl"><table id="q-evid"></table></div>
   </div>
-  <div class="block" data-src="measured" id="data-releases"><h2 data-i18n="appendix.data.b6.h2"></h2>
+  <div class="block" data-src="both" id="data-releases"><h2 data-i18n="appendix.data.b6.h2"></h2>
     <p class="lede" data-i18n="appendix.data.b6.lede"></p>
     <div class="tbl"><table id="rel-sum"></table></div>
     <div class="legend"><label><span data-i18n="appendix.data.b6.label.text"></span> <select id="rel-proj" data-i18n-attr="aria-label=appendix.data.attr.rel-proj.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_2"></span> <select id="rel-tag" data-i18n-attr="aria-label=appendix.data.attr.rel-tag.aria-label"></select></label><label><span data-i18n="appendix.data.b6.label.text_3"></span> <input id="rel-q" type="search" data-i18n-attr="placeholder=appendix.data.attr.rel-q.placeholder;aria-label=appendix.data.attr.rel-q.aria-label"></label><span id="rel-n" class="tag"></span></div>
     <div class="tbl" style="max-height:560px;overflow:auto"><table id="rel-list"></table></div>
   </div>
-  <div class="block" data-src="measured" id="data-db"><h2 data-i18n="appendix.data.b7.h2"></h2>
+  <div class="block" data-src="both" id="data-db"><h2 data-i18n="appendix.data.b7.h2"></h2>
     <p class="lede" data-i18n-html="appendix.data.b7.lede"></p>
     <div class="tbl"><table id="m-db-sets"></table></div>
     <div class="legend"><label><span data-i18n="appendix.data.b7.label.text"></span> <select id="m-db-set" data-i18n-attr="aria-label=appendix.data.attr.m-db-set.aria-label"></select></label><label><span data-i18n="appendix.data.b7.label.text_2"></span> <input id="m-db-q" type="search" data-i18n-attr="placeholder=appendix.data.attr.m-db-q.placeholder;aria-label=appendix.data.attr.m-db-q.aria-label"></label><span id="m-db-n" class="tag"></span></div>

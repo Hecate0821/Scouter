@@ -1,6 +1,6 @@
 /* ---------- 外壳：侧栏、顶栏（模型 / GPU / 拓扑 / 口径）、主题、命令行与 JSON、地址里的状态 ---------- */
 /* 口径：ideal = 硬件屋顶，modeled = 默认效率，measured = 只看实测数据点。前两个换的是计算用的效率参数，
-   第三个只换显示：页面里标了 data-src="measured" 的部分是实测，data-src="both" 是实测和模型对照，其余都是计算。 */
+   第三个只换显示：页面里标了 data-src="measured" 的部分只在实测口径显示，data-src="both" 在所有口径都显示（实测和模型对照，以及附录的数据页），其余都是计算。 */
 const SRC = Scouter.SOURCES;
 S.src = "modeled"; S.globModeled = S.glob;
 

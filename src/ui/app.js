@@ -5,7 +5,7 @@ const OLD = { models:"arch/overview", "appendix/models":"arch/overview", par:"tr
 const VIEW = {
   "overview": renderOverview,
   "arch/overview": renderArchOverview, "arch/module": renderArchModule, "arch/compare": renderArchCompare,
-  "train/step": renderTrain, "train/par": ()=>{ syncTrnRack(); renderTrnComm(); renderPar(); }, "train/quant": renderQuantTrain, "train/calib": renderCalib,
+  "train/step": renderTrain, "train/par": ()=>{ syncTrnRack(); renderTrnComm(); renderMesh(trnRun()); renderPar(); }, "train/quant": renderQuantTrain, "train/calib": renderCalib,
   "infer/step": renderInfer, "infer/deploy": ()=>{ syncInfRack(); renderInfComm(); renderInferTO(); }, "infer/quant": renderQuantInfer, "infer/spec": ()=>{ syncInfRack(); renderSpec(); }, "infer/kv": ()=>{ syncInfRack(); renderKV(); }, "infer/calib": renderInfCalib,
   "rl/mismatch": renderMismatch, "rl/determinism": renderDeterminism, "rl/lowprec": renderLowprec, "rl/qat": renderQat,
   "appendix/data": ()=>{ renderKernels(); renderEff(); renderPublic(); renderReleases(); renderDB(); }, "appendix/quant": renderFormats, "appendix/method": ()=>{} };

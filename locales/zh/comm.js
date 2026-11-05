@@ -161,7 +161,7 @@ I18N.add("zh", "comm", {
   "bwd.qkv": "QKV 投影反向",
   "opt.mg": "optimizer：{note}（每卡只更新自己那 1/(DP×CP) 份）",
   "opt.fsdp": "optimizer：{note}（FSDP：每卡只更新自己那 1/F 份；梯度已经在每层 reduce-scatter 掉了）",
-  "trn.lede": "{fw} · {model} · {hw} · {topo}。TP {tp} / CP {cp} / EP {ep}{etp}{pp} / {par}，每卡每个 micro-batch {tok} token，重算：{rc}。这一张跟着左侧的框架走（和“<a href=\"#train/step\">一个 step</a>”同一个 <code>Train.run</code>）；下面几节把 Megatron 换成 torchtitan 的 FSDP 来讲。",
+  "trn.lede": "{fw} · {model} · {hw} · {topo}。TP {tp} / CP {cp} / EP {ep}{etp}{pp} / {par}，每卡每个 micro-batch {tok} token，重算：{rc}。这一张跟着左侧的框架走（和“<a href=\"#train/step\">一个 step</a>”同一个 <code>Train.run</code>），下面的网格也一样；再往下几节把 Megatron 换成 torchtitan 的 FSDP 来讲。",
   "trn.ledeFsdp": "FSDP {n}{exp}{rep}",
   "trn.ledeExp": "（expert {n}）",
   "trn.ledeDp": "DP {n}（分布式优化器）",

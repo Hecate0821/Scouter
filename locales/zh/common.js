@@ -17,15 +17,6 @@ I18N.add("zh", "common", {
   "dt.fp8Block": "FP8 block",
   "dt.blockFp8": "block FP8",
   "gantt.sm": "SM（计算）",
-  "gantt.proj": "投影 / FFN",
-  "gantt.lin": "线性注意力",
-  "gantt.ep": "EP 通信",
-  "gantt.cp": "CP 通信",
-  "gantt.tp": "TP 通信",
-  "gantt.sync": "同步",
-  "gantt.attn": "attention",
-  "gantt.moe": "MoE GEMM",
-  "gantt.oth": "重算 / 其他",
   "anonPoint": "匿名数据点",
   "preset.need": "（需 {n} 卡{hw}，选中会切换拓扑）"
 });

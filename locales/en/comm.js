@@ -161,7 +161,7 @@ I18N.add("en", "comm", {
   "bwd.qkv": "QKV projection backward",
   "opt.mg": "optimizer: {note} (each GPU updates only its own 1/(DP×CP))",
   "opt.fsdp": "optimizer: {note} (FSDP: each GPU updates only its own 1/F; gradients were already reduce-scattered in each layer)",
-  "trn.lede": "{fw} · {model} · {hw} · {topo}. TP {tp} / CP {cp} / EP {ep}{etp}{pp} / {par}, {tok} tokens per GPU per micro-batch, recompute: {rc}. This view follows the framework on the left (the same <code>Train.run</code> as <a href=\"#train/step\">One step</a>); the sections below switch Megatron to torchtitan's FSDP.",
+  "trn.lede": "{fw} · {model} · {hw} · {topo}. TP {tp} / CP {cp} / EP {ep}{etp}{pp} / {par}, {tok} tokens per GPU per micro-batch, recompute: {rc}. This view follows the framework on the left (the same <code>Train.run</code> as <a href=\"#train/step\">One step</a>), and so does the mesh below; the sections after it switch Megatron to torchtitan's FSDP.",
   "trn.ledeFsdp": "FSDP {n}{exp}{rep}",
   "trn.ledeExp": " (expert {n})",
   "trn.ledeDp": "DP {n} (distributed optimizer)",

@@ -33,7 +33,7 @@ function epPartsOf(r, P){
   b.push([lane,t("par.seg.bwdComb"),one,"ep"],["sm",t("par.seg.expBwd"),P.exp.b+P.exp.rc,"moe"],[lane,t("par.seg.bwdDisp"),one,"ep"]);
   return {f,b};
 }
-/* 一层的时间线：which = layer（全注意力层 + MoE / FFN）、attn（只看注意力，比较 CP）、moe（只看 MoE，比较 EP） */
+/* 一层的时间线：which = attn（只看注意力，比较 CP）、moe（只看 MoE，比较 EP） */
 function layerSeq(r, which){
   const {m,d,hw,topo}=ctx(), P=layerPieces(r), ac=r.ops.some(o=>o.rc), f=[], b=[];
   const cp=r.par.cpFull, meth=r.par.cpMeth, C=r.cp, lane=cp&&!cp.lk.intra?"ib":"nvl";
@@ -52,7 +52,6 @@ function layerSeq(r, which){
     if(tpAll) f.push([tpL,t("par.seg.tpRs"),tpAll/6,"tp"]);
   }
   if(which!=="attn"){ if(moe){ f.push(["sm",t("par.seg.rep"),P.rep.f,"proj"]); f.push(...EPp.f); } else f.push(["sm",t("par.seg.dense"),P.den.f,"proj"]); }
-  if(ac && which==="layer") b.push(["sm",t("par.seg.rcLayer"),P.pre.rc+P.core.rc+P.post.rc+P.rep.rc+(moe?0:P.den.rc),"oth"]);
   if(which!=="attn"){ if(moe){ b.push(...EPp.b); b.push(["sm",t("par.seg.routerBwd"),P.rep.b,"proj"]); } else b.push(["sm",t("par.seg.denseBwd"),P.den.b,"proj"]); }
   if(which!=="moe"){
     if(tpAll) b.push([tpL,t("par.seg.tpAgBwd"),tpAll/2,"tp"]);
@@ -70,7 +69,7 @@ function layerSeq(r, which){
 const seqGroup = (r, which, label) => { const sq=layerSeq(r,which), F=layout(sq.f,0), B=layout(sq.b,F.end), segs=F.segs.concat(B.segs);
   return { label, lanes:["cpu","sm","nvl","ib"].filter(x=>x==="sm"||segs.some(z=>z.lane===x)), segs, fEnd:F.end, end:B.end }; };
 
-/* ---------- 后训练 · 一个 step：网格与一层时间线 ---------- */
+/* ---------- 后训练 · 并行：网格 ---------- */
 let meshDim="cp", meshSel=0;
 function meshDims(r){
   const N=r.dp*r.tp*r.cp*r.pp, Nst=N/r.pp, tp=r.tp, cp=r.cp, ep=r.ep, etp=r.etp, fs=r.par.fsdp, D=[];
@@ -89,50 +88,33 @@ const PAR_LINK = { tp:"", cp:"#train/par/cp", ep:"#train/par/ep", fsdp:"#train/p
 function renderMesh(r){
   const {hw,topo}=ctx(), N=Math.round(r.dp*r.tp*r.cp*r.pp), dom=Par.pow2Dom(topo), D=meshDims(r);
   if(meshSel>=N) meshSel=0;
-  if(!D.length){ $("t-mesh-dim").innerHTML=""; $("t-mesh").innerHTML='<p class="hint">'+t("par.mesh.single")+'</p>'; $("t-mesh-cap").textContent=""; $("t-groups").innerHTML=""; return; }
+  if(!D.length){ $("p-mesh-dim").innerHTML=""; $("p-mesh").innerHTML='<p class="hint">'+t("par.mesh.single")+'</p>'; $("p-mesh-cap").textContent=""; $("p-groups").innerHTML=""; return; }
   if(!D.some(x=>x.k===meshDim)) meshDim=D[0].k;
   const dim=D.find(x=>x.k===meshDim), selG=dim.g(meshSel);
-  $("t-mesh-dim").innerHTML=D.map(x=>'<button type="button" data-v="'+x.k+'" aria-pressed="'+(x.k===meshDim)+'">'+t("par.mesh.colorBy", { dim: esc(x.n) })+'</button>').join("");
+  $("p-mesh-dim").innerHTML=D.map(x=>'<button type="button" data-v="'+x.k+'" aria-pressed="'+(x.k===meshDim)+'">'+t("par.mesh.colorBy", { dim: esc(x.n) })+'</button>').join("");
   let h="";
   for(let lo=0; lo<N; lo+=dom){ h+='<div class="node"><span class="nl">'+t("par.mesh.domain", { i: lo/dom, kind: topo.domain>8 ? t("par.mesh.nvl72") : t("par.mesh.hgx") })+'</span>';
     for(let k=lo;k<Math.min(N,lo+dom);k++){ const gi=dim.g(k), peer=gi===selG;
       h+='<button type="button" class="g'+(k===meshSel?" sel":"")+(peer?" peer":"")+'" data-k="'+k+'" style="background:'+css(dim.c)+';opacity:'+(peer?1:(gi%2?0.38:0.2))+'" aria-label="'+t("par.mesh.gpuAria", { k, dim: esc(dim.n), g: gi })+'">'+(N<=128?k:"")+'</button>'; }
     h+='</div>'; }
-  $("t-mesh").innerHTML=h;
+  $("p-mesh").innerHTML=h;
   const peers=[]; for(let k=0;k<N;k++) if(dim.g(k)===selG) peers.push(k);
-  $("t-mesh-cap").innerHTML=t("par.mesh.cap", { k: meshSel, dim: esc(dim.n), peers: esc(peers.length>16?peers.slice(0,8).join(", ")+" … "+peers.slice(-4).join(", "):peers.join(", ")), n: peers.length });
+  $("p-mesh-cap").innerHTML=t("par.mesh.cap", { k: meshSel, dim: esc(dim.n), peers: esc(peers.length>16?peers.slice(0,8).join(", ")+" … "+peers.slice(-4).join(", "):peers.join(", ")), n: peers.length });
   const cls=k=>r.comm.filter(x=>x.cls===k&&!x.perStage), fs=r.par.fsdp;
-  const row=(x,bytes,tw,exp,note)=>{ const l=Par.lk(hw,topo,x.size,x.stride); return '<tr><td>'+esc(x.n)+'</td><td class="num">'+x.size+'</td><td class="num">'+x.stride+'</td><td>'+l.kind+'</td><td class="num">'+(bytes!=null?fB(bytes):"—")+'</td><td class="num">'+(tw!=null?fT(tw):"—")+'</td><td class="num">'+(exp!=null?fT(exp):"—")+'</td><td>'+note+(PAR_LINK[x.k]?' <a href="'+PAR_LINK[x.k]+'">'+t("par.groups.more")+'</a>':'')+'</td></tr>'; };
-  const sc=k=>[sum(cls(k),x=>x.bytes),sum(cls(k),x=>x.t),sum(cls(k),x=>x.exp||0)];
-  $("t-groups").innerHTML='<thead><tr><th>'+t("par.groups.th.dim")+'</th><th>'+t("par.groups.th.size")+'</th><th>'+t("par.groups.th.stride")+'</th><th>'+t("par.groups.th.link")+'</th><th>'+t("par.groups.th.bytes")+'</th><th>'+t("par.groups.th.wire")+'</th><th>'+t("par.groups.th.exposed")+'</th><th>'+t("par.groups.th.note")+'</th></tr></thead><tbody>'+D.map(x=>{
-    if(x.k==="tp") return row(x,...sc("tp"),t("par.groups.note.tp"));
-    if(x.k==="cp") return row(x,...sc("cp"),r.par.imbCP>1 ? t("par.groups.note.cpImb", { meth: esc(Par.CP[r.par.cpMeth].name), x: r.par.imbCP.toFixed(2) }) : esc(Par.CP[r.par.cpMeth].name));
-    if(x.k==="ep") return row(x,...sc("ep"),r.par.ep ? (r.par.ep.ib>0 ? t("par.groups.note.epIb", { be: esc(Par.EP[r.par.ep.be].name), ib: fB(r.nM*r.par.ep.ib) }) : esc(Par.EP[r.par.ep.be].name)) : t("par.groups.note.epMg", { disp: esc(S.trn.dispatcher) }));
-    if(x.k==="fsdp") return row(x,fs.bDense,fs.tDense,null,t("par.groups.note.fsdp", { twice: fs.aG===2 ? t("par.groups.note.fsdpTwice") : "", exp: fT(r.fsdpExposedMB) }));
-    if(x.k==="efsdp") return row(x,fs.bExp,fs.tExp,null,t("par.groups.note.efsdp"));
-    if(x.k==="rep") return row(x,null,r.par.tAR,r.tDPexp,t("par.groups.note.rep"));
-    if(x.k==="dp") return row(x,null,r.tDP,r.tDPexp,t("par.groups.note.dp"));
-    if(x.k==="edp") return row(x,null,null,null,t("par.groups.note.edp"));
-    return row(x,...sc("pp"),t("par.groups.note.pp"));
+  const row=(x,exp,note)=>{ const l=Par.lk(hw,topo,x.size,x.stride); return '<tr><td>'+esc(x.n)+'</td><td class="num">'+x.size+'</td><td class="num">'+x.stride+'</td><td>'+l.kind+'</td><td class="num">'+(exp!=null?fT(exp):"—")+'</td><td>'+note+(PAR_LINK[x.k]?' <a href="'+PAR_LINK[x.k]+'">'+t("par.groups.more")+'</a>':'')+'</td></tr>'; };
+  const sc=k=>sum(cls(k),x=>x.exp||0);
+  $("p-groups").innerHTML='<thead><tr><th>'+t("par.groups.th.dim")+'</th><th>'+t("par.groups.th.size")+'</th><th>'+t("par.groups.th.stride")+'</th><th>'+t("par.groups.th.link")+'</th><th>'+t("par.groups.th.exposed")+'</th><th>'+t("par.groups.th.note")+'</th></tr></thead><tbody>'+D.map(x=>{
+    if(x.k==="tp") return row(x,sc("tp"),t("par.groups.note.tp"));
+    if(x.k==="cp") return row(x,sc("cp"),r.par.imbCP>1 ? t("par.groups.note.cpImb", { meth: esc(Par.CP[r.par.cpMeth].name), x: r.par.imbCP.toFixed(2) }) : esc(Par.CP[r.par.cpMeth].name));
+    if(x.k==="ep") return row(x,sc("ep"),r.par.ep ? (r.par.ep.ib>0 ? t("par.groups.note.epIb", { be: esc(Par.EP[r.par.ep.be].name), ib: fB(r.nM*r.par.ep.ib) }) : esc(Par.EP[r.par.ep.be].name)) : t("par.groups.note.epMg", { disp: esc(S.trn.dispatcher) }));
+    if(x.k==="fsdp") return row(x,null,t("par.groups.note.fsdp", { twice: fs.aG===2 ? t("par.groups.note.fsdpTwice") : "", exp: fT(r.fsdpExposedMB) }));
+    if(x.k==="efsdp") return row(x,null,t("par.groups.note.efsdp"));
+    if(x.k==="rep") return row(x,r.tDPexp,t("par.groups.note.rep"));
+    if(x.k==="dp") return row(x,r.tDPexp,t("par.groups.note.dp"));
+    if(x.k==="edp") return row(x,null,t("par.groups.note.edp"));
+    return row(x,sc("pp"),t("par.groups.note.pp"));
   }).join("")+'</tbody>';
 }
-function renderLayerGantt(r){
-  const {g}=ctx(), G=seqGroup(r,"layer",""), segs=G.segs, fs=r.par.fsdp;
-  if(fs && fs.fs>1){ const dL=fs.lkD.intra?"nvl":"ib", P1=Math.max(fs.pFull,fs.pLin);
-    const ag=Par.wireT(P1*(fs.fs-1)/fs.fs*2,fs.lkD,g.etaAg,1,g), rs=Par.wireT(P1*(fs.fs-1)/fs.fs*fs.gB,fs.lkD,g.etaAg,1,g);
-    segs.push({lane:dL,label:t("par.gantt.fsdpPrefetch"),t0:0,t1:ag,cat:"fsdp"});
-    if(fs.aG===2) segs.push({lane:dL,label:t("par.gantt.fsdpRegather"),t0:G.fEnd,t1:G.fEnd+ag,cat:"fsdp"});
-    segs.push({lane:dL,label:t("par.gantt.fsdpRs"),t0:Math.max(G.fEnd,G.end-rs),t1:G.end,cat:"fsdp"}); }
-  if(fs && fs.fe>1 && fs.pExpL){ const eL=fs.lkE.intra?"nvl":"ib"; segs.push({lane:eL,label:t("par.gantt.efsdpPrefetch"),t0:0,t1:Par.wireT(fs.pExpL*(fs.fe-1)/fs.fe*2,fs.lkE,g.etaAg,1,g),cat:"fsdp"}); }
-  G.lanes=["cpu","sm","nvl","ib"].filter(x=>x==="sm"||segs.some(z=>z.lane===x));
-  gantt("t-gantt",[G]);
-  const {m,d}=ctx();
-  $("t-gantt-lede").innerHTML=t("par.gantt.lede.main", { H: d.Hattn, ffn: t(m.moe.E?"par.gantt.lede.ffnMoe":"par.gantt.lede.ffnDense"), tok: fN(r.Tc), fwd: V(fT(G.fEnd)), rc: r.ops.some(o=>o.rc) ? t("par.gantt.lede.rc") : "", bwd: V(fT(G.end-G.fEnd)) })+
-    (fs?t("par.gantt.lede.fsdp"):t("par.gantt.lede.mg"))+
-    t("par.gantt.lede.links");
-  legendInto("t-gantt-legend",GANTT_LEGEND.filter(([n,k])=>segs.some(s=>s.cat===k)).map(([n,k])=>({name:n,col:CAT[k]})));
-}
-
 /* ---------- “并行”页 ---------- */
 const moeLayerT = r => { const P=layerPieces(r), tE=P.exp.f+P.exp.b+P.exp.rc, fs=r.par.fsdp, eF=fs&&r.nM ? fs.tExp*r.pp/r.nM : 0;
   return (r.par.ep ? r.par.ep.t : tE) + Math.max(0, eF - tE); };            // 一层 MoE F+B，加上 expert FSDP 盖不住的部分
@@ -165,9 +147,28 @@ function renderPar(){
   renderParFsdp(r); renderParCp(r); renderParEp(r);
 }
 
+/* 屋顶线的第二个视图：每个算子分三遍，只画 HBM（效率系数和各精度的拐点都算在内），和“一个 step”的逐算子是同一次 Train.run */
+let roofView="agg";
+function renderRoofPasses(){
+  const {hw,g}=ctx(), r=trnRun();
+  const PR=Train.PREC[S.trn.prec]||Train.PREC.bf16, pks=[{v:peakOf(hw,"bf16"),n:"BF16"}];
+  for(const d of [PR.f,PR.b]) if(d!=="bf16" && !pks.some(p=>p.v===peakOf(hw,d))) pks.push({v:peakOf(hw,d),n:Common.peakKey(d).toUpperCase()});
+  const pts=[], topT=new Set([...r.ops].sort((a,b)=>b.fwd.t-a.fwd.t).slice(0,8));
+  for(const o of r.ops){ const col=GROUPC[o.group];
+    if(o.fwd.fl>0) pts.push({x:o.fwd.I,y:o.fwd.fl/o.fwd.t,color:col,label:topT.has(o)?shortName(o.name):null});
+    if(o.dgrad.fl>0) pts.push({x:o.dgrad.I,y:o.dgrad.fl/o.dgrad.t,color:col,shape:"sq",r:4});
+    if(o.wgrad.fl>0) pts.push({x:o.wgrad.I,y:o.wgrad.fl/o.wgrad.t,color:col,shape:"tri",r:4}); }
+  plot($("p-roof"),{h:380,x0:0.1,x1:20000,y0:1e10,y1:Math.max(...pks.map(p=>p.v))*3,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("par.roof.pass.xl"),yl:t("par.roof.pass.yl"),
+    series:roofSeries(hw,g,pks,0.1,20000),points:pts,vlines:pks.map((p,i)=>({x:Common.ridge(p.v,hw,g),color:css("muted"),label:t("par.roof.pass.knee",{peak:p.n,x:fI(Common.ridge(p.v,hw,g))}),dy:i*14}))});
+  $("p-roof-legend").innerHTML='<span>'+t("par.roof.pass.legendShapes")+'</span>'+Object.entries({attn:t("par.roof.pass.group.attn"),lin:t("par.roof.pass.group.lin"),moe:t("par.roof.pass.group.moe"),lm:t("par.roof.pass.group.lm"),misc:t("par.roof.pass.group.misc")}).map(([k,v])=>'<span><span class="sw" style="background:'+GROUPC[k]+'"></span>'+v+'</span>').join("");
+}
 /* 两条屋顶线：计算算子按 HBM 强度，通信按“能盖它的 FLOP / 线上字节” */
 function renderParRoof(r){
+  xSeg("p-roof-view",[["agg",t("par.roof.view.agg")],["pass",t("par.roof.view.pass")]],roofView,v=>{ roofView=v; renderParRoof(r); });
+  $("p-roof-lede").textContent=t(roofView==="pass"?"par.roof.ledePass":"par.b3.lede");
+  if(roofView==="pass"){ renderRoofPasses(); return; }
   const {hw,topo}=ctx(), svg=$("p-roof"), W=680, H=360, m={l:64,r:18,t:16,b:44};
+  svg.setAttribute("viewBox","0 0 "+W+" "+H);
   const pk=peakOf(hw,(Train.PREC[S.trn.prec]||Train.PREC.bf16).f);
   const roofs=[{k:"HBM",bw:hw.hbm*1e9,col:"mem"},{k:"NVLink",bw:hw.nvl*1e9,col:"accent"}];
   const agg = pred => { let fl=0,by=0,t=0; for(const o of r.ops) if(pred(o)) for(const p of ["fwd","dgrad","wgrad"]){ fl+=o[p].fl; by+=o[p].by; t+=o[p].t; if(p==="fwd"&&o.rc){ fl+=o.fwd.fl; by+=o.fwd.by; t+=o.fwd.t; } } return {fl,by,t}; };

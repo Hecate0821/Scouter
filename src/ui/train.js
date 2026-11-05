@@ -16,7 +16,7 @@ function syncTrnRack(){
   const {m,topo,g}=ctx(); markInert("trn",Train.inert(m,Object.assign({N:topo.gpus},c),g));
 }
 function renderTrain(){
-  const {m,d,hw,topo,g}=ctx(), c=S.trn, mg=c.fw==="megatron";
+  const {m,d,hw,topo}=ctx(), c=S.trn, mg=c.fw==="megatron";
   syncTrnRack();
   const r=trnRun(), M=r.mem;
   const warn=[...r.warn]; if(M.used>M.total) warn.push(t("train.warn.memOver",{used:fB(M.used),cap:hw.mem})); if(r.dp<1) warn.push(t("train.warn.tooManyGpus",{n:topo.gpus}));
@@ -30,7 +30,6 @@ function renderTrain(){
     [t("train.kpi.bubble"),r.pp>1?pct(r.bubble,r.microsPerStep):t("train.kpi.bubbleNone"),r.pp>1?t("train.kpi.bubbleSub",{n:fI(r.bubble)}):""],
     [t("train.kpi.mem"),fB(M.used),t("train.kpi.memSub",{cap:hw.mem}),M.used>M.total],
     [t("train.kpi.params"),fN(r.PlD+r.PlE),t("train.kpi.paramsFoot",{d:fN(r.PlD),e:fN(r.PlE)})]]);
-  renderMesh(r); renderLayerGantt(r);
   // micro-batch 分解
   const pp=r.pp, ex=r.comm.filter(x=>!x.perStage), exSum=sum(ex,x=>x.exp||0), scale=exSum>0?r.exposed/exSum:0, byCls={};
   ex.forEach(x=>byCls[x.cls]=(byCls[x.cls]||0)+(x.exp||0)*scale);
@@ -40,6 +39,9 @@ function renderTrain(){
     ...Object.keys(byCls).map(k=>({label:clsName[k],v:byCls[k]/pp,color:CLSC[k],tag:pill("comm")})),
     {label:t("train.bar.fsdp"),v:r.fsdpExposedMB,color:css("c-fsdp"),tag:pill("comm")},
     {label:t("train.bar.pp"),v:sum(r.comm.filter(x=>x.key==="pp"),x=>x.t)*0.1,color:css("c-dp"),tag:pill("comm")}],r.tMB,fT);
+  /* a2a 比 expert 计算还长时点一句；换后端值不值看 EP 那一节的对比，这里不替它下结论 */
+  const moeL=d.nMoe?r.moeT/d.nMoe:0, epSlow=r.ep>1&&r.a2aPerLayer>moeL, barNote=$("t-bar-note");
+  barNote.hidden=!epSlow; barNote.innerHTML=epSlow?t("train.bar.epNote",{ep:r.ep,a2a:V(fT(r.a2aPerLayer)),gemm:V(fT(moeL))}):"";
   $("t-step-lede").innerHTML=t("train.stepBar.lede",{n:r.microsPerStep,dp:esc(r.dpNote||t("train.stepBar.ledeFsdp")),opt:esc(r.optNote)});
   stackBar($("t-sbar"),$("t-sbarlist"),[
     {label:t("train.stepBar.micro",{n:r.microsPerStep}),v:r.tMB*r.microsPerStep,color:css("c-attn")},{label:t("train.stepBar.bubble"),v:r.tMB*r.bubble,color:css("c-free")},
@@ -49,24 +51,6 @@ function renderTrain(){
   table($("t-ops"),[t("train.ops.head.op"),t("train.ops.head.layers"),t("train.ops.head.fwd"),"dgrad","wgrad",t("train.ops.head.rc"),t("train.ops.head.bound"),t("train.ops.head.I"),t("train.ops.head.flops")],
     r.ops.map(o=>[sw(GROUPC[o.group])+esc(o.name),o.layers,fT(o.fwd.t),fT(o.dgrad.t),o.wgrad.t?fT(o.wgrad.t):"—",o.rc?"✓":"",pill(o.fwd.bound),fI(o.fwd.I),fF(o.fwd.fl+o.dgrad.fl+o.wgrad.fl)])
       .concat([{cls:"hl",cells:["<b>"+t("train.ops.total")+"</b>","",fT(r.tF),fT(r.tD),fT(r.tW),fT(r.tR),"","",fF(r.flF+r.flB)]}]),[1,2,3,4,7,8]);
-  // roofline
-  const PR=Train.PREC[c.prec]||Train.PREC.bf16, pks=[{v:peakOf(hw,"bf16"),n:"BF16"}];
-  for(const d of [PR.f,PR.b]) if(d!=="bf16" && !pks.some(p=>p.v===peakOf(hw,d))) pks.push({v:peakOf(hw,d),n:Common.peakKey(d).toUpperCase()});
-  const pts=[], topT=new Set([...r.ops].sort((a,b)=>b.fwd.t-a.fwd.t).slice(0,8));
-  for(const o of r.ops){ const col=GROUPC[o.group];
-    if(o.fwd.fl>0) pts.push({x:o.fwd.I,y:o.fwd.fl/o.fwd.t,color:col,label:topT.has(o)?shortName(o.name):null});
-    if(o.dgrad.fl>0) pts.push({x:o.dgrad.I,y:o.dgrad.fl/o.dgrad.t,color:col,shape:"sq",r:4});
-    if(o.wgrad.fl>0) pts.push({x:o.wgrad.I,y:o.wgrad.fl/o.wgrad.t,color:col,shape:"tri",r:4}); }
-  plot($("t-roof"),{h:380,x0:0.1,x1:20000,y0:1e10,y1:Math.max(...pks.map(p=>p.v))*3,logx:true,logy:true,fx:fxPow,fy:fyFlops,xl:t("train.roof.xl"),yl:t("train.roof.yl"),
-    series:roofSeries(hw,g,pks,0.1,20000),points:pts,vlines:pks.map((p,i)=>({x:Common.ridge(p.v,hw,g),color:css("muted"),label:t("train.roof.knee",{peak:p.n,x:fI(Common.ridge(p.v,hw,g))}),dy:i*14}))});
-  $("t-roof-legend").innerHTML='<span>'+t("train.roof.legendShapes")+'</span>'+Object.entries({attn:t("train.roof.group.attn"),lin:t("train.roof.group.lin"),moe:t("train.roof.group.moe"),lm:t("train.roof.group.lm"),misc:t("train.roof.group.misc")}).map(([k,v])=>'<span><span class="sw" style="background:'+GROUPC[k]+'"></span>'+v+'</span>').join("");
-  // 通信表
-  const parOf=x=>x.par||({cp:"cp",ep:"ep"})[x.cls]||(x.key==="fsdp"?"fsdp":"");
-  const ovlName={moe:t("train.comm.ovl.moe"),attn:t("train.comm.ovl.attn"),comp:t("train.comm.ovl.comp"),prefetch:t("train.comm.ovl.prefetch")};
-  table($("t-comm"),[t("train.comm.head.what"),t("train.comm.head.dim"),t("train.comm.head.bytes"),t("train.comm.head.time"),t("train.comm.head.ovl"),t("train.comm.head.exp"),""],
-    r.comm.map(x=>[sw(CLSC[x.cls])+esc(x.name),x.cls.toUpperCase(),fB(x.bytes),fT(x.t),
-      ovlName[x.ovl]||t("train.comm.ovl.serial"),
-      x.key==="fsdp"?fT(r.fsdpExposedMB):x.key==="pp"?fT(x.t*0.1):fT((x.exp||0)*scale), parOf(x)?'<a href="#train/par/'+parOf(x)+'">'+t("train.comm.how")+'</a>':""]),[2,3,5]);
   // 扫 token
   const toks=logspace(1024,65536,25).map(v=>Math.round(v/512)*512), ra=toks.map(t=>trnRun({tok:t}));
   plot($("t-sw-thr"),{x0:1024,x1:65536,y0:0,y1:Math.max(...ra.map(q=>q.tokPerGpu))*1.15,logx:true,fx:fxPow,fy:v=>fN(v),xl:t("train.sweep.xl"),yl:"tok/s/GPU",
@@ -96,20 +80,9 @@ function renderTrain(){
     [t("train.diff.linKernel.k"),"FLA chunk_gated_delta_rule / chunk_kda",t("train.diff.linKernel.tt")],
     [t("train.diff.opt.k"),t("train.diff.opt.mg"),t("train.diff.opt.tt")],
     [t("train.diff.mfu.k"),t("train.diff.mfu.mg"),t("train.diff.mfu.tt")]]);
-  // 解析
-  const ops=[...r.ops].sort((a,b)=>(b.fwd.t+b.dgrad.t+b.wgrad.t)-(a.fwd.t+a.dgrad.t+a.wgrad.t));
-  const A=[];
-  A.push(t("train.analysis.heavy",{ops:ops.slice(0,3).map(o=>esc(shortName(o.name))+" "+V(fT(o.fwd.t+o.dgrad.t+o.wgrad.t))).join(t("train.sep.list")),
-    bwd:V(fI((r.tD+r.tW)/Math.max(r.tF,1e-12))+"×"),rc:r.tR?t("train.analysis.heavyRc",{pct:V(pct(r.tR,r.tF))}):""}));
-  const commAll=sum(r.comm.filter(x=>!x.perStage),x=>x.t);
-  A.push(t("train.analysis.comm",{total:V(fT(commAll/pp)),exp:V(fT(r.exposed/pp)),top:Object.keys(byCls).sort((a,b)=>byCls[b]-byCls[a]).slice(0,2).map(k=>clsName[k]+" "+V(fT(byCls[k]/pp))).join(t("train.sep.list"))}));
-  if(r.ep>1) A.push(t("train.analysis.ep",{ep:r.ep,send:["deepep","hybridep","ncclep","distmoe"].includes(c.dispatcher)?t("train.analysis.epDedup",{k:V(fI(r.kEff)),topk:m.moe.k}):t("train.analysis.epCopies",{k:m.moe.k}),
-    a2a:V(fT(r.a2aPerLayer)),gemm:V(fT(r.moeT/d.nMoe)),tail:r.a2aPerLayer>r.moeT/d.nMoe?t("train.analysis.epSlow"):""}));
-  if(r.pp>1) A.push(t("train.analysis.pp",{pp:r.pp,vpp:r.vpp>1?t("train.analysis.ppVpp",{vpp:r.vpp}):"",bubble:V(pct(r.bubble,r.microsPerStep+r.bubble)),n:r.microsPerStep}));
-  A.push(mg?t("train.analysis.dpMg",{time:V(fT(r.tDP)),exp:V(fT(r.tDPexp))}):t("train.analysis.dpTt",{time:V(fT(r.fsdpMB)),exp:V(fT(r.fsdpExposedMB))}));
-  A.push(t("train.analysis.opt",{time:V(fT(r.tOpt)),note:esc(r.optNote),shard:fN(r.Pshard),offload:c.offload?t("train.analysis.optOffload",{saved:fB(r.Pshard*12)}):""}));
-  if(M.used>M.total) A.push('<span style="color:var(--warn)">'+t("train.analysis.memOver",{over:fB(M.used-M.total),
-    top:[[t("train.analysis.memTop.act"),M.act],[t("train.analysis.memTop.params"),M.paramsGPU],[t("train.analysis.memTop.opt"),M.states],[t("train.analysis.memTop.logits"),M.logits]].sort((a,b)=>b[1]-a[1]).slice(0,2).map(x=>x[0]+" "+fB(x[1])).join(t("train.sep.enum"))})+'</span>');
-  if(m.lin.n>0) A.push(t("train.analysis.lin",{kind:m.lin.kind,fwd:V(fT(sum(r.ops.filter(o=>o.key==="lcore"),o=>o.fwd.t))),bwd:V(fT(sum(r.ops.filter(o=>o.key==="lcore"),o=>o.dgrad.t)))}));
-  $("t-analysis").innerHTML=ul(A);
 }
+
+/* 按算子的明细留在这里；每层的机制在模块页。点过去时带上序列长度和精度（模块页看一条长 S 的序列），"分三遍"的链接直接打开屋顶线的那个视图 */
+$("t-to-mods").addEventListener("click",e=>{ const a=e.target.closest("a"); if(!a) return;
+  if(a.getAttribute("href")==="#train/par/roof"){ roofView="pass"; return; }
+  Object.assign(S.arch,{phase:"train",S:S.trn.S,prec:S.trn.prec}); syncInputs(); });

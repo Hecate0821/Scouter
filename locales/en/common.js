@@ -17,15 +17,6 @@ I18N.add("en", "common", {
   "dt.fp8Block": "FP8 block",
   "dt.blockFp8": "block FP8",
   "gantt.sm": "SM (compute)",
-  "gantt.proj": "Projection / FFN",
-  "gantt.lin": "Linear attention",
-  "gantt.ep": "EP communication",
-  "gantt.cp": "CP communication",
-  "gantt.tp": "TP communication",
-  "gantt.sync": "Sync",
-  "gantt.attn": "attention",
-  "gantt.moe": "MoE GEMM",
-  "gantt.oth": "Recompute / other",
   "anonPoint": "Anonymized data point",
   "preset.need": " (needs {n}{hw} GPUs; selecting it switches the topology)"
 });
