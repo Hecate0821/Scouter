@@ -120,6 +120,15 @@ const moeLayerT = r => { const P=layerPieces(r), tE=P.exp.f+P.exp.b+P.exp.rc, fs
   return (r.par.ep ? r.par.ep.t : tE) + Math.max(0, eF - tE); };            // 一层 MoE F+B，加上 expert FSDP 盖不住的部分
 const attnLayerT = r => { const P=layerPieces(r), cp=r.par.cpFull; return P.core.f+P.core.b+P.core.rc + (cp ? r.par.docs*cp.exposed : 0); };
 
+/* FSDP / CP / EP 一次看一个。三节都照常渲染，只切显示；地址栏跟着当前这一个，#train/par/ep 这样的链接直接打开它 */
+const PAR_DIMS=["fsdp","cp","ep"]; let parDim="fsdp";
+function setParDim(v){ parDim=v;
+  PAR_DIMS.forEach(k=>{ $("par-"+k).hidden=k!==v; });
+  xSeg("p-dim",PAR_DIMS.map(k=>[k,t("par.dims."+k)]),v,pickParDim); }
+function pickParDim(v){ setParDim(v);
+  try{ history.replaceState(null,"","#train/par/"+v); }catch(e){}
+  const el=$("par-"+v);   // 切换条已经吸住时，新的一节从头开始读；没吸住就不动页面
+  if(el.getBoundingClientRect().top<$("par-dims").getBoundingClientRect().bottom-1) el.scrollIntoView({block:"start"}); }
 function renderPar(){
   const {m,d,hw,topo,g}=ctx(), r=runP(), c=parBase(), mgNow=S.trn.fw==="megatron";
   setWarn(r.warn.concat(runFit(r)?[]:[t("par.warn.mem", { used: fB(r.mem.used), cap: hw.mem })]));
@@ -144,7 +153,7 @@ function renderPar(){
   else { $("p-heat-ep").innerHTML='<text x="340" y="60" text-anchor="middle" class="lbl">'+t("par.noEp")+'</text>'; $("p-heat-ep-legend").innerHTML=""; }
   const Cs=pow2upTo(Math.min(N,64)).filter(v=>v>1);
   heat("p-heat-cp","p-heat-cp-legend","CP ",Cs,Object.keys(Par.CP),(C,S2,meth)=>runP({cp:C,S:S2,tok:Math.max(256,S2/C),cpType:meth}),k=>Par.CP[k].col,k=>Par.CP[k].name);
-  renderParFsdp(r); renderParCp(r); renderParEp(r);
+  renderParFsdp(r); renderParCp(r); renderParEp(r); setParDim(parDim);
 }
 
 /* 屋顶线的第二个视图：每个算子分三遍，只画 HBM（效率系数和各精度的拐点都算在内），和“一个 step”的逐算子是同一次 Train.run */

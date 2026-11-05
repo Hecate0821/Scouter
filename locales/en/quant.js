@@ -38,7 +38,7 @@ I18N.add("en", "quant", {
   "formats.b2.h2": "Terms",
   "formats.b2.tbl.head.c1": "Term",
   "formats.b2.tbl.head.c2": "Meaning",
-  "formats.b2.tbl.head.c3": "Where on this page",
+  "formats.b2.tbl.head.c3": "Where it is covered",
   "formats.b2.tbl.row1.c2": "Weights x bits, activations y bits. W4A16 only saves weight reads, and the MMA is still BF16; W8A8 / W4A4 also lower activation precision, which is what allows a higher MMA peak; W4A8 runs the MMA in FP8",
   "formats.b2.tbl.row1.c3": "<a href=\"#infer/quant\">Low-precision inference</a>",
   "formats.b2.tbl.row2.c1": "Per tensor / channel / token / block",

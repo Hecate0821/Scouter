@@ -156,6 +156,69 @@ const problems = [];
   tsSet("trn.fw", "megatron"); tsShow("train/par"); meshOK("megatron");
   if (ts.errs.length) problems.push(...ts.errs.slice(0, 5));
 
+  // --- train/par: FSDP / CP / EP are a switch, and every way of reaching one opens that one ---
+  const dimOn = () => ["fsdp", "cp", "ep"].filter(k => !ts.d.getElementById("par-" + k).hidden).join();
+  const dimBtn = () => ts.d.querySelector('#p-dim button[aria-pressed="true"]').dataset.v;
+  const tsGo = h => { ts.w.location.hash = h; ts.w.dispatchEvent(new ts.w.HashChangeEvent("hashchange")); };
+  const dimIs = (want, how) => { if (dimOn() !== want || dimBtn() !== want) problems.push(`train/par ${how}: shows ${dimOn()} (button ${dimBtn()}), expected ${want}`); };
+  tsShow("train/step"); tsShow("train/par");
+  if (ts.d.querySelectorAll("#p-dim button").length !== 3) problems.push("train/par: switch should have 3 buttons");
+  dimIs("fsdp", "default");
+  // All three stay drawn while hidden, so a switch never shows a blank section
+  for (const id of ["p-f-tbl", "p-c-gantt", "p-e-gantt"]) if (!ts.d.getElementById(id).children.length) problems.push(`train/par: ${id} is empty while hidden`);
+  // jsdom refuses replaceState on file:// URLs, so watch the call here; the real address bar is checked in a browser
+  let replaced = ""; ts.w.history.replaceState = (x, y, u) => { replaced = u; };
+  ts.d.querySelector('#p-dim button[data-v="cp"]').click(); dimIs("cp", "button");
+  delete ts.w.history.replaceState;
+  if (replaced !== "#train/par/cp") problems.push(`train/par: address set to "${replaced}" after the switch`);
+  ts.w.eval("render()"); dimIs("cp", "after a render");
+  tsGo("#overview"); tsGo("#train/par/ep"); dimIs("ep", "link from another page");
+  const scrolled = []; ts.w.Element.prototype.scrollIntoView = function () { scrolled.push(this.id); };
+  tsGo("#train/par/fsdp"); dimIs("fsdp", "link on the same page");
+  if (scrolled[scrolled.length - 1] !== "par-fsdp") problems.push(`train/par: same-page link scrolled to ${scrolled[scrolled.length - 1]}`);
+  tsGo("#train/par/roof"); dimIs("fsdp", "unrelated anchor");
+  // The address already says #train/par/cp and the browser sends no hashchange: the link must still go there
+  tsGo("#train/par/cp"); scrolled.length = 0;
+  const sameLink = Array.from(ts.d.querySelectorAll('section[data-pane="train/par"] a[href="#train/par/cp"]'))[0];
+  if (!sameLink) problems.push("train/par: no link to the CP section"); else { sameLink.click(); if (scrolled[0] !== "par-cp") problems.push("train/par: clicking the current link does not go back to it"); }
+  ts.w.Element.prototype.scrollIntoView = function () {};
+  ts.d.querySelector('#g-src button[data-src="measured"]').click();
+  if (!ts.d.getElementById("par-dims").classList.contains("src-off")) problems.push("train/par: switch stays on under measured");
+  ts.d.querySelector('#g-src button[data-src="ideal"]').click();
+  tsGo("#train/par/fsdp");
+  // --- arch/overview is the current model, arch/compare is several ---
+  const pane = k => ts.d.querySelector(`section[data-pane="${k}"]`);
+  for (const id of ["m-compare", "m-cache", "m-cache-legend"]) {
+    if (!pane("arch/compare").querySelector("#" + id)) problems.push(`arch/compare: missing ${id}`);
+    if (pane("arch/overview").querySelector("#" + id)) problems.push(`arch/overview: ${id} should have moved`); }
+  tsShow("arch/overview");
+  if (!ts.d.getElementById("m-stack").children.length || !ts.d.querySelectorAll("#m-params tbody tr").length) problems.push("arch/overview: current model is empty");
+  tsShow("arch/compare");
+  const nModels = ts.w.eval("Object.keys(MODELS).length");
+  if (ts.d.querySelectorAll("#m-compare tbody tr").length !== nModels) problems.push("arch/compare: model table does not list every model");
+  if (ts.d.querySelectorAll("#m-compare tbody tr.hl").length !== 1) problems.push("arch/compare: current model not marked");
+  if (!ts.d.querySelectorAll("#m-cache path").length || !ts.d.getElementById("m-cache-legend").textContent.trim()) problems.push("arch/compare: cache chart is empty");
+  if (/NaN|undefined/.test(pane("arch/compare").textContent)) problems.push("arch/compare: NaN or undefined");
+  // --- overview cards, glossary header, determinism citations ---
+  const cards = Array.from(pane("overview").querySelectorAll(".cards a.card")).map(a => a.getAttribute("href"));
+  if (cards.join() !== "#arch/overview,#train/step,#infer/step,#rl/mismatch,#appendix/data") problems.push(`overview: cards are ${cards.join()}`);
+  if (/模型结构|model structure/.test(pane("overview").querySelector('a[href="#appendix/data"]').textContent)) problems.push("overview: appendix card still claims the model structure");
+  if (/本页|on this page/.test(pane("appendix/quant").querySelector("table thead th:nth-child(3)") ? Array.from(pane("appendix/quant").querySelectorAll("thead th")).map(x => x.textContent).join() : "")) problems.push("appendix/quant: glossary header says this page");
+  tsShow("rl/determinism");
+  const det = pane("rl/determinism"), detText = det.textContent;
+  if (/\{[a-zA-Z0-9]+\}/.test(detText) || /NaN|undefined/.test(detText)) problems.push("rl/determinism: unfilled placeholder or bad number");
+  if (!ts.d.getElementById("determinism-oss")) problems.push("rl/determinism: release list has no anchor");
+  if (det.querySelectorAll('a[href="#rl/determinism/oss"]').length !== 2) problems.push("rl/determinism: pointers to the release list went missing");
+  // What the pointers promise has to be in the list they point at
+  const ossLinks = Array.from(ts.d.querySelectorAll("#r-det-oss a")).map(a => a.getAttribute("href")).join(" ");
+  for (const v of ["v0.12.0", "v0.22.0", "v0.29.0", "v0.20.0", "v0.28.0", "v0.5.21"]) if (!ossLinks.includes(v)) problems.push(`rl/determinism: ${v} is not in the release list`);
+  const ossCell = ts.d.getElementById("r-det-oss").textContent;
+  for (const n of ["18.1%", "28.9%", "33.6%"]) if (!ossCell.includes(n)) problems.push(`rl/determinism: release list lost ${n}`);
+  // One source run in the data table links once; each row keeps its own data
+  const pubRows = Array.from(ts.d.querySelectorAll("#r-det-pub tbody tr")), srcUrls = pubRows.map(r => r.children[1].querySelector("a")).filter(Boolean).map(a => a.getAttribute("href"));
+  if (new Set(srcUrls).size !== srcUrls.length) problems.push("rl/determinism: data table repeats a source link");
+  if (pubRows.length !== ts.w.eval('DB.set("determinism_public").length')) problems.push("rl/determinism: data table lost a row");
+  if (pubRows.some(r => !r.children[5].textContent.trim())) problems.push("rl/determinism: data row without a value");
   // --- URL state ---
   const u = await load(path.join(ROOT, "index.html"), "#arch/module", null, "?model=glm53f&hw=H100&topo=hgx8&src=ideal");
   const st = u.w.eval("[S.modelKey, S.hw, S.topo, S.src, S.glob.etaM].join(' ')");

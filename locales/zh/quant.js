@@ -38,7 +38,7 @@ I18N.add("zh", "quant", {
   "formats.b2.h2": "名词",
   "formats.b2.tbl.head.c1": "名词",
   "formats.b2.tbl.head.c2": "意思",
-  "formats.b2.tbl.head.c3": "在本页哪里",
+  "formats.b2.tbl.head.c3": "在哪里讲",
   "formats.b2.tbl.row1.c2": "权重 x 位、激活 y 位。W4A16 只省权重读取，MMA 仍是 BF16；W8A8 / W4A4 激活也降精度，才能用更高的 MMA 峰值；W4A8 的 MMA 跑 FP8",
   "formats.b2.tbl.row1.c3": "<a href=\"#infer/quant\">低精度推理</a>",
   "formats.b2.tbl.row2.c1": "按张量 / 通道 / token / 块",

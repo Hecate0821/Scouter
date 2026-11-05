@@ -118,15 +118,15 @@ function renderDeterminism(){
     [t("rl.determinism.ops.sampling.where"),t("rl.determinism.ops.sampling.why"),t("rl.determinism.ops.sampling.fix"),t("rl.determinism.ops.sampling.src", {sglang:detLink("lmsys-det-cost","SGLang"), v0518:relLink("sglang","v0.5.18")})]]);
   table($("r-det-lv"),[t("rl.determinism.lv.head.level"),t("rl.determinism.lv.head.what"),t("rl.determinism.lv.head.extra"),t("rl.determinism.lv.head.pub")],[
     [t("rl.determinism.lv.l1.name"),t("rl.determinism.lv.l1.what"),t("rl.determinism.lv.l1.extra"),
-      t("rl.determinism.lv.l1.pub", {tml:detLink("tml-unique","TML"), nDefault:u.nDefault, nInvariant:u.nInvariant, sglang:relLink("sglang","v0.5.5"), vllm:relLink("vllm","v0.11.1")})],
+      t("rl.determinism.lv.l1.pub", {tml:detLink("tml-unique","TML"), sglang:relLink("sglang","v0.5.5"), vllm:relLink("vllm","v0.11.1")})],
     [t("rl.determinism.lv.l2.name"),t("rl.determinism.lv.l2.what"),t("rl.determinism.lv.l2.extra"),t("rl.determinism.lv.l2.pub", {repro:detLink("lmsys-slime-repro","slime + SGLang"), slime:relLink("slime","v0.3.2")})],
     [t("rl.determinism.lv.l3.name"),t("rl.determinism.lv.l3.what"),t("rl.determinism.lv.l3.extra"),
-      t("rl.determinism.lv.l3.pub", {tt:detLink("vllm-tt-bitwise","vLLM + TorchTitan"), slow:vt.slow, vllm:aOut(ev.url,"vLLM 2026-10"), miles:relLink("lmsys","2025-11-19-miles","Miles"), sglang:relLink("sglang","v0.5.5")})],
+      t("rl.determinism.lv.l3.pub", {tt:detLink("vllm-tt-bitwise","vLLM + TorchTitan"), vllm:aOut(ev.url,"vLLM 2026-10"), miles:relLink("lmsys","2025-11-19-miles","Miles"), sglang:relLink("sglang","v0.5.5")})],
     [t("rl.determinism.lv.l4.name"),t("rl.determinism.lv.l4.what"),t("rl.determinism.lv.l4.extra"),t("rl.determinism.lv.l4.pub", {tbik:detLink("tbik","TBIK")})]]);
   // 代价
   const sp=x=>Array.isArray(x)?x.map(v=>f*v+(1-f)):[f*x+(1-f)], fx=a=>{ const lo=Math.min(...a), hi=Math.max(...a); return "×"+(lo===hi?lo.toFixed(2):lo.toFixed(2)+"–"+hi.toFixed(2)); };
   const dec=bi=>Infer.decode(m,hw,topo,Object.assign({},S.inf,{phase:"decode",bi,specK:0}),g), sBi=dec(true).stepT/dec(false).stepT;
-  $("r-det-cost-lede").innerHTML=t("rl.determinism.cost.lede", {f, v0120:relLink("vllm","v0.12.0"), v0220:relLink("vllm","v0.22.0"), v0290:relLink("vllm","v0.29.0"),
+  $("r-det-cost-lede").innerHTML=t("rl.determinism.cost.lede", {f,
     graph:detLink("lmsys-det-graph",t("rl.determinism.cost.graphLink"))});
   const C=[
     [t("rl.determinism.cost.sglang.name"),detLink("lmsys-det-cost","LMSYS 2025-09"),t("rl.determinism.cost.sglang.value", {pct:((lc.slow-1)*100).toFixed(2)}),t("rl.determinism.cost.rollout"),sp(lc.slow)],
@@ -141,10 +141,10 @@ function renderDeterminism(){
   $("r-det-lp").innerHTML=ul([
     t("rl.determinism.lp.necessary", {vllm:aOut(ev.url,"vLLM 2026-10")}),
     t("rl.determinism.lp.granularity"),
-    t("rl.determinism.lp.kernels", {v0200:relLink("vllm","v0.20.0"), v0220:relLink("vllm","v0.22.0"), v0280:relLink("vllm","v0.28.0"), v0521:relLink("sglang","v0.5.21")}),
+    t("rl.determinism.lp.kernels"),
     t("rl.determinism.lp.both", {hw:esc(qh.name), scheme:DTN[lk], x:V(fX(sr)), slow:lc.slow.toFixed(2), net:V(fX(sr/lc.slow))})]);
   table($("r-det-pub"),[t("rl.determinism.pub.head.date"),t("rl.determinism.pub.head.src"),t("rl.determinism.pub.head.what"),t("rl.determinism.pub.head.model"),t("rl.determinism.pub.head.setting"),t("rl.determinism.pub.head.value")],DB.set("determinism_public").slice().sort((x,y)=>x.date.localeCompare(y.date))
-    .map(p=>['<span class="v">'+esc(p.date)+'</span>','<span class="nw">'+aOut(p.url,p.src)+'</span>'+(p.code?"<br>"+aOut(p.code,t("rl.determinism.pub.code")):""),'<span class="nw">'+esc(p.what)+'</span>',esc(p.model)+(p.hw&&p.hw!=="—"?"<br>"+'<span class="tag">'+esc(p.hw)+'</span>':""),esc(p.setting),esc(p.value)]));
+    .map((p,i,a)=>[i&&a[i-1].url===p.url?"":'<span class="v">'+esc(p.date)+'</span>',i&&a[i-1].url===p.url?"":'<span class="nw">'+aOut(p.url,p.src)+'</span>'+(p.code?"<br>"+aOut(p.code,t("rl.determinism.pub.code")):""),'<span class="nw">'+esc(p.what)+'</span>',esc(p.model)+(p.hw&&p.hw!=="—"?"<br>"+'<span class="tag">'+esc(p.hw)+'</span>':""),esc(p.setting),esc(p.value)]));
   ossTable($("r-det-oss"),DET_OSS);
 }
 

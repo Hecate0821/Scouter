@@ -69,6 +69,10 @@ document.addEventListener("keydown", e => {        // "/" 跳到侧栏搜索；�
 const setNav = open => { document.body.classList.toggle("nav-open", open); $("g-scrim").hidden = !open; $("g-menu").setAttribute("aria-expanded", String(open)); };
 $("g-menu").addEventListener("click", () => setNav(!document.body.classList.contains("nav-open")));
 $("g-scrim").addEventListener("click", () => setNav(false));
+// 顶栏窄时会换行，比 --ctx-h 高；窄屏不吸顶，高度算 0。吸顶的元素和锚点都按这个实际高度让开
+const ctxBar = document.querySelector("header.ctx");
+const syncCtx = () => document.documentElement.style.setProperty("--ctx-live", (getComputedStyle(ctxBar).position === "sticky" ? ctxBar.offsetHeight : 0) + "px");
+if(window.ResizeObserver) new ResizeObserver(syncCtx).observe(ctxBar);
 
 /* ---------- 主题：和主页共用 localStorage 的 theme ---------- */
 function themeLabel(){ const th = document.documentElement.getAttribute("data-theme") || "dark"; $("g-theme").textContent = t(th === "dark" ? "shell.theme.toLight" : "shell.theme.toDark"); }

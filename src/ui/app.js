@@ -37,13 +37,16 @@ function showTab(h){
   qa("[data-pane]").forEach(p=>p.hidden=p.dataset.pane!==key);
   qa("[data-rack]").forEach(p=>p.hidden=!p.dataset.rack.split(" ").includes(key));
   try{ localStorage.setItem("moe-roof-nav3",JSON.stringify({h:key,last:lastSub})); }catch(e){}
+  if(key==="train/par" && PAR_DIMS.includes(anchor)) setParDim(anchor);   // 同页跳转不重新渲染，所以在这里切
   if(!(same && anchor) || pick) render();
   applySource();
   const tgt=anchor && !pick && ($(sub+"-"+anchor)||$(page+"-"+anchor)||$(anchor));
-  if(tgt && tgt.scrollIntoView) tgt.scrollIntoView({block:"start"});
+  if(tgt && tgt.scrollIntoView){ syncCtx(); tgt.scrollIntoView({block:"start"}); }   // 首次打开深链接时观察器还没回调
   else if(!same) (document.scrollingElement||document.documentElement).scrollTop=0;
 }
 window.addEventListener("hashchange",()=>showTab(location.hash.slice(1)));
+// 地址没变时浏览器不发 hashchange：已经停在 #train/par/ep，再点同一个链接也要回到那里
+document.addEventListener("click",e=>{ const a=e.target.closest('a[href^="#"]'); if(a && a.getAttribute("href")===location.hash && route(location.hash.slice(1)).anchor) showTab(location.hash.slice(1)); });
 let first=location.hash.slice(1);
 try{ const st=JSON.parse(localStorage.getItem("moe-roof-nav3")||"null"); if(st){ Object.assign(lastSub,st.last||{}); if(!first) first=st.h; } }catch(e){}
 for(const k in lastSub) if(!NAV[k] || !NAV[k].includes(lastSub[k])) delete lastSub[k];     // 记住的子页可能已经搬走

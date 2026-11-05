@@ -295,6 +295,7 @@
   <div class="block"><h2 data-i18n="overview.b1.h2"></h2>
     <p class="lede" data-i18n="overview.b1.lede"></p>
     <div class="cards">
+      <a class="card" href="#arch/overview"><h4 data-i18n="overview.card.arch.h4"></h4><p data-i18n="overview.card.arch.p"></p></a>
       <a class="card" href="#train/step"><h4 data-i18n="overview.card.train_step.h4"></h4><p data-i18n="overview.card.train_step.p"></p></a>
       <a class="card" href="#infer/step"><h4 data-i18n="overview.card.infer_step.h4"></h4><p data-i18n="overview.card.infer_step.p"></p></a>
       <a class="card" href="#rl/mismatch"><h4>RL</h4><p data-i18n="overview.card.rl_mismatch.p"></p></a>
@@ -320,14 +321,6 @@
     <p class="lede" id="ao-mods-lede"></p>
     <div class="cards" id="ao-mods"></div>
     <div class="tbl"><table id="m-params"></table></div>
-  </div>
-  <div class="block"><h2 data-i18n="arch.ov.h2"></h2>
-    <p class="lede" data-i18n="arch.ov.lede"></p>
-    <div class="tbl"><table id="m-compare"></table></div>
-  </div>
-  <div class="block"><h2 data-i18n="arch.ov.cacheH2"></h2>
-    <p class="lede" data-i18n="arch.ov.cacheLede"></p>
-    <div class="fig"><svg id="m-cache" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=arch.ov.cacheAria"></svg><div class="legend" id="m-cache-legend"></div></div>
   </div>
   <div class="block"><h2 data-i18n="arch.ov.twoH2"></h2>
     <div class="tbl"><table>
@@ -383,6 +376,10 @@
 
 <!-- ============ 架构 · 跨模型对比 ============ -->
 <section class="pane" data-pane="arch/compare" hidden>
+  <div class="block"><h2 data-i18n="arch.ov.h2"></h2>
+    <p class="lede" data-i18n="arch.ov.lede"></p>
+    <div class="tbl"><table id="m-compare"></table></div>
+  </div>
   <div class="block"><h2 data-i18n="arch.cmp.h2"></h2>
     <p class="lede" id="ac-lede"></p>
     <div class="fig"><svg id="ac-roof" viewBox="0 0 680 400" role="img" data-i18n-attr="aria-label=arch.cmp.roofAria"></svg><div class="legend" id="ac-roof-legend"></div></div>
@@ -393,6 +390,10 @@
       <div class="fig"><svg id="ac-attn" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=arch.cmp.attnAria"></svg><div class="legend" id="ac-attn-legend"></div></div>
       <div class="fig" id="ac-mlp-fig"><svg id="ac-mlp" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=arch.cmp.mlpAria"></svg><div class="legend" id="ac-mlp-legend"></div></div>
     </div>
+  </div>
+  <div class="block"><h2 data-i18n="arch.ov.cacheH2"></h2>
+    <p class="lede" data-i18n="arch.ov.cacheLede"></p>
+    <div class="fig"><svg id="m-cache" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=arch.ov.cacheAria"></svg><div class="legend" id="m-cache-legend"></div></div>
   </div>
   <div class="block"><h2 data-i18n="arch.cmp.splitH2"></h2>
     <p class="lede" data-i18n="arch.cmp.splitLede"></p>
@@ -476,6 +477,8 @@
       <div class="fig"><svg id="p-heat-cp" viewBox="0 0 680 330" role="img" data-i18n-attr="aria-label=par.attr.p-heat-cp.aria-label"></svg><div class="legend" id="p-heat-cp-legend"></div></div>
     </div>
   </div>
+  <div class="par-dims-wrap">
+  <div class="block par-dims" id="par-dims"><span class="hint" data-i18n="par.dims.label"></span><div class="seg" id="p-dim" role="group" data-i18n-attr="aria-label=par.attr.p-dim.aria-label"></div></div>
   <div class="block" id="par-fsdp"><h2 data-i18n="par.b5.h2"></h2>
     <p data-i18n="par.b5.p"></p>
     <div class="formula" id="p-f-formula"></div>
@@ -495,7 +498,7 @@
     <div class="fig"><svg id="p-f-n" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=par.attr.p-f-n.aria-label"></svg><div class="legend" id="p-f-n-legend"></div></div>
     <div class="tbl"><table id="p-f-tbl"></table></div>
   </div>
-  <div class="block" id="par-cp"><h2 data-i18n="par.b6.h2"></h2>
+  <div class="block" id="par-cp" hidden><h2 data-i18n="par.b6.h2"></h2>
     <p data-i18n="par.b6.p"></p>
     <div class="cards">
       <div class="card"><h4><span class="dot" style="background:var(--s1)"></span>Ring</h4><p data-i18n="par.b6.p_2"></p><p class="meta" data-i18n="par.b6.meta"></p></div>
@@ -529,7 +532,7 @@
       <li data-i18n-html="par.b6.li_4"></li>
     </ul>
   </div>
-  <div class="block" id="par-ep"><h2 data-i18n="par.b7.h2"></h2>
+  <div class="block" id="par-ep" hidden><h2 data-i18n="par.b7.h2"></h2>
     <p data-i18n-html="par.b7.p"></p>
     <div class="formula" id="p-e-formula"></div>
     <div class="cards" id="p-e-cards"></div>
@@ -547,6 +550,7 @@
     <p class="lede" id="p-e-cross-lede"></p>
     <div class="fig"><svg id="p-e-cross" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=par.attr.p-e-cross.aria-label"></svg><div class="legend" id="p-e-cross-legend"></div></div>
     <div class="tbl"><table id="p-e-fan"></table></div>
+  </div>
   </div>
 </section>
 
@@ -837,7 +841,7 @@
   </div>
   <div class="block"><h2 data-i18n="rl.determinism.b5.h2"></h2>
     <div class="tbl" data-src="measured"><table id="r-det-pub"></table></div>
-    <h3 data-i18n="rl.determinism.b5.h3"></h3>
+    <h3 id="determinism-oss" data-i18n="rl.determinism.b5.h3"></h3>
     <p class="lede" data-i18n-html="rl.determinism.b5.lede"></p>
     <div class="tbl"><table id="r-det-oss"></table></div>
   </div>

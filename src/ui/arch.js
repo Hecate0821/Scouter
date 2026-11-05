@@ -49,11 +49,7 @@ function stackCells(m){
 }
 function renderArchOverview(){
   SWEEP=new WeakMap(); archRack();
-  const {m,d,hw}=ctx(), keys=Object.keys(MODELS), wl=archWl();
-  table($("m-compare"),[t("arch.ov.th.model"),t("arch.ov.th.total"),t("arch.ov.th.active"),t("arch.ov.th.official"),t("arch.ov.th.ratio"),t("arch.ov.th.attn"),t("arch.ov.th.experts"),t("arch.ov.th.F"),t("arch.ov.th.kv"),t("arch.ov.th.state")],
-    keys.map(k=>{ const mm=k===S.modelKey?S.model:MODELS[k], dd=derive(mm), p=cacheParts(mm);
-      return {cls:k===S.modelKey?"hl":"",cells:[esc(mm.short),fN(dd.total),fN(dd.active),esc(mm.official),(dd.active/dd.total*100).toFixed(1)+"%",
-        mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):"")+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
+  const {m,d,hw}=ctx(), wl=archWl();
   $("m-title").textContent=m.name;
   $("m-note").textContent=m.note+(m.mtp?t("arch.ov.mtp",{n:m.mtp}):"")+(modelEdited()?t("arch.ov.edited"):"");
   $("m-stack").innerHTML=stackCells(m);
@@ -72,21 +68,6 @@ function renderArchOverview(){
   table($("m-params"),[t("arch.ov.pth.part"),t("arch.ov.pth.each"),t("arch.ov.pth.n"),t("arch.ov.pth.sum"),t("arch.ov.pth.share")],
     pr.filter(x=>x[1]>0&&(x[2]>0||x===pr[3])).map(x=>{ const one=x[2]===0; return [esc(x[0]),fN(x[1]),one?"—":fInt(x[2]),one?"—":fN(x[1]*x[2]),one?"—":pct(x[1]*x[2],d.total)]; })
       .concat([{cls:"hl",cells:["<b>"+esc(t("arch.ov.p.total"))+"</b>","","",fN(d.total),esc(t("arch.ov.p.activeIs",{v:fN(d.active)}))]}]),[1,2,3,4]);
-  // 缓存曲线
-  const X0=128, X1=1048576, xs=logspace(X0,X1,140), series=[], colors=[css("c-attn"),css("c-lin"),css("c-moe"),css("c-a2a"),css("c-fsdp")], points=[];
-  let ymax=0, ymin=Infinity;
-  keys.forEach((k,i)=>{ const mm=k===S.modelKey?S.model:MODELS[k], p=cacheParts(mm);
-    const pts=xs.map(n=>[n,(p.kv*n+p.st)/1e9]); pts.forEach(q=>{ ymax=Math.max(ymax,q[1]); ymin=Math.min(ymin,q[1]); });
-    series.push({pts,color:colors[i%5],w:k===S.modelKey?3:1.4,dash:k===S.modelKey?null:"6 4"});
-    if(p.st>0&&p.kv>0){ const ns=p.st/p.kv; if(ns>=X0&&ns<=X1) points.push({x:ns,y:2*p.st/1e9,color:colors[i%5],r:k===S.modelKey?5:3.5}); } });
-  const cur=cacheParts(S.model), ci=keys.indexOf(S.modelKey);
-  if(cur.st>0) series.push({pts:[[X0,cur.st/1e9],[X1,cur.st/1e9]],color:css("muted"),w:1.2,dash:"2 3",label:t("arch.ov.cache.state")});
-  if(cur.kv>0&&cur.st>0){ series.push({pts:xs.map(n=>[n,cur.kv*n/1e9]),color:css("muted"),w:1.2,dash:"2 3"}); ymin=Math.min(ymin,cur.kv*X0/1e9); }
-  plot($("m-cache"),{x0:X0,x1:X1,y0:Math.pow(10,Math.floor(Math.log10(Math.max(ymin,1e-4)))),y1:ymax*1.5,logx:true,logy:true,fx:fxPow,
-    fy:v=>v>=1?v+" GB":v>=1e-3?+(v*1000).toPrecision(3)+" MB":+(v*1e6).toPrecision(3)+" KB",xl:t("arch.ov.cache.x"),yl:t("arch.ov.cache.y"),series,points,
-    vlines:cur.st>0&&cur.kv>0?[{x:cur.st/cur.kv,color:colors[ci%5],label:t("arch.ov.cache.cross",{n:fN(cur.st/cur.kv)})}]:[]});
-  $("m-cache-legend").innerHTML=keys.map((k,i)=>'<span style="color:'+colors[i%5]+'"><i'+(k===S.modelKey?'':' class="d"')+'></i>'+esc(MODELS[k].short)+'</span>').join("")+
-    (cur.st>0?'<span style="color:var(--muted)"><i class="d"></i>'+esc(t("arch.ov.cache.parts",{m:S.model.short}))+'</span><span>'+esc(t("arch.ov.cache.dots"))+'</span>':'<span>'+esc(t("arch.ov.cache.noLin"))+'</span>');
 }
 
 /* ---------- 模块 roofline ---------- */
@@ -268,9 +249,34 @@ function srcList(kind, phase){
 }
 
 /* ---------- 跨模型对比 ---------- */
+/* 几个模型的结构字段和三个比例 */
+function renderModelTable(keys){
+  table($("m-compare"),[t("arch.ov.th.model"),t("arch.ov.th.total"),t("arch.ov.th.active"),t("arch.ov.th.official"),t("arch.ov.th.ratio"),t("arch.ov.th.attn"),t("arch.ov.th.experts"),t("arch.ov.th.F"),t("arch.ov.th.kv"),t("arch.ov.th.state")],
+    keys.map(k=>{ const mm=k===S.modelKey?S.model:MODELS[k], dd=derive(mm), p=cacheParts(mm);
+      return {cls:k===S.modelKey?"hl":"",cells:[esc(mm.short),fN(dd.total),fN(dd.active),esc(mm.official),(dd.active/dd.total*100).toFixed(1)+"%",
+        mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):"")+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
+}
+/* 每条序列的缓存随上下文 */
+function renderCacheCurves(keys){
+  const X0=128, X1=1048576, xs=logspace(X0,X1,140), series=[], colors=[css("c-attn"),css("c-lin"),css("c-moe"),css("c-a2a"),css("c-fsdp")], points=[];
+  let ymax=0, ymin=Infinity;
+  keys.forEach((k,i)=>{ const mm=k===S.modelKey?S.model:MODELS[k], p=cacheParts(mm);
+    const pts=xs.map(n=>[n,(p.kv*n+p.st)/1e9]); pts.forEach(q=>{ ymax=Math.max(ymax,q[1]); ymin=Math.min(ymin,q[1]); });
+    series.push({pts,color:colors[i%5],w:k===S.modelKey?3:1.4,dash:k===S.modelKey?null:"6 4"});
+    if(p.st>0&&p.kv>0){ const ns=p.st/p.kv; if(ns>=X0&&ns<=X1) points.push({x:ns,y:2*p.st/1e9,color:colors[i%5],r:k===S.modelKey?5:3.5}); } });
+  const cur=cacheParts(S.model), ci=keys.indexOf(S.modelKey);
+  if(cur.st>0) series.push({pts:[[X0,cur.st/1e9],[X1,cur.st/1e9]],color:css("muted"),w:1.2,dash:"2 3",label:t("arch.ov.cache.state")});
+  if(cur.kv>0&&cur.st>0){ series.push({pts:xs.map(n=>[n,cur.kv*n/1e9]),color:css("muted"),w:1.2,dash:"2 3"}); ymin=Math.min(ymin,cur.kv*X0/1e9); }
+  plot($("m-cache"),{x0:X0,x1:X1,y0:Math.pow(10,Math.floor(Math.log10(Math.max(ymin,1e-4)))),y1:ymax*1.5,logx:true,logy:true,fx:fxPow,
+    fy:v=>v>=1?v+" GB":v>=1e-3?+(v*1000).toPrecision(3)+" MB":+(v*1e6).toPrecision(3)+" KB",xl:t("arch.ov.cache.x"),yl:t("arch.ov.cache.y"),series,points,
+    vlines:cur.st>0&&cur.kv>0?[{x:cur.st/cur.kv,color:colors[ci%5],label:t("arch.ov.cache.cross",{n:fN(cur.st/cur.kv)})}]:[]});
+  $("m-cache-legend").innerHTML=keys.map((k,i)=>'<span style="color:'+colors[i%5]+'"><i'+(k===S.modelKey?'':' class="d"')+'></i>'+esc(MODELS[k].short)+'</span>').join("")+
+    (cur.st>0?'<span style="color:var(--muted)"><i class="d"></i>'+esc(t("arch.ov.cache.parts",{m:S.model.short}))+'</span><span>'+esc(t("arch.ov.cache.dots"))+'</span>':'<span>'+esc(t("arch.ov.cache.noLin"))+'</span>');
+}
 function renderArchCompare(){
   SWEEP=new WeakMap(); archRack();
   const {hw,g}=ctx(), wl=archWl(), w=Object.assign({}, wl, wl.phase==="prefill"?{maxChunks:3}:{}), keys=Object.keys(MODELS), peaks=Arch.peaks(hw,wl);
+  renderModelTable(keys); renderCacheCurves(keys);
   const res=keys.map(k=>{ const m=k===S.modelKey?S.model:MODELS[k]; return {k, m, r:measure(m,wl), mods:Arch.present(m)}; });
   // roofline：所有模型的所有模块
   const points=[], allI=[], allP=[];
