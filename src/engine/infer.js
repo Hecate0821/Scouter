@@ -102,7 +102,8 @@ function step(m, hw, topo, c, g){
   const epGather = tpA>1 && !e.Fs && moePar!=="tp" && moePar!=="replicated" ? nMoe : 0;
   const boundaries = m.L*2-epGather;
   const fused = tpA>1 && P.arFusion(m,c,rowsG,D,hw);
-  const arAlgo = rowsG*D*2 <= 512*1024 ? "oneshot" : "twoshot";
+  // 只有 PCIe 的机器上超过 2 张卡时，vLLM 和 SGLang 都关掉自定义 all-reduce，退回 NCCL 环（topo.pcieOnly 只有集群页会设）
+  const arAlgo = topo.pcieOnly && tpA>2 ? "ring" : rowsG*D*2 <= 512*1024 ? "oneshot" : "twoshot";
   if(tpA>1){
     cm("ar", fused?Msg.of("engine_infer.comm.arFused"):Msg.of("engine_infer.comm.ar"), boundaries, arT(rowsG*D*2,tpA,lkA,g,arAlgo), rowsG*D*2*(tpA-1)/tpA);
     if(epGather) cm("epag",Msg.of("engine_infer.comm.epag"),epGather,agT(rowsG*D*2,tpA,lkA,g),rowsG*D*2*(tpA-1)/tpA);

@@ -105,12 +105,12 @@ function renderClusterFabric(){
   const ar = Fabric.arSweep(hw, topo, net, g);
   $("cl-ar-lede").innerHTML = t("cluster.fab.ar.lede", { n:V(ar.n), bw:CL.gbs(nvl) });
   const arSer = [["ring","s3","",t("cluster.ar.ring")],["oneshot","s2","5 4",t("cluster.ar.oneshot")],["twoshot","s4","5 4",t("cluster.ar.twoshot")],["nvls","accent","",t("cluster.ar.nvls")]]
-    .filter(([k]) => k!=="nvls" || x.intra!=="pcie").map(([k,col,dash,name]) => ({ name, col, dash, pts:ar.rows.map(r=>[r.bytes, r[k]]) }));
+    .filter(([k]) => x.intra!=="pcie" || k==="ring" || (k!=="nvls" && ar.n<=2)).map(([k,col,dash,name]) => ({ name, col, dash, pts:ar.rows.map(r=>[r.bytes, r[k]]) }));
   lineChart("cl-ar", { series:arSer, xLog:true, yLog:true, xBase:4, xFmt:fB, yFmt:fT, tipFmt:fT, xLab:t("cluster.ar.x"), yLab:t("cluster.ar.y") });
   legendInto("cl-ar-legend", arSer.map(s=>({ name:s.name, col:s.col, line:true })));
   const big = ar.rows[ar.rows.length-1], small = ar.rows[0];
   $("cl-nvs-read").innerHTML = ul([
-    t("cluster.fab.ar.readSmall", { b:fB(small.bytes), one:fT(small.oneshot), ring:fT(small.ring) }),
+    x.intra==="pcie" && ar.n>2 ? t("cluster.fab.ar.readPcie", { n:ar.n }) : t("cluster.fab.ar.readSmall", { b:fB(small.bytes), one:fT(small.oneshot), ring:fT(small.ring) }),
     x.intra!=="pcie" ? t("cluster.fab.ar.readBig", { b:fB(big.bytes), nv:fT(big.nvls), ring:fT(big.ring), x:V((big.ring/big.nvls).toFixed(1)+"×") }) : "",
     x.intra!=="pcie" ? t("cluster.fab.ar.readScope") : "",
     x.nvlFrac<1 && x.intra!=="pcie" ? t("cluster.fab.ar.readFrac", { f:Math.round(x.nvlFrac*100)+"%" }) : "" ]);
@@ -128,7 +128,7 @@ function renderClusterFabric(){
   const best = tp.reduce((a,b) => b.pcie < a.pcie ? b : a);
   $("cl-pcie-read").innerHTML = ul([
     t(best.tp<tpMax.tp ? "cluster.fab.tp.readEat" : "cluster.fab.tp.readStill", { best:best.tp, max:tpMax.tp, slow:V((tpMax.pcie/tpMax.nvswitch).toFixed(2)+"×") }),
-    t("cluster.fab.pcie.readNuma"), t("cluster.fab.pcie.readGdr") ]);
+    t("cluster.fab.tp.readRing"), t("cluster.fab.pcie.readNuma"), t("cluster.fab.pcie.readGdr") ]);
 
   // ---- scale-out ----
   const so = Fabric.scaleOut(hw, topo, net, g);

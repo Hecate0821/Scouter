@@ -82,4 +82,4 @@ Scouter is built on what these open-source projects publish: their code, PRs, do
 | Model layouts | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
 | Ideal lower bound | [k3-inference-calculator](#acknowledgements) |
 | Mechanism diagrams | [Attention Lab](https://divagr.com/attention-lab/) |
-| Networking | [NCCL](https://github.com/NVIDIA/nccl) (docs on NVLS, CollNet / SHARP and rail layouts), [zartbot/micro_arch](https://github.com/zartbot/micro_arch) (MIT; PCIe-only machine measurements from a chapter its author marks as AI-generated and unreviewed) |
+| Networking | [NCCL](https://github.com/NVIDIA/nccl) (docs on NVLS, CollNet / SHARP and rail layouts), [zartbot/micro_arch](https://github.com/zartbot/micro_arch) (MIT; PCIe-only machine measurements from a report whose every page is marked as AI-generated without author review) |

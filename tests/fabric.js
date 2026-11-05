@@ -76,6 +76,16 @@ for (const mk of ["qwen35", "kimik3", "glm53f", "qwen38_27b"]) for (const [hk, t
   if (!near(d({ nvls: true }, IDEAL), d({}, IDEAL))) fail("NVLS changes the ideal decode");
 }
 
+// ---- PCIe-only machines: above TP 2 the engines fall back from custom all-reduce to the NCCL ring ----
+{
+  const m = MODELS.qwen38_27b, hw = HW.H200, topo = TOPO.hgx8;
+  const at = (tp, flag) => { const a = Fabric.apply(hw, topo, { intra: "pcie" }, G0), ci = Object.assign({}, Infer.BASE, { N: tp, dpA: 1, moePar: "tp", B: 16 });
+    return Infer.decode(m, a.hw, Object.assign({}, a.topo, { pcieOnly: flag }), Object.assign({}, ci, { phase: "decode" }), G0).stepT; };
+  if (!near(at(2, true), at(2, false))) fail("PCIe-only TP 2 should keep the custom all-reduce");
+  if (near(at(4, true), at(4, false))) fail("PCIe-only TP 4 should use the NCCL ring, not the custom all-reduce");
+  if (!Fabric.apply(hw, topo, { intra: "pcie" }, G0).topo.pcieOnly || Fabric.apply(hw, topo, {}, G0).topo.pcieOnly) fail("pcieOnly is set only for intra = pcie");
+}
+
 // ---- every net key changes something somewhere; keys marked inert change nothing ----
 const ALT = { scale: [8], domain: [16, 64], intra: ["pcie"], nvlFrac: [0.5], nvls: [true], gdr: [false], pcie: [4], nic: [200, 1600], ports: [16, 128], over: [8], route: ["ecmp"], qps: [16], sharp: [true] };
 const BASES = [{}, { scale: 16 }, { scale: 64, ports: 16 }, { scale: 64, ports: 16, route: "ecmp" }, { scale: 8, intra: "pcie" }];

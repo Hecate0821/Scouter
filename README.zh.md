@@ -82,4 +82,4 @@ Scouter 建立在这些开源项目公开的代码、PR、文档和基准之上�
 | 模型结构 | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
 | 理想下限 | [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0) |
 | 机制示意图 | [Attention Lab](https://divagr.com/attention-lab/) |
-| 网络 | [NCCL](https://github.com/NVIDIA/nccl)（NVLS、CollNet / SHARP 和 rail 组网的文档），[zartbot/micro_arch](https://github.com/zartbot/micro_arch)（MIT；只有 PCIe 的机器的测量，作者注明那一章由 AI 生成、未经审阅） |
+| 网络 | [NCCL](https://github.com/NVIDIA/nccl)（NVLS、CollNet / SHARP 和 rail 组网的文档），[zartbot/micro_arch](https://github.com/zartbot/micro_arch)（MIT；只有 PCIe 的机器的测量，整套报告每一页都注明由 AI 生成、未经作者审阅） |

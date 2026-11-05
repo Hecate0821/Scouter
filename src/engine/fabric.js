@@ -36,7 +36,7 @@ function apply(hw, topo, net, g){
   const nvl = x.intra==="pcie" ? pcie : hw.nvl*x.nvlFrac;
   const ib = Math.min(x.nic/8, x.gdr ? pcie : hw.host);  // GPUDirect RDMA：网卡直接读写显存，受 PCIe x16 限制；关掉时经主存中转，受主机链路限制
   const hw2 = Object.assign({}, hw, { nvl, ib });
-  const topo2 = Object.assign({}, topo, { gpus:x.N, domain:x.domain,
+  const topo2 = Object.assign({}, topo, { gpus:x.N, domain:x.domain, pcieOnly:x.intra==="pcie",
     net:{ segment:x.segment, ports:x.ports, rails:x.node, over:x.over, ecmp:x.route==="ecmp" && !(g&&g.lb), qps:x.qps, nvls:x.nvls && x.intra!=="pcie", sharp:x.sharp } });
   return { hw:hw2, topo:topo2, x };
 }
