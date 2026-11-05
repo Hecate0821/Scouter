@@ -8,6 +8,8 @@ const archWl = () => Object.assign({}, S.arch);
 const baseModel = () => MODELS[S.modelKey];
 const modelEdited = () => JSON.stringify(S.model)!==JSON.stringify(baseModel());
 const modName = mod => t("arch.mod."+mod.id+"."+mod.kind);
+/* 图、滑块、来源按“看法”分：CSA 模型里只有滑窗的那几层（swa 模块）和 GQA 的滑窗层不是一回事（K / V 是同一份 latent、走 FlashMLA sparse），单独一类 */
+const viewKind = (mod, m) => mod.id==="swa" && m.full.kind==="csa" ? "csaswa" : mod.kind;
 const kindName = k => t("arch.kind."+k);
 const phaseName = p => t("arch.phase."+p);
 const pillB = b => '<span class="pill '+b+'">'+esc(t("arch.bound."+b))+'</span>';
@@ -40,7 +42,11 @@ function archRack(){ const ph=S.arch.phase;
 $("ar-reset").addEventListener("click",()=>{ S.arch=Object.assign({mod:S.arch.mod}, Arch.defaults(S.model)); syncInputs(); render(); });
 
 /* ---------- 模型总览 ---------- */
-function cacheParts(mm){ const dd=derive(mm), f=mm.full, l=mm.lin, sw=f.swa||0;
+function cacheParts(mm){
+  // CSA：压缩 KV + index K（只在 kv source 层存）随上下文增长；每层的滑窗 KV 每条序列最多 W 个，算进常数部分（和表头一样按 BF16）
+  if(mm.full.kind==="csa"){ const kv=Common.csaKv(mm,"bf16"), l=mm.lin, dd=derive(mm);
+    return { kv: kv.main+kv.index, st: kv.swaTok*kv.W + l.n*(dd.linState*4 + dd.linConvDim*(l.conv-1)*2) }; }
+  const dd=derive(mm), f=mm.full, l=mm.lin, sw=f.swa||0;
   return { kv: (f.n-sw)*(dd.kvTokElems*2 + (f.kind==="dsa"?(f.idxD+4)/(f.kpool||1):0)), st: l.n*(dd.linState*4 + dd.linConvDim*(l.conv-1)*2) + sw*dd.kvTokElems*2*(f.W||0) }; }
 function stackCells(m){
   const mods=Arch.present(m);
@@ -58,13 +64,14 @@ function renderArchOverview(){
   // 模块卡片：当前负载下一层的时间、强度、瓶颈
   const r=measure(m,wl), fx=Arch.facts(m,wl);
   $("ao-mods").innerHTML=mods.map(p=>{ const a=r.mods[p.id], fc=fx[p.id]||{};
-    const mem = fc.kvTok!=null ? t("arch.ov.card.kv",{v:fB(fc.kvTok)}) : fc.state!=null ? t("arch.ov.card.state",{v:fB(fc.state)}) : fc.expert!=null ? t("arch.ov.card.experts",{e:m.moe.E,k:m.moe.k,v:fB(fc.expert)}) : t("arch.ov.card.weights",{v:fB(fc.weights||0)});
+    const mem = fc.kvTok!=null && fc.swaTok!=null ? t("arch.ov.card.kvCsa",{v:fB(fc.kvTok),w:fB(fc.swaTok),n:fInt(fc.window)}) : fc.kvTok!=null ? t("arch.ov.card.kv",{v:fB(fc.kvTok)}) : fc.state!=null ? t("arch.ov.card.state",{v:fB(fc.state)}) : fc.expert!=null ? t("arch.ov.card.experts",{e:m.moe.E,k:m.moe.k,v:fB(fc.expert)}) : t("arch.ov.card.weights",{v:fB(fc.weights||0)});
     return '<a class="card" href="#arch/module/'+p.id+'"><h4><span class="dot" style="background:'+css(MODC[p.id])+'"></span>'+esc(modName(p))+' × '+p.layers+'</h4>'+
       '<p>'+esc(t("arch.ov.card.desc."+p.kind))+'</p><p class="meta">'+esc(t("arch.ov.card.params",{p:fN(fc.params||0)}))+' · '+esc(mem)+'</p>'+
       '<p class="meta">'+esc(t("arch.ov.card.now",{ph:phaseName(wl.phase),t:fT(a.t),i:fI(a.I)}))+' '+pillB(a.bound)+'</p></a>'; }).join("");
   $("ao-mods-lede").textContent=t("arch.ov.modsLede",{hw:hw.name,wl:wlText(wl)});
-  const pr=[[t("arch.ov.p.full"),d.pAttn,m.full.n],[t("arch.ov.p.rep"),d.pAttnRep+d.pIdx,m.full.n],[t("arch.ov.p.lin"),d.pLin,m.lin.n],[t("arch.ov.p.expert"),d.pExpert,0],[t("arch.ov.p.routed"),d.pRouted,d.nMoe],
-    [t("arch.ov.p.shared"),d.pShared,d.nMoe],[t("arch.ov.p.lat"),d.pLat,d.nMoe],[t("arch.ov.p.router"),d.pRouter,d.nMoe],[t("arch.ov.p.dense"),d.pDense,m.dense.n],[t("arch.ov.p.emb"),d.pEmb,1],[t("arch.ov.p.head"),d.pHead,1]];
+  const pr=[[t("arch.ov.p.full"),d.pAttn,m.full.n],[t(m.full.kind==="csa"?"arch.ov.p.repCsa":"arch.ov.p.rep"),d.pAttnRep+d.pIdx,m.full.n],[t("arch.ov.p.lin"),d.pLin,m.lin.n],[t("arch.ov.p.expert"),d.pExpert,0],[t("arch.ov.p.routed"),d.pRouted,d.nMoe],
+    [t("arch.ov.p.shared"),d.pShared,d.nMoe],[t("arch.ov.p.lat"),d.pLat,d.nMoe],[t("arch.ov.p.router"),d.pRouter,d.nMoe],[t("arch.ov.p.dense"),d.pDense,m.dense.n],
+    [t("arch.ov.p.engTab"),d.nEng?d.pEngTab/d.nEng:0,d.nEng||0],[t("arch.ov.p.engW"),d.pEngW1||0,d.nEng||0],[t("arch.ov.p.emb"),d.pEmb,1],[t("arch.ov.p.head"),d.pHead,1]];
   table($("m-params"),[t("arch.ov.pth.part"),t("arch.ov.pth.each"),t("arch.ov.pth.n"),t("arch.ov.pth.sum"),t("arch.ov.pth.share")],
     pr.filter(x=>x[1]>0&&(x[2]>0||x===pr[3])).map(x=>{ const one=x[2]===0; return [esc(x[0]),fN(x[1]),one?"—":fInt(x[2]),one?"—":fN(x[1]*x[2]),one?"—":pct(x[1]*x[2],d.total)]; })
       .concat([{cls:"hl",cells:["<b>"+esc(t("arch.ov.p.total"))+"</b>","","",fN(d.total),esc(t("arch.ov.p.activeIs",{v:fN(d.active)}))]}]),[1,2,3,4]);
@@ -77,19 +84,23 @@ const KNOBS = {
   swa:[["full.W",256,32768,256],["full.swa",0,"full.n",1],["full.Hkv",1,128,1]],
   mla:[["full.H",8,128,8],["full.kvLora",64,2048,64],["full.rope",0,128,32],["full.nope",32,256,32],["full.vh",32,256,32]],
   dsa:[["full.topk",256,16384,256],["full.idxH",4,128,4],["full.idxD",32,256,32],["full.kpool",1,16,1],["full.kvLora",64,2048,64],["full.H",8,128,8]],
+  /* CSA：第五项是标签的 key（同一个字段在 CSA 里意思不同时用） */
+  csa:[["full.topk",64,4096,64,"full.topkCsa"],["full.W",32,2048,32],["full.idxH",4,128,4],["full.idxD",32,256,32],["full.H",8,128,8],["full.oLora",128,4096,128]],
+  csaswa:[["full.W",32,2048,32],["full.H",8,128,8]],
   gdn:[["lin.Hv",4,128,4],["lin.Hk",4,128,4],["lin.dk",32,256,32],["lin.dv",32,256,32]],
   kda:[["lin.Hv",4,128,4],["lin.Hk",4,128,4],["lin.dk",32,256,32],["lin.dv",32,256,32]],
   moe:[["moe.E",8,1024,8],["moe.k",1,32,1],["moe.F",128,8192,128],["moe.Fs",0,16384,256],["moe.Dlat",0,"D",256]],
   dense:[["dense.F",1024,65536,512]] };
 let knobSig="";
 function buildKnobs(mod){
-  const m=S.model, b=baseModel(), list=(KNOBS[mod.kind]||[]).concat([["D",512,16384,256]]);
+  const m=S.model, b=baseModel(), list=(KNOBS[viewKind(mod,m)]||[]).concat([["D",512,16384,256]]);
   const get=(o,p)=>p.split(".").reduce((x,k)=>x==null?x:x[k],o);
   let h="";
-  if(mod.id==="full") h+='<label class="ctl"><span>'+esc(t("arch.knob.full.kind"))+'</span><select data-bind="model.full.kind"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(t("arch.editor.dsaOpt"))+'</option></select></label>';
+  if(mod.id==="full") h+='<label class="ctl"><span>'+esc(t("arch.knob.full.kind"))+'</span><select data-bind="model.full.kind"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(t("arch.editor.dsaOpt"))+'</option>'+
+    (b.full.kind==="csa"?'<option value="csa">'+esc(t("arch.editor.csaOpt"))+'</option>':'')+'</select></label>';
   if(mod.id==="lin") h+='<label class="ctl"><span>'+esc(t("arch.knob.lin.kind"))+'</span><select data-bind="model.lin.kind"><option value="GDN">'+esc(t("arch.mod.lin.gdn"))+'</option><option value="KDA">KDA</option></select></label>';
-  for(const [p,lo,hi,st] of list){ const mx=typeof hi==="string"?get(m,hi):hi, pv=get(b,p);
-    h+='<label class="ctl"><span>'+t("arch.knob."+p)+(pv!=null?' <small>'+esc(t("arch.knob.preset",{v:fInt(pv)}))+'</small>':'')+'</span><output data-out="model.'+p+'"></output>'+
+  for(const [p,lo,hi,st,lab] of list){ const mx=typeof hi==="string"?get(m,hi):hi, pv=get(b,p);
+    h+='<label class="ctl"><span>'+t("arch.knob."+(lab||p))+(pv!=null?' <small>'+esc(t("arch.knob.preset",{v:fInt(pv)}))+'</small>':'')+'</span><output data-out="model.'+p+'"></output>'+
       '<input type="range" min="'+lo+'" max="'+Math.max(lo,mx)+'" step="'+st+'" data-bind="model.'+p+'"></label>'; }
   h+='<button type="button" class="mini" id="am-reset">'+esc(t("arch.knob.reset"))+'</button>';
   $("am-knobs").innerHTML=h;
@@ -127,14 +138,15 @@ function renderArchModule(){
   const dg=VZ.draw(mod,m,wl,hw,g), ex=VZ.extra(mod,m,wl);
   $("am-diagram").setAttribute("viewBox","0 0 680 "+dg.h); $("am-diagram").innerHTML=dg.svg;
   $("am-diagram2-fig").hidden=!ex; if(ex){ $("am-diagram2").setAttribute("viewBox","0 0 680 "+ex.h); $("am-diagram2").innerHTML=ex.svg; }
-  $("am-diagram-cap").innerHTML=t("arch.viz.cap."+mod.kind)+' '+t("arch.viz.credit",{href:ALAB[mod.kind]||ALAB.gqa});
+  const vk=viewKind(mod,m);
+  $("am-diagram-cap").innerHTML=t("arch.viz.cap."+vk)+' '+t("arch.viz.credit",{href:ALAB[vk]||ALAB.gqa});
   renderModRoof(mod, wl, cur, a, a0, edited, peaks);
   renderModCurves(mod, wl, edited);
   renderModRead(mod, wl, a, a0, fx, fx0, edited, ridge, pk);
   table($("am-ops"),[t("arch.ops.th.op"),"FLOPs",t("arch.ops.th.bytes"),t("arch.ops.th.I"),t("arch.ops.th.t"),t("arch.ops.th.bound")],
     a.ops.map(o=>[esc(o.name),fF(o.flops),fB(o.bytes),fI(o.I),fT(o.t),o.t>0?pillB(o.bound in {compute:1,memory:1,launch:1}?o.bound:"memory"):"—"]),[1,2,3,4]);
   $("am-ops-lede").textContent=t("arch.ops.lede."+(wl.phase==="train"?"train":"infer"));
-  $("am-src").innerHTML=srcList(mod.kind, wl.phase);
+  $("am-src").innerHTML=srcList(vk, wl.phase);
 }
 
 /* 轨迹用的负载：prefill 每个取值只抽 4 个 chunk（注意力随前缀线性涨，按四分位中点取样的平均就是精确值） */
@@ -196,7 +208,11 @@ function renderModRead(mod, wl, a, a0, fx, fx0, edited, ridge, pk){
   const B=wl.B, n=wl.n;
   if(wl.phase==="decode"){
     const x=Arch.explain(m,hw,g,wl,mod.id,B);
-    if(mod.kind==="gqa"||mod.kind==="swa"){ const keys=x.keys, kv=x.kvTok, rd=B*keys*kv;
+    if(mod.kind==="csa") R.push(x.scored>0
+        ? t("arch.read.csa",{kc:fInt(x.kc),lat:fB(x.latB),ks:fInt(x.ks),swa:fB(x.swaB),att:V(fB(B*x.attB)),share:pct(B*(x.attB+x.idxB),a.bytes),ni:x.nIdx,n:fInt(n),sc:fInt(x.scored),cap:fInt(x.cap),idx:fB(B*x.idxB),h:f.H,d:f.dh,i:fI(x.attF/x.attB)})
+        : t("arch.read.csaShort",{n:fInt(n),k:fInt(f.topk),att:V(fB(B*x.attB)),h:f.H,d:f.dh,i:fI(x.attF/x.attB)}));
+    else if(mod.kind==="swa" && f.kind==="csa") R.push(t("arch.read.csaSwa",{ks:fInt(x.ks),w:fInt(f.W),swa:fB(x.swaB),rd:V(fB(B*x.attB)),share:pct(B*x.attB,a.bytes),h:f.H,d:f.dh,i:fI(x.attF/x.attB)}));
+    else if(mod.kind==="gqa"||mod.kind==="swa"){ const keys=x.keys, kv=x.kvTok, rd=B*keys*kv;
       R.push(t("arch.read.gqa",{kv:V(fB(kv)),hkv:f.Hkv,dh:f.dh,rd:V(fB(rd)),share:pct(rd,a.bytes),g:fI(f.Hq/f.Hkv)}));
       if(mod.id==="swa") R.push(t("arch.read.swa",{w:fInt(f.W),n:fInt(n),glob:fB(B*n*kv)})); }
     else if(mod.kind==="mla"){ const lat=f.kvLora+f.rope; R.push(t("arch.read.mla",{lat,kv:V(fB(fx.kvTok)),h:f.H,i:fI(x.absorbI)})); }
@@ -204,8 +220,9 @@ function renderModRead(mod, wl, a, a0, fx, fx0, edited, ridge, pk){
     else if(mod.kind==="gdn"||mod.kind==="kda") R.push(t("arch.read.lin",{st:V(fB(x.st)),dt:wl.stateDt.toUpperCase(),rw:fB(x.rwB),i:fI(x.I),n:x.vsKv!=null?fN(x.vsKv):"—"}));
     else if(mod.kind==="moe") R.push(t("arch.read.moe",{b:fInt(B),hit:fInt(x.hit),e:e.E,pct:pc(x.cov),rows:fI(x.rows),w:V(fB(x.hit*fx.expert)),need:fInt(x.need),bneed:fInt(x.needB)}));
     else if(mod.kind==="dense") R.push(t("arch.read.dense",{w:V(fB(fx.weights)),i:fI(a.I),bs:fInt(x.Bstar)}));
-  } else if(wl.phase==="prefill") R.push(t("arch.read.prefill."+mod.kind,{c:fInt(Math.min(n,Arch.chunkOf(wl,hw))),n:fInt(n),k:fInt(f.topk||0),rows:e.E?fI(Math.min(n,Arch.chunkOf(wl,hw))*e.k/e.E):""}));
-  else R.push(t("arch.read.train."+mod.kind,{s:fInt(wl.S),rows:e.E?fI(wl.S*e.k/e.E):""}));
+  } else if(wl.phase==="prefill") R.push(t("arch.read.prefill."+viewKind(mod,m),{c:fInt(Math.min(n,Arch.chunkOf(wl,hw))),n:fInt(n),k:fInt(f.topk||0),rows:e.E?fI(Math.min(n,Arch.chunkOf(wl,hw))*e.k/e.E):"",
+    w:fInt(f.W||0),src:f.kvSrc?Math.max(...f.kvSrc):"",L:m.L}));
+  else R.push(t("arch.read.train."+viewKind(mod,m),{s:fInt(wl.S),rows:e.E?fI(wl.S*e.k/e.E):"",k:fInt(f.topk||0),w:fInt(f.W||0)}));
   if(edited&&sameKinds()){ const dkv = fx.kvTok!=null&&fx0.kvTok!=null ? t("arch.read.dKv",{a:fB(fx0.kvTok),b:fB(fx.kvTok)}) : fx.state!=null&&fx0.state!=null ? t("arch.read.dState",{a:fB(fx0.state),b:fB(fx.state)}) : fx.weights!=null&&fx0.weights!=null ? t("arch.read.dW",{a:fB(fx0.weights),b:fB(fx.weights)}) : "";
     R.push(t("arch.read.vsPreset",{a:fT(a0.t),b:V(fT(a.t)),x:fX(a0.t/Math.max(a.t,1e-30)),i0:fI(a0.I),i1:fI(a.I),d:dkv})); }
   $("am-read").innerHTML=ul(R);
@@ -213,9 +230,14 @@ function renderModRead(mod, wl, a, a0, fx, fx0, edited, ridge, pk){
 
 /* 来源：每种机制的 kernel 假设对应的开源实现（引擎代码 / 文档）；示意图借鉴的公开讲解 */
 const ALAB = { gqa:"https://divagr.com/attention-lab/gqa", swa:"https://divagr.com/attention-lab/window", mla:"https://divagr.com/attention-lab/mla", dsa:"https://divagr.com/attention-lab/dsa",
-  gdn:"https://divagr.com/attention-lab/delta", kda:"https://divagr.com/attention-lab/kda", moe:"https://divagr.com/attention-lab/", dense:"https://divagr.com/attention-lab/" };
-const GH = "https://github.com/";
+  gdn:"https://divagr.com/attention-lab/delta", kda:"https://divagr.com/attention-lab/kda", moe:"https://divagr.com/attention-lab/", dense:"https://divagr.com/attention-lab/",
+  csa:"https://divagr.com/attention-lab/dsa", csaswa:"https://divagr.com/attention-lab/window" };
+const GH = "https://github.com/", HFV41 = "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash";
 const SRC = {
+  csa:[["hfV41",HFV41],["v41Model",HFV41+"/blob/main/inference/model.py"],["sglV4",GH+"sgl-project/sglang/blob/main/python/sglang/srt/models/deepseek_v4.py"],
+    ["sglV4Kv",GH+"sgl-project/sglang/blob/main/python/sglang/kernels/ops/attention/dsv4/kv_layout.py"],["sglReplay",GH+"sgl-project/sglang/blob/main/python/sglang/srt/models/deepseek_common/decoder_swa_bounded_replay.py"],
+    ["vllmV41",GH+"vllm-project/vllm/blob/main/vllm/models/deepseek_v41/attention.py"],["flashmla",GH+"deepseek-ai/FlashMLA"]],
+  csaswa:[["v41Model",HFV41+"/blob/main/inference/model.py"],["sglV4Kv",GH+"sgl-project/sglang/blob/main/python/sglang/kernels/ops/attention/dsv4/kv_layout.py"],["vllmV41",GH+"vllm-project/vllm/blob/main/vllm/models/deepseek_v41/attention.py"],["flashmla",GH+"deepseek-ai/FlashMLA"]],
   gqa:[["fa",GH+"Dao-AILab/flash-attention"],["sglFa",GH+"sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashattention_backend.py"],["vllmFa",GH+"vllm-project/vllm/blob/main/vllm/v1/attention/backends/flash_attn.py"],["trtAttn",GH+"NVIDIA/TensorRT-LLM/tree/main/tensorrt_llm/_torch/attention_backend"]],
   swa:[["fa",GH+"Dao-AILab/flash-attention"],["sglFa",GH+"sgl-project/sglang/blob/main/python/sglang/srt/layers/attention/flashattention_backend.py"],["vllmFa",GH+"vllm-project/vllm/blob/main/vllm/v1/attention/backends/flash_attn.py"]],
   mla:[["flashmla",GH+"deepseek-ai/FlashMLA"],["sglMla",GH+"sgl-project/sglang/blob/main/python/sglang/srt/models/deepseek_v2.py"],["vllmMla",GH+"vllm-project/vllm/blob/main/vllm/model_executor/layers/attention/mla_attention.py"]],
@@ -233,6 +255,7 @@ const EVID_KIND = {
   swa:["fa3-h100-fp16","fa4-b200-bf16","flashinfer-b300-fmha-hd64"],
   mla:["flashmla-h800-decode-mem","flashmla-h800-decode-comp","sglang-5432-bmm","flashmla-b200-prefill","cutlass-2466-fmha-bwd-mla"],
   dsa:["flashmla-b200-sparse-prefill","vllm-35891-sparse-mla","deepgemm-h800-fp8"],
+  csa:["flashmla-b200-sparse-prefill","vllm-35891-sparse-mla"], csaswa:["flashmla-b200-sparse-prefill"],
   gdn:["sglang-17094-gdn-share"], kda:["sglang-17094-gdn-share"],
   moe:["flashinfer-2268-fp4-vs-fp8","nvfp4-moe-b200-hf","vllm-39510-pad256","deepgemm-h800-fp8"],
   dense:["cublas-b200-bf16-4096","cutlass-sm103-bf16-8192","cutlass-sm103-nvfp4-8192","deepgemm-h800-fp8"] };
@@ -254,7 +277,8 @@ function renderModelTable(keys){
   table($("m-compare"),[t("arch.ov.th.model"),t("arch.ov.th.total"),t("arch.ov.th.active"),t("arch.ov.th.official"),t("arch.ov.th.ratio"),t("arch.ov.th.attn"),t("arch.ov.th.experts"),t("arch.ov.th.F"),t("arch.ov.th.kv"),t("arch.ov.th.state")],
     keys.map(k=>{ const mm=k===S.modelKey?S.model:MODELS[k], dd=derive(mm), p=cacheParts(mm);
       return {cls:k===S.modelKey?"hl":"",cells:[esc(mm.short),fN(dd.total),fN(dd.active),esc(mm.official),(dd.active/dd.total*100).toFixed(1)+"%",
-        mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):"")+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
+        (mm.full.kind==="csa" ? esc(t("arch.ov.attnCsa",{n:mm.full.n,c:dd.csa.filter(q=>q.m>0).length,s:dd.csa.filter(q=>q.m===0).length,w:mm.full.W}))
+          : mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):""))+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
 }
 /* 每条序列的缓存随上下文 */
 function renderCacheCurves(keys){

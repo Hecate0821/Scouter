@@ -138,7 +138,8 @@ const xSeg = (elId, opts, cur, on) => { const el=$(elId);
 /* 样例层：取一个全注意力层，和它前面的一两层（混合模型里是线性 / 滑窗层），都落在 MoE 区 */
 function xKinds(m){
   const moe=m.moe.E>0, f=m.full;
-  const kind = i => ({ a: m.lin.n ? (i%4===3?"full":"lin") : f.swa ? (i%(f.gEvery||4)===(f.gOff||0)?"full":"swa") : "full", f: (moe && i>=m.dense.n) ? "moe" : "dense" });
+  const plan = f.kind==="csa" ? Common.layerPlan(m) : null;     // CSA：按 config 的 compress_ratios，ratio 0 的是只有滑窗的层
+  const kind = i => ({ a: plan ? plan[Math.min(i, plan.length-1)].attn : m.lin.n ? (i%4===3?"full":"lin") : f.swa ? (i%(f.gEvery||4)===(f.gOff||0)?"full":"swa") : "full", f: (moe && i>=m.dense.n) ? "moe" : "dense" });
   const name = k => (k.a==="lin" ? m.lin.kind==="GDN"?t("comm.kind.gdn"):t("comm.kind.kda") : k.a==="swa" ? t("comm.kind.swa",{W:f.W}) : f.kind==="gqa" ? (f.swa?t("comm.kind.global"):t("comm.kind.full")) : f.kind.toUpperCase())+" + "+(k.f==="moe"?"MoE":"dense FFN");
   return { kind, name };
 }
@@ -175,7 +176,7 @@ function trnPlan(r, L, show){
   const fwdLayer = (i, pass) => { const k=kind(i), rc=pass==="rc", T=p=>rc?p.rc:p.f, rl=s=>rc?t("comm.rc.label",{label:s}):s;
     const tp=P(xsOf("tp",tpAttnBlk(k)),pass);
     X("tp",tp[0],tpM,i,{note:tpNote});
-    if(f.kind==="dsa" && k.a==="full") P(xsOf("tpidx","attn"),"fwd").filter(()=>!rc).forEach(x=>X("tp",x,tpM,i));
+    if((f.kind==="dsa"||f.kind==="csa") && k.a==="full") P(xsOf("tpidx","attn"),"fwd").filter(()=>!rc).forEach(x=>X("tp",x,tpM,i));
     if(k.a==="lin"){
       const cl=P(xsOf("cplin","lin"),pass);
       C(rl("in_proj"),T(PC.lpre),"lin");
@@ -185,7 +186,7 @@ function trnPlan(r, L, show){
       C(rl("out_proj"),T(PC.lpost),"proj");
     } else {
       const cpx=P(xsOf(k.a==="swa"?"cpswa":"cpkv",k.a==="swa"?"swa":"full"),pass), core=k.a==="swa"?PC.swa:PC.full;
-      C(rl(f.kind==="gqa"?t("comm.attn.preGqa"):f.kind==="dsa"?t("comm.attn.preDsa"):t("comm.attn.preMla")),T(PC.pre),"proj");
+      C(rl(f.kind==="gqa"?t("comm.attn.preGqa"):f.kind==="dsa"?t("comm.attn.preDsa"):f.kind==="csa"?t("comm.attn.preCsa"):t("comm.attn.preMla")),T(PC.pre),"proj");
       if(!cpx.length) C(rl(t("comm.attn.core")),T(core),"attn");
       else if(cpMeth==="ulysses"){ X("cp",cpx[0],"part",i,{note:t("comm.note.cpUly")}); C(rl(t("comm.attn.coreUly")),T(core),"attn"); X("cp",cpx[1],"part",i,{note:t("comm.note.cpUly"),after:true}); }
       else if(k.a==="swa"){ X("cp",cpx[0],"block",i); C(rl(t("comm.attn.coreSwa")),T(core),"attn"); }
@@ -248,7 +249,7 @@ function trnPlan(r, L, show){
       else if(k.a==="swa"){ X("cp",cpx[0],"block",i); C(t("comm.bwd.attnSwa"),B(core),"attn"); X("cp",cpx[1],"block",i); }
       else if(cpMeth==="ring"){ X("cp",cpx[0],"part",i,{note:t("comm.note.ringBwd")}); X("cp",cpx[1],"part",i,{note:t("comm.note.ringDkv")}); C(t("comm.bwd.attnRing"),B(core),"attn"); }
       else { X("cp",cpx[0],"part",i,{note:t("comm.note.agBwd")}); C(t("comm.bwd.attn"),B(core),"attn"); X("cp",cpx[1],"block",i,{note:t("comm.note.agDkv")}); }
-      if(f.kind==="dsa" && k.a==="full") P(xsOf("tpidx","attn"),"bwd").forEach(x=>X("tp",x,tpM,i));
+      if((f.kind==="dsa"||f.kind==="csa") && k.a==="full") P(xsOf("tpidx","attn"),"bwd").forEach(x=>X("tp",x,tpM,i));
       if(mg && tx.length===3){ X("tp",tx[1],"bg",i,{note:t("comm.note.dgrad")}); X("tp",tx[2],"bg",i,{note:t("comm.note.wgrad")}); C(t("comm.bwd.qkv"),B(PC.pre),"proj"); }
       else { C(t("comm.bwd.qkv"),B(PC.pre),"proj"); X("tp",tx[1],tpM,i,{after:true}); }
     }
@@ -353,8 +354,9 @@ function renderTrnComm(){
 function infPlan(r, L){
   const {m}=ctx(), c=S.inf, {kind,name}=xKinds(m), dec=c.phase==="decode";
   const per = pred => sum(r.ops.filter(pred),o=>o.t/o.layers);
-  const cores=r.ops.filter(o=>o.key==="acore");
-  const PI = { pre:per(o=>o.group==="attn"&&!["acore","agate","auv","aout"].includes(o.key)), full:cores[0]?cores[0].t/cores[0].layers:0, swa:cores[1]?cores[1].t/cores[1].layers:0, post:per(o=>["agate","auv","aout"].includes(o.key)),
+  // 核心按 mod 取（CSA 有两组压缩层，取第一组）；没有 mod 的（MLA / DSA）就是全注意力
+  const cores=r.ops.filter(o=>o.key==="acore"), cF=cores.find(o=>o.mod==="full")||cores.find(o=>!o.mod), cS=cores.find(o=>o.mod==="swa"), POST=["agate","auv","aout","aoa"];
+  const PI = { pre:per(o=>o.group==="attn"&&o.key!=="acore"&&!POST.includes(o.key)), full:cF?cF.t/cF.layers:0, swa:cS?cS.t/cS.layers:0, post:per(o=>POST.includes(o.key)),
     lin:per(o=>o.group==="lin"), router:per(o=>["router","latd","moeq"].includes(o.key)), exp:per(o=>o.key==="moe"), latu:per(o=>o.key==="latu"), shared:per(o=>o.key==="shared"), dense:per(o=>o.key==="dense"),
     lm:per(o=>o.key==="lm"), samp:per(o=>o.key==="samp") };
   const one = key => { const e=r.comm.find(x=>x.key===key); return e ? { op:{ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG",epag:"AG"}[key], bytes:e.bytes/e.layers, t:e.t/e.layers, ov:e.overlap } : null; };
@@ -366,7 +368,7 @@ function infPlan(r, L){
   for(const i of L){ const k=kind(i);
     sec(t("comm.sec.head",{i,name:esc(name(k)),pass:"<span>"+(dec?t("comm.sec.dec"):t("comm.sec.pre"))+"</span>"}));
     if(k.a==="lin") C(t("comm.inf.lin",{kind:m.lin.kind}),PI.lin,"lin");
-    else { C(t("comm.inf.qkv",{mla:m.full.kind!=="gqa"?t("comm.inf.qkvMla"):""}),PI.pre,"proj"); C(k.a==="swa"?t("comm.attn.coreSwa"):t("comm.attn.core"),k.a==="swa"?PI.swa:PI.full,"attn"); C(t("comm.attn.post",{gate:m.full.gate?t("comm.attn.gate"):""}),PI.post,"proj"); }
+    else { C(t("comm.inf.qkv",{mla:m.full.kind==="csa"?t("comm.inf.qkvCsa"):m.full.kind!=="gqa"?t("comm.inf.qkvMla"):""}),PI.pre,"proj"); C(k.a==="swa"?t("comm.attn.coreSwa"):t("comm.attn.core"),k.a==="swa"?PI.swa:PI.full,"attn"); C(t("comm.attn.post",{gate:m.full.gate?t("comm.attn.gate"):""}),PI.post,"proj"); }
     X("tp","ar",t("comm.inf.arAttn",{fused:arF}),i);
     if(k.f==="moe"){
       X(epDim,"dpg",ag?t("comm.inf.dpgEp"):t("comm.inf.dpgDpa"),i);

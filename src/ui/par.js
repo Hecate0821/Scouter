@@ -15,7 +15,7 @@ function fitPar(c, N){ c=Object.assign({},c); while(c.tp*c.cp*(c.pp||1)>N || N%(
   while(c.ep>1 && (c.ep>N/(c.pp||1) || c.ep<c.tp)) c.ep/=2; return c; }
 
 /* 代表层的每一段（每层、最忙那张卡）：attention 前后投影、核心、MoE 复制部分、expert、dense FFN、线性注意力 */
-const PRE_KEYS=["aqkv","arope","aqa","aqb","akvb","auk","aidxp","aidx"], MOEREP_KEYS=["router","latd","permute","unperm","latu","shared"];
+const PRE_KEYS=["aqkv","arope","aqa","aqb","akvb","auk","aidxp","aidx","acmp"], MOEREP_KEYS=["router","latd","permute","unperm","latu","shared"];
 function layerPieces(r){
   const acc = pred => { let f=0,b=0,rc=0; for(const o of r.ops) if(pred(o)){ f+=o.fwd.t/o.layers; b+=(o.dgrad.t+o.wgrad.t)/o.layers; if(o.rc) rc+=o.fwd.t/o.layers; } return {f,b,rc}; };
   const cf=r.par.coreFullOp;
@@ -321,7 +321,7 @@ function renderParCp(r){
   tbl.innerHTML='<thead><tr><th>'+t("par.cp.tbl.th.meth")+'</th><th>'+t("par.cp.tbl.th.fb", { rc: ac ? t("par.cp.tbl.rcFull") : t("par.cp.tbl.rcNone") })+'</th><th>'+t("par.cp.tbl.th.layer")+'</th><th>'+t("par.cp.tbl.th.calls")+'</th><th>'+t("par.cp.tbl.th.imb")+'</th><th>'+t("par.cp.tbl.th.wire")+'</th></tr></thead><tbody>'+
     runs.map(({k,r:r2})=>{ const cp=r2.par.cpFull; if(!cp) return ""; const form=k==="allgather"?(ac?4:3)+"(C−1)·L":k==="ring"?(ac?"(5C−3)·L":"(4C−2)·L"):(ac?6:4)+"·b·(S/C)·(Q+K′)·d·(C−1)/C";
       return '<tr'+(k===rv.par.cpMeth?' class="hl"':'')+'><td>'+esc(Par.CP[k].name)+'</td><td><code>'+esc(form)+'</code></td><td class="num">'+fB(r2.par.docs*cp.wire)+'</td><td class="num">'+cp.calls+'</td><td class="num">'+r2.par.imbCP.toFixed(3)+'×</td><td class="num">'+fT(r2.par.docs*cp.tw)+' / '+fT(r2.par.docs*cp.exposed)+(cp.ok?'':' <span class="tag">'+esc(cp.why)+'</span>')+'</td></tr>'; }).join("")+
-    '<tr><td colspan="6">'+t("par.cp.tbl.foot", { kv, what: m.full.kind==="gqa" ? t("par.cp.tbl.gqa", { Hkv: m.full.Hkv, dh: m.full.dh }) : t("par.cp.tbl.mla", { idx: m.full.kind==="dsa" ? t("par.cp.tbl.dsaIdx", { d: m.full.idxD }) : "" }), uly: m.full.kind==="gqa" ? t("par.cp.tbl.ulyGqa", { k: Math.max(m.full.Hkv,C) }) : t("par.cp.tbl.ulyMla") })+'</td></tr></tbody>';
+    '<tr><td colspan="6">'+t("par.cp.tbl.foot", { kv, what: m.full.kind==="gqa" ? t("par.cp.tbl.gqa", { Hkv: m.full.Hkv, dh: m.full.dh }) : m.full.kind==="csa" ? t("par.cp.tbl.csa", { src: d.nSrc, dh: m.full.dh, idx: m.full.idxD }) : t("par.cp.tbl.mla", { idx: m.full.kind==="dsa" ? t("par.cp.tbl.dsaIdx", { d: m.full.idxD }) : "" }), uly: m.full.kind==="gqa" ? t("par.cp.tbl.ulyGqa", { k: Math.max(m.full.Hkv,C) }) : t("par.cp.tbl.ulyMla") })+'</td></tr></tbody>';
   /* 随 C、随 S、固定世界 */
   const N=topo.gpus/(r.tp*r.pp), Cs=pow2upTo(Math.min(64,N)).filter(v=>v>1);
   const serC=Object.keys(Par.CP).map(k=>({name:Par.CP[k].name,col:Par.CP[k].col,pts:Cs.map(Cx=>{ const r2=runP({cpType:k,cp:Cx,tok:Math.max(64,S.trn.S/Cx)}); return [Cx, runOK(r2)&&r2.par.cpFull ? attnLayerT(r2) : null]; })}));

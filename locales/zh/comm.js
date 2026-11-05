@@ -187,7 +187,7 @@ I18N.add("zh", "comm", {
   "tbl.perTokIn": "每个输入 token",
   "tbl.times": "{n} 次",
   "tbl.none": "这个配置一个实例只有一张卡（或者各卡独立），没有层内通信。",
-  "inf.noteTbo": "两个 micro-batch 交替（TBO）：一个算的时候另一个在通信",
+  "inf.noteTbo": "两个 micro-batch 交替（TBO）：一个算的时候另一个在通信；图里的时间是两个 micro-batch 加起来",
   "inf.noteFused": "融合在 MoE kernel 里",
   "inf.arAttn": "attention 输出{fused}",
   "inf.arMoe": "MoE 输出{fused}",
@@ -225,4 +225,6 @@ I18N.add("zh", "comm", {
   "inf.note": "一步每卡在线上发出 {b}，线上时间 {wt}（一步 {step}）。{tail}",
   "inf.noteDec": "decode 的消息很小（几十 KB 到几 MB），时间主要是每次调用的固定延迟，所以 AR 融合、one-shot / two-shot 和 DeepEP low-latency 这类省延迟的办法比省字节更要紧。",
   "inf.notePre": "prefill 一个 chunk 的消息比 decode 大几百倍，开始受带宽限制，线上时间大致和字节数成正比。",
+  "attn.preCsa": "q / kv 投影 + compressor + indexer 打分",
+  "inf.qkvCsa": "（CSA：wq_a / wkv 下投影 + wq_b）",
 });

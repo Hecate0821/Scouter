@@ -72,4 +72,6 @@ I18N.add("en", "engine_par", {
   "fsdp.fwd": "BF16 parameters",
   "fsdp.bwdAg": "gather BF16 parameters again for backward",
   "fsdp.grad": "{dt} gradients",
+  "cp.kv.csa": "window + compressed latent + index key",
+  "cp.dkv.csa": "d window + d compressed latent",
 });

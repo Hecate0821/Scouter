@@ -2,6 +2,26 @@
 function infRun(over, phase){ const {m,hw,topo,g}=ctx(); const c=Object.assign({},S.inf,over||{}); return (phase||c.phase)==="decode" ? Infer.decode(m,hw,topo,c,g) : Infer.prefill(m,hw,topo,c,g); }
 const infEngines = () => ["sglang","vllm","tokenspeed"].concat(S.inf.engine==="titan"?["titan"]:[]);
 const asEng = e => ({engine:e, moePar:compatMoe(e,S.inf.moePar)});
+/* TBO 什么时候划算（部署与并行）：计算核心 Infer.tboSweep 给开 / 关两条线，这里只画 */
+function renderInferTbo(){
+  const {m,hw,topo,g}=ctx(), c=S.inf, s=Infer.tboSweep(m,hw,topo,c,g);
+  $("i-tbo-fig").hidden=!s; $("i-tbo-legend").hidden=!s;
+  if(!s){ $("i-tbo-lede").innerHTML=t("infer.deploy.tbo.none"); $("i-tbo-read").innerHTML=""; return; }
+  $("i-tbo-lede").innerHTML=t("infer.deploy.tbo.lede",{eng:ENGN[c.engine],model:esc(m.short),hw:hw.name,n:c.N,moe:esc(MOENAME[s.moePar]||s.moePar),dp:s.dpA})+(s.swapped?" "+t("infer.deploy.tbo.swapped"):"")
+    +(s.invalid.length?" "+t("infer.deploy.tbo.invalid",{why:esc(s.invalid.map(String).join(" / "))}):"");
+  const pt=(r,on)=>[r.B,on?r.onTok:r.offTok,{hollow:!r.fit,note:r.fit?"":t("infer.deploy.tbo.noFit")}];
+  const ser=[{name:t("infer.deploy.tbo.off"),col:"s1",pts:s.rows.map(r=>pt(r,false))},{name:t("infer.deploy.tbo.on"),col:"s2",pts:s.rows.map(r=>pt(r,true))}];
+  const cur=s.rows.some(r=>r.B===c.B)?[{x:c.B,label:t("infer.deploy.tbo.now")}]:[];
+  lineChart("i-tbo",{series:ser,xLog:true,xBase:2,xFmt:String,yFmt:fN,yMin:0,xLab:t("infer.deploy.tbo.x"),yLab:t("infer.deploy.tbo.y"),vlines:cur});
+  legendInto("i-tbo-legend",ser.map(x=>({name:x.name,col:x.col,line:true})));
+  const at=s.rows.find(r=>r.B===c.B), big=s.rows[s.rows.length-1], pc=(a,b)=>(a/b-1>=0?"+":"")+Math.round((a/b-1)*100)+"%";
+  $("i-tbo-read").innerHTML=ul([
+    g.lb ? t("infer.deploy.tbo.readIdeal")
+      : s.win ? t("infer.deploy.tbo.readWin",{b:s.win,bmax:big.B,on:fN(big.onTok),off:fN(big.offTok)})
+      : t("infer.deploy.tbo.readNever",{a2a:fT(big.a2aOff),pct:Math.round(big.a2aOff/big.off*100)+"%",b:big.B}),
+    at ? t("infer.deploy.tbo.readCur",{b:c.B,off:fT(at.off),on:fT(at.on),d:V(pc(at.on,at.off))}) : "",
+    g.lb ? "" : t("infer.deploy.tbo.readWhy",{eta:Math.round(g.etaTbo*100)+"%"}) ]);
+}
 /* 推理参数架：随引擎和阶段显示 / 隐藏，填 MoE 并行和预设（一步、部署、投机三节共用） */
 function syncInfRack(){
   const c=S.inf;
@@ -55,8 +75,7 @@ function renderInfer(){
   const items=[];
   for(const o of r.ops) if(o.overlap!=="moe") items.push({label:o.name,v:o.t,color:GROUPC[o.group],tag:pill(o.bound)});
   for(const x of r.comm) if(!x.overlap) items.push({label:x.name,v:x.t,color:COMMC[x.key]||css("net"),tag:pill("comm")});
-  const tboC=sum(r.comm.filter(x=>x.overlap==="tbo"),x=>x.t);
-  if(tboC>0) items.push({label:t("infer.bar.tbo"),v:Math.max(0,tboC-r.tComp*0.5),color:css("c-a2a"),tag:pill("comm")});
+  if(r.exposedTbo>0) items.push({label:t("infer.bar.tbo"),v:r.exposedTbo,color:css("c-a2a"),tag:pill("comm")});
   if(r.exposedOverlap>0) items.push({label:t("infer.bar.exposed"),v:r.exposedOverlap,color:css("c-a2a"),tag:pill("comm")});
   const base=r.stepT-(r.draftT||0)-(r.commitT||0), dpSync=(c.engine==="vllm"||c.engine==="titan")&&r.dpA>1?g.dpSyncUs*1e-6:0;
   if(r.graph) items.push({label:t("infer.bar.graph"),v:g.graphLaunchUs*1e-6,color:css("c-free"),tag:pill("launch")});
@@ -84,7 +103,8 @@ function renderInfer(){
     [t("infer.diff.specCap"),e=>isFinite(P(e).specCap)?P(e).specCap:t("infer.diff.unlimited")],
     ...(m.lin.n>0?[[t("infer.diff.stateTraffic"),e=>dec&&runs[e].specK>0?P(e).stateVerify(m,runs[e].w)+"·S_l":P(e).stateDecode(m)+"·S_l"],
       [t("infer.diff.hMat"),e=>yes(P(e).hMat(m,hw))]]:[]),
-    ...(m.full.kind!=="gqa"?[[t("infer.diff.mlaReexp"),e=>m.full.kind==="dsa"&&e==="tokenspeed"?t("infer.diff.noAbsorbed"):yes(P(e).mlaReexpand)]]:[]),
+    ...(m.full.kind==="csa"?[[t("infer.diff.replay"),e=>P(e).replay?t("infer.diff.replayAt."+P(e).replay):t("infer.diff.noReplay")]]
+      :m.full.kind!=="gqa"?[[t("infer.diff.mlaReexp"),e=>m.full.kind==="dsa"&&e==="tokenspeed"?t("infer.diff.noAbsorbed"):yes(P(e).mlaReexpand)]]:[]),
     [t("infer.diff.sharedOverlap"),e=>({graph:t("infer.diff.shared.graph"),small:t("infer.diff.shared.small"),none:t("infer.diff.shared.none")})[P(e).sharedOverlap]],
     [t("infer.diff.nKern"),e=>fInt(runs[e].nKern)],
     ...(dec?[[t("infer.diff.step"),e=>fT(runs[e].stepT)],["TPOT",e=>fT(runs[e].tpot)],["tok/s/GPU",e=>fN(runs[e].tokPerGpu)],[t("infer.diff.bmax"),e=>fInt(runs[e].mem.Bmax)]]

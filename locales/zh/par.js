@@ -379,4 +379,5 @@ I18N.add("zh", "par", {
   "ep.fan.th.slot": "按槽位远端行 K(1−1/E)",
   "ep.fan.th.ratio": "expanded / compact 行数",
   "ep.fan.th.disp": "每层每次 dispatch（槽位 / 去重 / 广播）",
+  "cp.tbl.csa": "{dh} 维 latent（K、V 共用）；{src} 个 kv source 层另加 index key {idx}",
 });

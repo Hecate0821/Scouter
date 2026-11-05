@@ -159,4 +159,12 @@ I18N.add("zh", "engine_train", {
   "cpLin.haloFwd": "短卷积 halo：前一段最后 conv−1 个 token",
   "cpLin.haloRc": "重算：短卷积 halo",
   "cpLin.haloBwd": "短卷积 halo 的梯度",
+  "op.csaQaMg": "wq_a + wkv 下投影（duplicated，SP 本地 token）",
+  "op.csaQaTt": "wq_a + wkv 下投影（复制）",
+  "op.csaCmp": "compressor（m = {m}，复制）",
+  "op.csaIdx": "indexer 打分 + top-k（m = {m}）",
+  "op.csaIdxRe": "indexer 在候选块里重打分（m = {m}）",
+  "op.acoreCsa": "稀疏 MQA（top-{k} 压缩 latent + {w} 滑窗，m = {m}）",
+  "op.acoreCsaSwa": "滑窗 MQA（{w} 个 token）",
+  "op.csaOa": "wo_a 分组 GEMM（{g} 组，按头切）",
 });

@@ -19,7 +19,7 @@ const load = require("./load");
   const VIEWS = Array.from(d.querySelectorAll("section[data-pane]")).map(s => s.dataset.pane);
   snap.shell = { title: d.title, text: norm(d.querySelector("header") && d.querySelector("header").textContent) + " ‖ " + Array.from(d.querySelectorAll("nav")).map(n => norm(n.textContent)).join(" ‖ "),
     attrs: Array.from(d.querySelectorAll("nav")).map(attrs).join(" ‖ ") };
-  for (const m of ["qwen35", "qwen38_27b", "glm53f", "musespark", "kimik3"]) {
+  for (const m of ["qwen35", "qwen38_27b", "glm53f", "musespark", "kimik3", "dsv41f"]) {
     setSel("#g-model", m);
     const rack = d.querySelector("aside.rack");
     snap[m + " rack"] = { text: norm(rack.textContent), attrs: attrs(rack) };

@@ -1,5 +1,5 @@
 /* ================= 架构页 · 机制示意图 =================
-   每种模块一张图，画的是“决定 roofline 位置的那个量”：GQA 的分组、滑窗的窗口、MLA 的 latent、DSA 的两段、线性注意力的固定状态、
+   每种模块一张图，画的是“决定 roofline 位置的那个量”：GQA 的分组、滑窗的窗口、MLA 的 latent、DSA 的两段、CSA 的压缩 + 滑窗两路和层间共享、线性注意力的固定状态、
    MoE 一批 token 碰到多少 expert、dense FFN 的权重复用。图随当前（可能改过的）结构参数变，旁边的滑块就是这些参数。
    思路借鉴 Attention Lab（divagr.com/attention-lab）的分步图解，这里把每一步落到字节和 FLOPs 上；代码是本项目自己写的。 */
 const VZ = (function(){
@@ -92,6 +92,65 @@ function dsa(m, f, wl, x){
   return svgWrap(232, s);
 }
 
+/* CSA（DeepSeek-V4.1）：每个 query 读 ≤ top-k 个压缩 latent（indexer 打分选出来）+ 最近 W 个滑窗 latent；K、V 是同一份 dh 维 latent，
+   所有头共用（MQA）。数字是 Arch.explain 给的每条序列、每层平均 */
+function csa(m, f, wl, x){
+  const n=x.n, cells=96, x0=30, w=W-60, cw=w/cells, keep=x.keep, all=x.scored<=0;
+  const rnd=rng(n*31+f.topk), scores=[...Array(cells)].map(()=>rnd()), cut=[...scores].sort((a,b)=>b-a)[Math.max(0,Math.round(keep*cells)-1)];
+  let s=tx(x0,16,t("arch.viz.csa.scan",{n:fInt(n)}),{cls:"lbl"});
+  for(let i=0;i<cells;i++){ const h=6+scores[i]*30, on=all||scores[i]>=cut; s+=r(x0+i*cw+0.5,62-h,cw-1,h,on?"var(--c-kv)":"var(--line)"); }
+  s+=tx(x0,80,all?t("arch.viz.csa.all",{k:fInt(f.topk)}):t("arch.viz.csa.pick",{k:fInt(f.topk),pct:pc(keep),ni:x.nIdx,cap:fInt(x.cap)}));
+  // 滑窗：原始 token 一行，最后 W 个是这一层自己的滑窗 latent
+  const win=Math.max(1,Math.round(Math.min(n,f.W)/n*cells));
+  for(let i=0;i<cells;i++) s+=r(x0+i*cw+1,90,cw-2,14,i>=cells-win?"var(--c-attn)":"var(--soft)");
+  s+=r(x0+(cells-1)*cw+1,90,cw-2,14,"var(--ink)");
+  s+=tx(x0,120,t("arch.viz.csa.win",{w:fInt(f.W),keys:fInt(x.ks)}));
+  s+=tx(x0,148,t("arch.viz.csa.bytes"),{cls:"lbl"});
+  s+=bars(x0,156,w,[{label:t("arch.viz.csa.idx",{h:f.idxH,d:f.idxD}),v:x.idxB,col:"var(--c-lin)",hl:true},{label:t("arch.viz.csa.cmp",{k:fInt(x.kc)}),v:x.kc*x.latB,col:"var(--c-kv)",hl:true},
+    {label:t("arch.viz.csa.swa",{w:fInt(x.ks)}),v:x.ks*x.swaB,col:"var(--c-attn)",hl:true},{label:t("arch.viz.csa.dense",{n:fInt(n)}),v:n*x.latB,col:"var(--c-kv)"}],fB);
+  s+=tx(x0,262,t("arch.viz.csa.flops",{a:fF(x.idxF),b:fF(x.attF)}));
+  s+=tx(x0,282,t("arch.viz.csa.note",{h:f.H,d:f.dh,k:fInt(f.topk),w:fInt(f.W)}));
+  return svgWrap(294, s);
+}
+/* CSA 的层：哪些层产生压缩 KV、哪些层自己打分、哪些层复用；prefill 的 bounded replay 从最后一个 kv source 层切开 */
+function csaLayers(m, f, wl){
+  const P=Common.csaPlan(f), L=P.length, x0=30, w=W-60, lw=w/L, kv=Common.csaKv(m, wl.kvDt);
+  const col = q => q.m===0 ? "var(--c-cp)" : q.kv ? "var(--c-kv)" : q.idx ? "var(--c-lin)" : "var(--c-attn)";
+  const nSrc=P.filter(q=>q.kv).length, nIdx=P.filter(q=>q.idx&&!q.kv).length, nRe=P.filter(q=>q.m>0&&!q.kv&&!q.idx).length, nSwa=P.filter(q=>q.m===0).length;
+  let s=tx(x0,16,t("arch.viz.csa.stack",{L}),{cls:"lbl"});
+  P.forEach((q,i)=>{ s+=r(x0+i*lw+0.5,26,lw-1,22,col(q),q.m>0&&!q.kv&&!q.idx?'opacity=".45"':""); if(q.m===2) s+=r(x0+i*lw+0.5,50,lw-1,3,"var(--muted)"); });
+  // 每个 kv source 管到下一个 source 之前（同一个 ratio 的层复用它）
+  const src=P.map((q,i)=>q.kv?i:-1).filter(i=>i>=0);
+  src.forEach((i,j)=>{ const end=(src[j+1]??L)-1, a=x0+i*lw+lw/2, b=x0+end*lw+lw-1; s+=ln(a,60,b,60,"var(--c-kv)",1.5)+ln(a,56,a,64,"var(--c-kv)",1.5); });
+  const last=src.length?src[src.length-1]:L, xc=x0+last*lw;
+  s+=ln(xc,20,xc,72,"var(--ink)",1,"3 3");
+  const lg=[["var(--c-kv)","",t("arch.viz.csa.lgSrc",{n:nSrc})],["var(--c-lin)","",t("arch.viz.csa.lgIdx",{n:nIdx})],["var(--c-attn)",'opacity=".45"',t("arch.viz.csa.lgRe",{n:nRe})],["var(--c-cp)","",t("arch.viz.csa.lgSwa",{n:nSwa})]];
+  lg.forEach(([c,o,label],i)=>{ const lx=x0+i*w/4; s+=r(lx,79,10,10,c,o)+tx(lx+14,88,label); });
+  s+=tx(x0,106,t("arch.viz.csa.lgNote"));
+  s+=tx(x0,122,t("arch.viz.csa.replay",{l:last,w:fInt(f.W)}));
+  // 每 token 的压缩 KV：共享后 vs 每个压缩层都自己存一份
+  const own=P.filter(q=>q.m>0).reduce((a,q)=>a+(kv.lat+kv.idx)/q.m,0);
+  s+=tx(x0,148,t("arch.viz.csa.share",{dt:wl.kvDt.toUpperCase()}),{cls:"lbl"});
+  s+=bars(x0,156,w,[{label:t("arch.viz.csa.shared",{n:nSrc}),v:kv.main+kv.index,col:"var(--c-kv)",hl:true},{label:t("arch.viz.csa.own",{n:P.filter(q=>q.m>0).length}),v:own,col:"var(--c-kv)"}],fB);
+  s+=tx(x0,214,t("arch.viz.csa.swaTok",{w:fInt(f.W),n:L,b:fB(kv.swaTok*f.W)}));
+  return svgWrap(226, s);
+}
+/* CSA 模型里只有滑窗的层：每个 query 只读这一层最近 W 个 latent，没有压缩 KV 和 indexer */
+function csaSwa(m, f, wl, x){
+  const n=Math.max(1,wl.n), cells=64, x0=30, w=W-60, cw=w/cells, keep=Math.max(1,Math.round(Math.min(n,f.W)/n*cells));
+  const P=Common.csaPlan(f), only=P.filter(q=>q.m===0).map(q=>q.i);
+  let s=tx(x0,16,t("arch.viz.swa.ctx",{n:fInt(n)}),{cls:"lbl"});
+  for(let i=0;i<cells;i++) s+=r(x0+i*cw+1,26,cw-2,22,i>=cells-keep?"var(--c-attn)":"var(--soft)");
+  s+=r(x0+(cells-1)*cw+1,26,cw-2,22,"var(--ink)");
+  s+=tx(x0,66,t("arch.viz.csa.swaOnly",{w:fInt(f.W),keys:fInt(x.ks),l:only.join(", ")}));
+  const L=P.length, lw=w/L;
+  P.forEach((q,i)=>{ s+=r(x0+i*lw+0.5,80,lw-1,20,q.m===0?"var(--c-cp)":"var(--c-attn)",q.m===0?"":'opacity=".35"'); });
+  s+=tx(x0,118,t("arch.viz.csa.swaRest",{n:L-only.length}));
+  s+=bars(x0,130,w,[{label:t("arch.viz.csa.swaBar",{w:fInt(x.ks)}),v:x.attB,col:"var(--c-attn)",hl:true},{label:t("arch.viz.csa.swaAll",{n:fInt(n)}),v:n*x.swaB,col:"var(--c-kv)"}],fB);
+  s+=tx(x0,190,t("arch.viz.csa.swaNote",{h:f.H,d:f.dh,b:fB(x.swaB)}));
+  return svgWrap(202, s);
+}
+
 /* 线性注意力：每个头一个 d_k × d_v 的状态，大小与上下文无关；GDN 一个头一个衰减门，KDA 每个通道一个 */
 function lin(m, l, wl, kind, x){
   const x0=30, n=x.n, sb=x.sb, st=x.st, kvEq=x.kvEq;
@@ -153,14 +212,14 @@ function dense(m, F, wl, B, x){
 /* 入口：按模块画；返回 {h, svg} */
 function draw(mod, m, wl, hw, g){
   const f=m.full, x=Arch.explain(m,hw,g,wl,mod.id), B=x.B;
-  if(mod.id==="full") return f.kind==="gqa" ? gqa(m,f) : f.kind==="mla" ? mla(m,f,wl,false) : dsa(m,f,wl,x);
-  if(mod.id==="swa") return swa(m,f,wl);
+  if(mod.id==="full") return f.kind==="gqa" ? gqa(m,f) : f.kind==="mla" ? mla(m,f,wl,false) : f.kind==="csa" ? csa(m,f,wl,x) : dsa(m,f,wl,x);
+  if(mod.id==="swa") return f.kind==="csa" ? csaSwa(m,f,wl,x) : swa(m,f,wl);
   if(mod.id==="lin") return lin(m,m.lin,wl,mod.kind,x);
   if(mod.id==="moe") return moe(m,m.moe,wl,B,x);
   return dense(m,x.F,wl,B,x);
 }
-/* DSA 的 latent 部分沿用 MLA 的图（第二张） */
-const extra = (mod, m, wl) => mod.id==="full" && m.full.kind==="dsa" ? mla(m,m.full,wl,true) : null;
+/* 第二张图：DSA 的 latent 部分沿用 MLA 的图；CSA 是层的分工（KV / top-k 怎么在层间共享） */
+const extra = (mod, m, wl) => mod.id!=="full" ? null : m.full.kind==="dsa" ? mla(m,m.full,wl,true) : m.full.kind==="csa" ? csaLayers(m,m.full,wl) : null;
 
 return { draw, extra };
 })();

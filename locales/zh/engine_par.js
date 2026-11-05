@@ -72,4 +72,6 @@ I18N.add("zh", "engine_par", {
   "fsdp.fwd": "BF16 参数",
   "fsdp.bwdAg": "反向再 gather BF16 参数",
   "fsdp.grad": "{dt} 梯度",
+  "cp.kv.csa": "滑窗 + 压缩 latent + index key",
+  "cp.dkv.csa": "d 滑窗 + d 压缩 latent",
 });

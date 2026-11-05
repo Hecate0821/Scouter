@@ -14,13 +14,15 @@ function compatMoe(eng, mp){ const ok=MOEPAR[eng].map(x=>x[0]); if(ok.includes(m
 
 const blackwell = () => HW[S.hw].sm>=100;
 const hwOK = (h,t) => /^nvl/.test(t) ? /^GB/.test(h) : !/^GB/.test(h);
-const prefHW = (mk,t) => /^nvl/.test(t) ? (mk==="kimik3"||mk==="musespark"?"GB300":"GB200") : (mk==="kimik3"?"B300":mk==="glm53f"||mk==="musespark"?"B200":"H200");
+const prefHW = (mk,t) => /^nvl/.test(t) ? (mk==="kimik3"||mk==="musespark"||mk==="dsv41f"?"GB300":"GB200") : (mk==="kimik3"?"B300":mk==="glm53f"||mk==="musespark"||mk==="dsv41f"?"B200":"H200");
 
 /* ---------- 推理预设：引擎 × 模型 × 拓扑 ---------- */
 function infPresets(eng, mk, topoKey){
   const big=TOPO[topoKey].gpus>8, G=TOPO[topoKey].gpus, P=[], add=(id,label,src,cfg)=>P.push({id,label,src,cfg});
   const m=MODELS[mk], f8 = m.wDefault==="fp8";
-  const X = o => Object.assign({ wDt:m.wDefault, dDt:f8?"fp8":"bf16", kvDt:f8?"fp8":"bf16", stateDt:"fp32" }, o);
+  /* 模型配置里写了 dense / KV 的默认精度（dDefault / kvDefault）就用它，否则按权重是不是 FP8 推 */
+  const X = o => Object.assign({ wDt:m.wDefault, dDt:m.dDefault||(f8?"fp8":"bf16"), kvDt:m.kvDefault||(f8?"fp8":"bf16"), stateDt:"fp32" }, o);
+  const hk=S.hw, bw=blackwell();
   if(eng==="sglang"){
     if(mk==="qwen35"){
       add("rec",t("config.inf.sglang.qwen35.rec.label",{n:G}),t("config.inf.sglang.qwen35.rec.src"),X({N:1,dpA:1,moePar:"tp",B:128}));
@@ -53,6 +55,12 @@ function infPresets(eng, mk, topoKey){
         add("rec",t("config.inf.sglang.musespark.nvl.rec.label"),t("config.inf.sglang.musespark.nvl.rec.src"),X({N:8,dpA:1,moePar:"replicated",B:32,kvDt:"fp8"}));
         add("tp4",t("config.inf.sglang.musespark.nvl.tp4.label"),t("config.inf.sglang.musespark.nvl.tp4.src"),X({N:4,dpA:1,moePar:"replicated",B:64}));
       }
+    } else if(mk==="dsv41f"){
+      /* cookbook 单节点：B200 / B300 / GB300 是 TP4 + EP4，H200 是 TP8 + EP8；KV 布局按 SGLang 的默认（Blackwell NVFP4 压缩 KV，Hopper 回落 V4 的 FP8 布局） */
+      const n=bw?4:8, kv=bw?"nvfp4":"fp8";
+      add("ht",t("config.inf.sglang.dsv41f.ht.label",{n}),t(bw?"config.inf.sglang.dsv41f.ht.src":"config.inf.sglang.dsv41f.ht.srcHopper"),X({N:n,dpA:1,moePar:"replicated",B:bw?256:64,kvDt:kv,memFrac:bw?0.85:0.8}));
+      if(bw) add("ll",t("config.inf.sglang.dsv41f.ll.label",{n}),t("config.inf.sglang.dsv41f.ll.src"),X({N:n,dpA:1,moePar:"replicated",B:48,kvDt:kv,memFrac:0.8,specK:5,specMethod:"dspark",accept:2}));
+      add("full",t("config.inf.sglang.dsv41f.full.label"),t("config.inf.sglang.dsv41f.full.src"),X({N:n,dpA:1,moePar:"replicated",B:bw?256:64,kvDt:kv,memFrac:bw?0.85:0.8,replay:false}));
     } else {
       add("rec",t("config.inf.sglang.qwen38_27b.rec.label"),t("config.inf.sglang.qwen38_27b.rec.src"),X({N:1,dpA:1,moePar:"tp",B:96,kvDt:"fp8"}));
       add("mtp",t("config.inf.sglang.qwen38_27b.mtp.label"),t("config.inf.sglang.qwen38_27b.mtp.src"),X({N:1,dpA:1,moePar:"tp",B:48,kvDt:"fp8",specK:3,accept:1.8}));
@@ -79,6 +87,15 @@ function infPresets(eng, mk, topoKey){
       add("rec",t("config.inf.vllm.musespark.rec.label"),t("config.inf.vllm.musespark.rec.src"),X({N:8,dpA:1,moePar:"ag",B:64}));
       add("dep",t("config.inf.vllm.musespark.dep.label"),t("config.inf.vllm.musespark.dep.src"),X({N:8,dpA:8,moePar:"ag",B:32}));
       if(big) add("tp8",t("config.inf.vllm.musespark.tp8.label"),t("config.inf.vllm.musespark.tp8.src"),X({N:8,dpA:1,moePar:"ag",B:64}));
+    } else if(mk==="dsv41f"){
+      /* recipe single_node_tp：tp 默认 4、H100 8、Blackwell 2；Blackwell 显式 --kv-cache-dtype fp8；NVIDIA 各卡都把 Engram 表放主机内存（cpu_offload）。
+         max-num-seqs：Blackwell 128，B200 8，B300 256 */
+      /* --gpu-memory-utilization：vLLM 默认 0.9，recipe 在 H100 上调到 0.92 */
+      const n=hk==="H100"?8:bw?2:4, Bt=hk==="B200"?8:hk==="B300"?256:128, mf=hk==="H100"?0.92:0.9;
+      add("rec",t("config.inf.vllm.dsv41f.rec.label",{n}),t("config.inf.vllm.dsv41f.rec.src"),X({N:n,dpA:1,moePar:"tp",B:Bt,kvDt:"fp8",engramAt:"host",memFrac:mf}));
+      add("spec",t("config.inf.vllm.dsv41f.spec.label",{n}),t("config.inf.vllm.dsv41f.spec.src"),X({N:n,dpA:1,moePar:"tp",B:Math.min(Bt,64),kvDt:"fp8",engramAt:"host",memFrac:mf,specK:5,specMethod:"dspark",accept:2}));
+      /* single_node_dep：Blackwell 用 deep_gemm_mega_moe（a2a 和 expert GEMM 融合，这里按 fused 算），Engram embedding_across_dp（表按 DP rank 切开放显存） */
+      add("dep",t("config.inf.vllm.dsv41f.dep.label"),t("config.inf.vllm.dsv41f.dep.src"),X({N:8,dpA:8,moePar:bw?"fused":"ag",B:hk==="B200"?32:bw?128:64,kvDt:"fp8",engramAt:"gpu",memFrac:0.9}));
     } else {
       add("rec",t("config.inf.vllm.qwen38_27b.rec.label"),t("config.inf.vllm.qwen38_27b.rec.src"),X({N:1,dpA:1,moePar:"tp",B:128}));
       add("mtp",t("config.inf.vllm.qwen38_27b.mtp.label"),t("config.inf.vllm.qwen38_27b.mtp.src"),X({N:1,dpA:1,moePar:"tp",B:96,specK:3,accept:1.8}));
@@ -93,6 +110,8 @@ function infPresets(eng, mk, topoKey){
       add("spec",t("config.inf.tokenspeed.glm53f.spec.label"),t("config.inf.tokenspeed.glm53f.spec.src"),X({N:8,dpA:1,moePar:"replicated",B:64,specK:3,accept:1.6}));
     } else if(mk==="musespark"){
       add("rec",t("config.inf.tokenspeed.musespark.rec.label"),t("config.inf.tokenspeed.musespark.rec.src"),X({N:4,dpA:1,moePar:"replicated",B:64}));
+    } else if(mk==="dsv41f"){
+      /* TokenSpeed 没有 DeepSeek-V4.1 的 recipe，只留自定义 */
     } else {
       const n2 = mk==="qwen38_27b" ? 1 : 2;
       add("rec",mk==="qwen38_27b"?t("config.inf.tokenspeed.qwen38_27b.rec.label",{n:n2}):t("config.inf.tokenspeed.qwen35.rec.label",{n:n2}),
@@ -103,7 +122,7 @@ function infPresets(eng, mk, topoKey){
   } else {
     const T = o => Object.assign({ wDt:"bf16", dDt:"bf16", kvDt:"bf16", stateDt:"fp32", moePar: blackwell()?"fused":"standard", B:64 }, o);
     const st = { qwen35:t("config.inf.titan.status.qwen35"), qwen38_27b:t("config.inf.titan.status.qwen38_27b"), musespark:t("config.inf.titan.status.musespark"),
-      kimik3:t("config.inf.titan.status.kimik3"), glm53f:t("config.inf.titan.status.glm53f") }[mk];
+      kimik3:t("config.inf.titan.status.kimik3"), glm53f:t("config.inf.titan.status.glm53f"), dsv41f:t("config.inf.titan.status.dsv41f") }[mk];
     const be = blackwell() ? t("config.inf.titan.ep.blackwell") : t("config.inf.titan.ep.hopper");
     add("rec", big?t("config.inf.titan.nvl.rec.label"):t("config.inf.titan.hgx.rec.label"),
       t("config.inf.titan.rec.src",{status:st, shape:big?t("config.inf.titan.nvl.rec.shape"):t("config.inf.titan.hgx.rec.shape"), ep:be}),
@@ -135,7 +154,7 @@ function trnPresets(fw, mk, topoKey){
     add("generic",dense?t("config.trn.megatron.generic.dense.label"):big?t("config.trn.megatron.generic.nvl.label"):t("config.trn.megatron.generic.hgx.label"),t("config.trn.megatron.generic.src"),dense?{tp:2,cp:1,ep:1,tok:8192}:big?{tp:4,cp:2,ep:16,tok:8192}:{tp:2,cp:1,ep:8,tok:8192});
   } else {
     const bw = blackwell(), disp = bw?"distmoe":"standard";
-    const st = { kimik3:t("config.trn.torchtitan.status.kimik3"), glm53f:t("config.trn.torchtitan.status.glm53f"), musespark:t("config.trn.torchtitan.status.musespark"), qwen38_27b:t("config.trn.torchtitan.status.qwen38_27b") }[mk]||"";
+    const st = { kimik3:t("config.trn.torchtitan.status.kimik3"), glm53f:t("config.trn.torchtitan.status.glm53f"), musespark:t("config.trn.torchtitan.status.musespark"), qwen38_27b:t("config.trn.torchtitan.status.qwen38_27b"), dsv41f:t("config.trn.torchtitan.status.dsv41f") }[mk]||"";
     const isMoE=!!MODELS[mk].moe.E;
     if(!big) add("dapo",t(isMoE?"config.trn.torchtitan.dapo.label":"config.trn.torchtitan.dapo.labelDense"),t(isMoE?"config.trn.torchtitan.dapo.src":"config.trn.torchtitan.dapo.srcDense",{ep:bw?t("config.trn.torchtitan.dapo.epBlackwell"):t("config.trn.torchtitan.dapo.epHopper"), status:st}),
       {tp:1,cp:1,ep:isMoE?4:1,tok:8192,dispatcher:disp,cpType:"allgather",linCP:"state",recompute:"default",offload:false});

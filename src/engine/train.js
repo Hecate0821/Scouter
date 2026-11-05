@@ -1,7 +1,7 @@
 /* 训练核心：Megatron-Core 与 torchtitan 的逐层 fwd / dgrad / wgrad / 重算，以及各自的并行通信。
    与推理核心不共享算子表：这里没有 KV cache、状态缓存、采样，有的是反向、重算、整段 CE、优化器与梯度同步。 */
 const Train = (function(){
-const { dtB, peakOf, derive, layerPlan, qoW, swaKeys, link, agT, arT, a2aT, roof } = Common;
+const { dtB, peakOf, derive, layerPlan, qoW, swaKeys, capKeys, link, agT, arT, a2aT, roof } = Common;
 
 /* FLA chunk kernel（C=64）每个 value head、每个 token 的 FLOPs：前向 / 反向（反向重算 w,u 与整条 h 递推） */
 function linFlops(kind, K, V){ const C=64;
@@ -110,7 +110,28 @@ function run(m, hw, topo, c, g){
   let coreFullOp=null, coreSwaOp=null;
   if(f.n>0){
     op("norm",Msg.of("engine_train.op.normAttn"),"misc",f.n,...elem(8*D/tp,3*D*2/tp,Tc,2));
-    if(f.kind==="gqa"){
+    if(f.kind==="csa"){
+      /* DeepSeek-V4.1（Common.csaPlan）：wq_a + wkv 各 TP rank 复制，wq_b 按头切；compressor 只在 kv source 层，indexer 只在 index source 层
+         （和 DSA 一样每个 TP rank 对整段序列重复算）；attention 每个 query 看 ≤ top-k 个压缩 latent + 最近 W 个滑窗 latent（MQA，K = V），
+         平均数按整段从头算（capKeys）；输出走分组的 wo_a（按头切）再 wo_b */
+      const H=f.H, dh=f.dh, Pl=d.csa, cap=f.cand ? f.cand.blocks*f.cand.bs : Infinity;
+      op("aqa",mg?Msg.of("engine_train.op.csaQaMg"):Msg.of("engine_train.op.csaQaTt"),"attn",f.n,...gemm(mg?Tl:Tc,D,f.qLora+dh,1));
+      op("aqb",Msg.of("engine_train.op.aqb"),"attn",f.n,...gemm(Tc,f.qLora,H*dh,tp));
+      const src=Pl.filter(x=>x.kv);
+      for(const mm of [...new Set(src.map(x=>x.m))]) op("acmp",Msg.of("engine_train.op.csaCmp",{m:mm}),"attn",src.filter(x=>x.m===mm).length,...gemm(Tc,D,dh*(mm>1?2:1)+dh*f.idxD/D/mm,1),{mod:"full"});
+      const idx=Pl.filter(x=>x.idx);
+      op("aidxp",Msg.of("engine_train.op.aidxp"),"attn",idx.length,...gemm(Tc,D,(f.qLora*f.idxH*f.idxD + D*f.idxH)/D,1),{mod:"full"});
+      for(const mm of [...new Set(idx.map(x=>x.m))]) for(const re of [false,true]){ const grp=idx.filter(x=>x.m===mm && x.useCand===re); if(!grp.length || S/mm<=f.topk) continue;
+        const np = re ? capKeys(0,S/mm,cap) : S/2/mm, fi=2*f.idxH*f.idxD*np*Tc;
+        op("aidx",Msg.of(re?"engine_train.op.csaIdxRe":"engine_train.op.csaIdx",{m:mm}),"attn",grp.length,{fl:fi*2,by:Tc*np*4*2,pk:pkA},{fl:fi*2,by:Tc*np*4*2,pk:pkA},null,{mod:"full"}); }
+      const coreOf=(layers,keys,mm)=>{ const fl=4*(H/tp)*dh*keys*Tc;
+        op("acore",Msg.of(mm>0?"engine_train.op.acoreCsa":"engine_train.op.acoreCsaSwa",{k:f.topk,w:f.W,m:mm}),"attn",layers,{fl,by:Tc*(mm>0?f.topk*4:0) + Tc*(H/tp)*dh*2*2,pk:pkAt},{fl:2.5*fl,by:2*Tc*(H/tp)*dh*2*2 + Tc*(mm>0?f.topk*4:0),pk:pkAt},null,{mod:mm>0?"full":"swa"}); return ops[ops.length-1]; };
+      const nF=Pl.filter(x=>x.m>0), nS=Pl.length-nF.length, ks=swaKeys(S,f.W);
+      if(nF.length) coreFullOp = coreOf(nF.length, nF.reduce((s,x)=>s+capKeys(0,S/x.m,f.topk),0)/nF.length + ks, 1);
+      if(nS) coreSwaOp = coreOf(nS, ks, 0);
+      op("aoa",Msg.of("engine_train.op.csaOa",{g:f.oG}),"attn",f.n,...gemm(Tc,H*dh,f.oLora,tp));
+      op("aout",Msg.of("engine_train.op.aout"),"attn",f.n,...gemm(Tc,f.oG*f.oLora,D,tp));
+    } else if(f.kind==="gqa"){
       const qo=qoW(f), kvo=2*f.Hkv*f.dh, nSwa=f.swa||0;
       op("aqkv",f.gate?Msg.of("engine_train.op.qkvGate"):Msg.of("engine_train.op.qkv"),"attn",f.n,...gemm(Tc,D,qo+kvo,tp));
       op("arope",Msg.of("engine_train.op.arope"),"attn",f.n,...elem(10*(f.Hq+2*f.Hkv)*f.dh/tp,(f.Hq+2*f.Hkv)*f.dh*2*2/tp,Tc,2));
@@ -143,7 +164,7 @@ function run(m, hw, topo, c, g){
       if(f.gate){ op("agp",Msg.of("engine_train.op.agp"),"attn",f.n,...gemm(Tc,D,H*f.vh,tp)); op("agate",Msg.of("engine_train.op.gate"),"attn",f.n,...elem(2*H*f.vh/tp,3*H*f.vh*2/tp,Tc,2)); }
       op("aout",Msg.of("engine_train.op.aout"),"attn",f.n,...gemm(Tc,H*f.vh,D,tp));
     }
-    tpBlocks.push({name:Msg.of("engine_train.blk.full"),blk:"attn",layers:f.n,inW: f.kind==="gqa"?D:(f.qLora+f.kvLora)});
+    tpBlocks.push({name:Msg.of("engine_train.blk.full"),blk:"attn",layers:f.n,inW: f.kind==="gqa"?D:f.kind==="csa"?f.qLora:(f.qLora+f.kvLora)});
   }
 
   /* ---- 线性注意力 ---- */
@@ -197,7 +218,7 @@ function run(m, hw, topo, c, g){
       if(rcFull) xs.push(tpX("rc","AG",Msg.of("engine_train.tp.rcAG",{input:inN}),msgAG), tpX("rc","RS",Msg.of("engine_train.tp.rcRS"),msgRS));
       xs.push(tpX("bwd","AG",Msg.of("engine_train.tp.bwdAG"),msgRS), tpX("bwd","AG",Msg.of("engine_train.tp.bwdAGInput",{input:inN}),msgAG), tpX("bwd","RS",Msg.of("engine_train.tp.bwdRS",{input:inN}),msgAG));
       cmX("tp",rcFull?Msg.of("engine_train.tp.nameRc",{blk:b.name}):Msg.of("engine_train.tp.name",{blk:b.name}),"tp",b.layers,b.blk,xs,{ovl:c.tpOverlap?"comp":false,lk:lkTPx}); }
-    if(f.kind==="dsa") cmX("tpidx",Msg.of("engine_train.tp.idx"),"tp",f.n,"attn",[tpX("fwd","AG",Msg.of("engine_train.tp.idxX"),Tc*D*2),tpX("fwd","AG",Msg.of("engine_train.tp.idxQ"),Tc*f.qLora*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradX"),Tc*D*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradQ"),Tc*f.qLora*2)],{lk:lkTPx});
+    if(f.kind==="dsa"||f.kind==="csa") cmX("tpidx",Msg.of("engine_train.tp.idx"),"tp",f.kind==="csa"?d.nIdx:f.n,"attn",[tpX("fwd","AG",Msg.of("engine_train.tp.idxX"),Tc*D*2),tpX("fwd","AG",Msg.of("engine_train.tp.idxQ"),Tc*f.qLora*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradX"),Tc*D*2),tpX("bwd","RS",Msg.of("engine_train.tp.idxGradQ"),Tc*f.qLora*2)],{lk:lkTPx});
   } else if(!mg && tp>1){
     // DTensor：Column 输入 Shard → Replicate（AG），Row 输出 Partial → Shard（RS）；反向各自对偶，gather 后的输入留给 wgrad
     for(const b of tpBlocks){ const msg=Tc*D*2;
@@ -214,14 +235,14 @@ function run(m, hw, topo, c, g){
   let cpFull=null, cpSwa=null;
   if(cp>1 && f.n>0){
     if(imbCP>1 && coreFullOp){ coreFullOp.fwd.t*=imbCP; coreFullOp.dgrad.t*=imbCP; coreFullOp.imb=imbCP; }
-    const nSwa = f.kind==="gqa" ? (f.swa||0) : 0, nFull = f.n-nSwa;
+    const nSwa = f.kind==="gqa" ? (f.swa||0) : f.kind==="csa" ? d.csa.filter(x=>x.m===0).length : 0, nFull = f.n-nSwa;
     const per = (o2, n2) => o2 ? (o2.fwd.t + o2.dgrad.t + (rc("acore")?o2.fwd.t:0))/n2/docs : 0;   // 一层一篇的核心 F+B（含重算）
     const x = { S, C:cp, tp, m, d, hw, topo, g, ac:rcFull };
     cpFull = Par.cpLayer(cpMeth, Object.assign({ tCore:per(coreFullOp,nFull), kind:"full" }, x));
     if(!cpFull.ok) warn.push(cpFull.why);
     const how = { ring:Msg.of("engine_train.cp.how.ring"), allgather:Msg.of("engine_train.cp.how.allgather"), ulysses:Msg.of("engine_train.cp.how.ulysses") }[cpMeth];
     const perDocs = o2 => o2.xs.map(x=>xc(x.pass,x.op,x.what,x.bytes*docs,x.t*docs));     // 一个 micro-batch 有 docs 篇，每篇各走一遍
-    cmX("cpkv",f.kind==="dsa"?Msg.of("engine_train.cp.kvDsa",{meth:Par.CP[cpMeth].name,how}):Msg.of("engine_train.cp.kv",{meth:Par.CP[cpMeth].name,how}),"cp",nFull,"full",perDocs(cpFull),{ovl:"fixed",expT:nFull*docs*cpFull.exposed,lk:cpFull.lk,par:"cp"});
+    cmX("cpkv",f.kind==="dsa"||f.kind==="csa"?Msg.of("engine_train.cp.kvDsa",{meth:Par.CP[cpMeth].name,how}):Msg.of("engine_train.cp.kv",{meth:Par.CP[cpMeth].name,how}),"cp",nFull,"full",perDocs(cpFull),{ovl:"fixed",expT:nFull*docs*cpFull.exposed,lk:cpFull.lk,par:"cp"});
     if(nSwa){ cpSwa = Par.cpLayer(cpMeth, Object.assign({ tCore:per(coreSwaOp,nSwa), kind:"swa" }, x));
       cmX("cpswa",cpMeth==="ulysses"?Msg.of("engine_train.cp.swaUlysses"):Msg.of("engine_train.cp.swa",{w:f.W}),"cp",nSwa,"swa",perDocs(cpSwa),{ovl:"fixed",expT:nSwa*docs*cpSwa.exposed,lk:cpSwa.lk,par:"cp"}); }
   }
@@ -294,7 +315,9 @@ function run(m, hw, topo, c, g){
   if(mg && c.sharedOverlap){ const sh=ops.find(o=>o.key==="shared"); if(sh){ const save=Math.min(sh.fwd.t+sh.dgrad.t+sh.wgrad.t, a2aPerLayer*nM*0.5); exposed=Math.max(0,exposed-save); } }
 
   // FSDP2（torchtitan）：每层每个 micro-batch AG 参数（fwd，reshard 时 bwd 再一次）+ RS 梯度；HSDP 时分片组缩到 1/R，副本之间每步 all-reduce
-  const Pdense = d.pDenseAll, Pexp = d.pExpertsAll;
+  // Engram 的哈希表（DeepSeek-V4.1，约 197B 参数）不按稠密参数算：每步只有查到的行有梯度，技术报告里放在主机内存；这里不计它的参数、梯度、
+  // 优化器状态和梯度同步（模型说明里交代），wkv 投影照常算
+  const Pdense = d.pDenseAll - (d.pEngTab||0), Pexp = d.pExpertsAll;
   let fsdpMB=0, fsdp=null;
   if(!mg){
     const R = Math.max(1, c.hsdp||1), fs = dp*cp/R, fe = edp/R;
@@ -378,7 +401,9 @@ function run(m, hw, topo, c, g){
   /* ---- 显存 ---- */
   const actTok = {};      // 每 token 每层保存的激活字节（本 rank）
   const sp=tp;
-  const attnAct = f.n>0 ? (f.kind==="gqa" ? (2*D*2 + (2*f.Hq+2*f.Hkv)*f.dh*2 + 4*f.Hq + (f.gate?2*f.Hq*f.dh*2:0))/sp
+  // CSA：输入、q_a / 滑窗 latent、q、attention 输出、wo_a 输出、softmax 统计、top-k 下标（indexer 的 q 只在 index 层，摊到每层）
+  const attnAct = f.n>0 && f.kind==="csa" ? (2*D*2 + (f.qLora+f.dh)*2 + f.H*f.dh*2*2 + f.oG*f.oLora*2 + 4*f.H + (f.topk*4 + f.idxH*f.idxD*2*d.nIdx/f.n)*sp)/sp
+    : f.n>0 ? (f.kind==="gqa" ? (2*D*2 + (2*f.Hq+2*f.Hkv)*f.dh*2 + 4*f.Hq + (f.gate?2*f.Hq*f.dh*2:0))/sp
                  : (2*D*2 + (f.qLora+f.kvLora)*2 + (sel.has("mla_up_proj")?0:f.H*((f.nope+f.rope)*3+f.nope+f.vh)*2) + f.H*f.vh*2 + 4*f.H + (f.kind==="dsa"?f.topk*4*sp + (f.idxH*f.idxD+f.idxD)*2*sp:0))/sp) : 0;
   const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650)*(l.dk+l.dv)/256 + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
   const rowAct = e.k*imb*(De*2 + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4);
@@ -392,7 +417,8 @@ function run(m, hw, topo, c, g){
   const act = perTokLayers*Tc*inflight + (rcFull?oneLayerWS*Tc:0);
   const logits = Tc*m.V/tp*(mg?6:6/8);
   const a2aBuf = nM<=0 ? 0 : epL ? epL.buf : Tl*e.k*imb*De*2*(ep>1?2:1);   // 没有 EP 只有 permute 那一份
-  const cpBuf = !cpFull ? 0 : Math.max((f.n-(cpSwa?f.swa:0))>0?cpFull.buf:0, cpSwa?cpSwa.buf:0);
+  const nSwaL = f.kind==="gqa" ? (f.swa||0) : f.kind==="csa" ? d.csa.filter(x=>x.m===0).length : 0;
+  const cpBuf = !cpFull ? 0 : Math.max((f.n-(cpSwa?nSwaL:0))>0?cpFull.buf:0, cpSwa?cpSwa.buf:0);
   let states, paramsGPU, gathered=0;
   if(mg){
     paramsGPU = (PlD+PlE)*(2+4);                                      // bf16 参数 + fp32 main_grad

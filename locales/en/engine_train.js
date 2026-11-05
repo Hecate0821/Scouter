@@ -159,4 +159,12 @@ I18N.add("en", "engine_train", {
   "cpLin.haloFwd": "Short-conv halo: last conv−1 tokens of the previous chunk",
   "cpLin.haloRc": "Recompute: short-conv halo",
   "cpLin.haloBwd": "Gradient of the short-conv halo",
+  "op.csaQaMg": "wq_a + wkv down-projection (duplicated, SP local tokens)",
+  "op.csaQaTt": "wq_a + wkv down-projection (replicated)",
+  "op.csaCmp": "compressor (m = {m}, replicated)",
+  "op.csaIdx": "indexer scoring + top-k (m = {m})",
+  "op.csaIdxRe": "indexer rescoring within candidate blocks (m = {m})",
+  "op.acoreCsa": "sparse MQA (top-{k} compressed latents + {w} window, m = {m})",
+  "op.acoreCsaSwa": "window MQA ({w} tokens)",
+  "op.csaOa": "wo_a grouped GEMM ({g} groups, split by head)",
 });

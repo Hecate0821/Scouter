@@ -88,6 +88,7 @@ I18N.add("en", "shell", {
   "ctl.glob.etaAg": "all-gather / reduce-scatter reachable bandwidth fraction",
   "ctl.glob.deepepUs": "DeepEP fixed overhead per exchange <small>µs</small>",
   "ctl.glob.barrierUs": "Symmetric memory barrier <small>µs</small>",
+  "ctl.glob.etaTbo": "TBO: share of the other micro-batch's compute an a2a can hide behind",
   "hint": "Reference for η<sub>n</sub>=0.7: TRT-LLM reaches about 80% of peak for a2a on NVL72, and NCCL a2a reaches about 550/900 GB/s on 8-GPU NVSwitch.",
   "inert.noMoe": "This model has no MoE layers, so this does nothing",
   "inert.noEp": "EP = 1: no expert exchange or imbalance, so this does nothing",
@@ -118,4 +119,8 @@ I18N.add("en", "shell", {
   "inert.oneDomain": "All GPUs sit in one NVLink domain and training and inference stay off the NIC, so this does nothing",
   "inert.oneSegment": "All GPUs sit in one segment and never cross the spine, so this does nothing",
   "inert.notEcmp": "Only ECMP uses this",
+  "inert.noReplay": "Only CSA models (DeepSeek-V4.1) have bounded replay",
+  "inert.engineNoReplay": "This engine does not support bounded replay",
+  "inert.decodeNoReplay": "Bounded replay only affects prefill",
+  "inert.noEngram": "This model has no Engram",
 });

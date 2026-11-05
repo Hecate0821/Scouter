@@ -42,7 +42,7 @@ The top-bar switch (and `--basis` on the CLI) picks where a number comes from:
 | Cluster | The network fabric: bandwidth per GPU from HBM to the spine, NVSwitch and NVLS, in-node PCIe and GPUDirect, PCIe-only machines, rails, oversubscription and ECMP; then where training and inference time goes on a given fabric, bandwidth versus latency, NVLink domain size, and PD / weight-sync transfers. |
 | Appendix | Measured kernels vs. the rooflines, the efficiency table, public data points, and the modeling method. |
 
-**Models:** Qwen3.5-35B-A3B, Kimi K3, GLM-5.3-Flash, Muse Spark Open, Qwen3.8-27B (dense baseline). **GPUs:** H100, H200, B200, B300, GB200, GB300. **Topologies:** HGX 8-GPU node, NVL72 rack (64 GPUs).
+**Models:** Qwen3.5-35B-A3B, Kimi K3, GLM-5.3-Flash, Muse Spark Open, DeepSeek-V4.1-Flash, Qwen3.8-27B (dense baseline). **GPUs:** H100, H200, B200, B300, GB200, GB300. **Topologies:** HGX 8-GPU node, NVL72 rack (64 GPUs).
 
 The URL keeps the context, e.g. `?model=kimik3&hw=B200&src=ideal#infer/step`. UI text lives in `locales/` ([docs/i18n.md](docs/i18n.md)).
 
@@ -78,8 +78,8 @@ Scouter is built on what these open-source projects publish: their code, PRs, do
 | MoE parallelism | [DeepEP](https://github.com/deepseek-ai/DeepEP), [dist_moe](https://github.com/meta-pytorch/dist_moe), [mixture-of-kittens](https://github.com/cursor/mixture-of-kittens) |
 | KV cache | [Dynamo](https://github.com/ai-dynamo/dynamo), [LMCache](https://github.com/LMCache/LMCache), [Mooncake](https://github.com/kvcache-ai/Mooncake), [llm-d](https://github.com/llm-d/llm-d) |
 | Low precision, speculative decoding | [torchao](https://github.com/pytorch/ao), [SpecForge](https://github.com/sgl-project/SpecForge) |
-| Benchmarks and profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
-| Model layouts | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
+| Benchmarks and profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [vLLM recipes](https://github.com/vllm-project/recipes), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
+| Model layouts | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp), [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) |
 | Ideal lower bound | [k3-inference-calculator](#acknowledgements) |
 | Mechanism diagrams | [Attention Lab](https://divagr.com/attention-lab/) |
 | Networking | [NCCL](https://github.com/NVIDIA/nccl) (docs on NVLS, CollNet / SHARP and rail layouts), [zartbot/micro_arch](https://github.com/zartbot/micro_arch) (MIT; PCIe-only machine measurements from a report whose every page is marked as AI-generated without author review) |

@@ -379,4 +379,5 @@ I18N.add("en", "par", {
   "ep.fan.th.slot": "Remote rows per slot K(1−1/E)",
   "ep.fan.th.ratio": "expanded / compact rows",
   "ep.fan.th.disp": "Per dispatch per layer (slot / dedup / broadcast)",
+  "cp.tbl.csa": "{dh}-d latent (shared by K and V); the {src} kv-source layers add an index key of {idx}",
 });

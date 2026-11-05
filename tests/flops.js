@@ -10,6 +10,12 @@
 //   kimi_k3.py f_a_proj / f_b_proj), depthwise conv, o_proj; decode core
 //   8·Hv·dk·dv per token (the same count as BBuf/AI-Infra-Auto-Driven-SKILLS' model-compute-simulation, written independently).
 //   Prefill uses the chunked algorithm, whose FLOPs depend on the chunk size, so only its projections are compared.
+// - CSA (DeepSeek-V4.1), layer by layer from compress_ratios / kv-source / index-source lists: wq_a + wkv, wq_b, grouped
+//   wo_a (o_groups blocks of H·dh / o_groups → o_lora_rank) and wo_b; at kv-source layers the compressor (wkv, plus wgate
+//   when the ratio m > 1) and the index-K projection of each compressed latent; at index-source layers the indexer q and
+//   head weights, and once a query has more than top-k compressed positions, scores over them (layers after the candidate
+//   layer score only its kept blocks); core 4·H·dh per key over at most top-k compressed latents + the W-token window.
+//   The Engram lookup is its own group: wkv from (ngram − 1)·heads gathered rows of hd to D per hyper-connection + value.
 // - MoE: router D·E, k routed experts of 3·De·F, shared 3·D·Fs, latent down / up D·Dlat each; dense FFN 3·D·F; lm head D·V.
 // Elementwise work (norms, RoPE, gates, softmax, sampling) is left out on both sides. Tolerance 0.5% (the router's softmax
 // term and DSA's top-k + 3 window).
@@ -23,7 +29,7 @@ const E = load();
 const { MODELS, HW, TOPO, G0 } = E.Common;
 
 const GROUPS = {
-  attn: ["aproj", "aout", "acore", "aqa", "aqb", "agp", "auk", "auv", "aidxp", "aidx", "akvb"],
+  attn: ["aproj", "aout", "acore", "aqa", "aqb", "agp", "auk", "auv", "aidxp", "aidx", "akvb", "acmp", "aoa"], engram: ["engram"],
   lin: ["lproj", "lconv", "lcore", "lout"], linProj: ["lproj", "lout"],
   moe: ["router", "moe", "shared", "latd", "latu", "dense"], lm: ["lm"],
 };
@@ -34,10 +40,27 @@ const capped = (ctx, T, cap) => { let s = 0; for (let i = 0; i < T; i++) s += Ma
 
 function expected(m, ph, T, ctx){
   const D = m.D, f = m.full, l = m.lin, e = m.moe, dec = ph === "decode";
-  const out = { attn: 0, lin: 0, linProj: 0, moe: 0, lm: 0 };
+  const out = { attn: 0, lin: 0, linProj: 0, moe: 0, lm: 0, engram: 0 };
   // which layers are full / sliding-window / linear, and which MLPs are dense: count the same way the HF configs describe them
   const nSwa = f.swa || 0, nGlob = f.n - nSwa, nMoe = m.L - m.dense.n;
-  if (f.n > 0 && f.kind === "gqa") {
+  // a query at position ctx + i of the chunk (i < T) sees (ctx + i) / m compressed positions; averaged over the chunk
+  const avgOver = (m, cap) => { let s = 0; for (let i = 0; i < T; i++) s += Math.min(cap, (ctx + i + 0.5) / m); return s / T; };
+  if (f.n > 0 && f.kind === "csa") {
+    const H = f.H, dh = f.dh, keep = f.cand ? f.cand.blocks * f.cand.bs : Infinity;
+    for (let i = 0; i < f.n; i++) {
+      const m = f.cr[i] || 0;
+      let per = 2 * D * (f.qLora + dh) + 2 * f.qLora * H * dh + 2 * H * dh * f.oLora + 2 * f.oG * f.oLora * D, layer = 0;
+      if (f.kvSrc.includes(i)) { per += 2 * D * dh * (m > 1 ? 2 : 1); layer += 2 * (T / m) * dh * f.idxD; }
+      if (f.idxSrc.includes(i)) {
+        per += 2 * (f.qLora * f.idxH * f.idxD + D * f.idxH);
+        const furthest = (dec ? ctx : ctx + T) / m, rescore = f.cand && i > f.cand.src;
+        if (furthest > f.topk) per += 2 * (f.idxH * f.idxD + f.idxH) * (dec ? Math.min(ctx / m, rescore ? keep : Infinity) : avgOver(m, rescore ? keep : Infinity));
+      }
+      const kc = m > 0 ? (dec ? Math.min(f.topk, ctx / m) : avgOver(m, f.topk)) : 0, ks = dec ? Math.min(f.W, ctx) : avgOver(1, f.W);
+      per += 4 * H * dh * (kc + ks);
+      out.attn += T * per + layer;
+    }
+  } else if (f.n > 0 && f.kind === "gqa") {
     const gate = f.gate ? (f.gateHead ? f.Hq : f.Hq * f.dh) : 0;
     const proj = 2 * D * (f.Hq * f.dh + gate + 2 * f.Hkv * f.dh) + 2 * f.Hq * f.dh * D;
     const keys = cap => dec ? Math.min(ctx, cap) : capped(ctx, T, cap);
@@ -71,6 +94,7 @@ function expected(m, ph, T, ctx){
   const De = e.Dlat || D;
   out.moe = nMoe * T * (2 * D * e.E + 2 * e.k * 3 * De * e.F + 2 * 3 * D * e.Fs + (e.Dlat ? 4 * D * e.Dlat : 0)) + m.dense.n * T * 2 * 3 * D * m.dense.F;
   out.lm = (dec ? T : 1) * 2 * D * m.V;
+  if (m.engram) { const g = m.engram, cols = (g.ngram - 1) * g.heads; out.engram = g.layers.length * T * 2 * cols * g.hd * D * ((m.mhc || 1) + 1); }
   return out;
 }
 

@@ -2,7 +2,7 @@
    不另写公式：推理走 Infer.step 的参考画像（ENGINES.ref：各引擎都默认开的优化，单卡、不补齐 CUDA graph），
    训练走 Train.run（Megatron 默认、单卡、不重算）；再按算子的 group / key / mod 归到模块上，除以该算子覆盖的层数。 */
 const Arch = (function(){
-const { derive, layerPlan, dtB, peakKey, peakOf, ridge, TOPO } = Common;
+const { derive, layerPlan, dtB, peakKey, peakOf, ridge, TOPO, csaKv, csaLatB } = Common;
 
 const ORDER = ["full", "swa", "lin", "moe", "dense"];
 const isMlp = id => id==="moe" || id==="dense";
@@ -15,10 +15,11 @@ function present(m){
     kind: id==="full" ? m.full.kind : id==="swa" ? "swa" : id==="lin" ? m.lin.kind.toLowerCase() : id }));
 }
 
-/* 默认工作负载：精度跟着官方 checkpoint；chunk 大小按 SGLang / vLLM 的显存分档（< 160 GB 8192，否则 16384） */
+/* 默认工作负载：精度跟着官方 checkpoint（dDefault / kvDefault 是 checkpoint 自己给的非 expert 权重和 KV 精度，没有时按 expert 精度推）；
+   chunk 大小按 SGLang / vLLM 的显存分档（< 160 GB 8192，否则 16384） */
 function defaults(m){
   const e = m.wDefault || "bf16";
-  return { phase:"decode", B:64, n:8192, C:0, S:8192, wDt: e==="fp8" ? "fp8" : "bf16", eDt: e, kvDt:"bf16", stateDt:"fp32", prec:"bf16" };
+  return { phase:"decode", B:64, n:8192, C:0, S:8192, wDt: m.dDefault || (e==="fp8" ? "fp8" : "bf16"), eDt: e, kvDt: m.kvDefault || "bf16", stateDt:"fp32", prec:"bf16" };
 }
 const chunkOf = (wl, hw) => wl.C>0 ? wl.C : (hw.mem>=160 ? 16384 : 8192);
 
@@ -91,7 +92,15 @@ function measure(m, hw, g, wl){
 function facts(m, wl){
   const d=derive(m), f=m.full, l=m.lin, e=m.moe, kvb=dtB(wl.kvDt), sb=wl.stateDt==="bf16"?2:4, wb=dtB(wl.wDt), eb=dtB(wl.eDt);
   const out = {};
-  if(f.n>0){
+  if(f.n>0 && f.kind==="csa"){
+    // CSA：压缩 KV + index K 只在 kv source 层存，这里摊到每个压缩层（kvTok）；滑窗 latent 每层都有，每条序列最多 W 个（swaTok）。
+    // 权重：每层同形状的 q / 滑窗 KV / 输出投影（wo_a 是 f.oDt），indexer 和 compressor 摊到压缩层
+    const kv=csaKv(m, wl.kvDt), P=d.csa, nF=P.filter(x=>x.m>0).length, nS=f.n-nF;
+    const w = (d.pQKV+d.pO-d.pOa+d.pAttnRep)*wb + d.pOa*dtB(f.oDt), pBase = d.pQKV+d.pO+d.pAttnRep;
+    const wIdx = d.nIdx*(f.qLora*f.idxH*f.idxD*wb + m.D*f.idxH*2) + P.filter(x=>x.kv).reduce((s,x)=>s + m.D*f.dh*(x.m>1?2:1)*dtB(x.m>1?f.cmpDt:"bf16") + f.dh*f.idxD*2, 0);
+    if(nF) out.full = { kvTok:(kv.main+kv.index)/nF, swaTok:kv.swa, window:f.W, weights:w + wIdx/nF, params:pBase + d.pIdx*f.n/nF };
+    if(nS) out.swa = { kvTok:kv.swa, window:f.W, weights:w, params:pBase };
+  } else if(f.n>0){
     const idx = f.kind==="dsa" ? (f.idxD+4)/(f.kpool||1) : 0;          // DSA：fp8 index key + scale，按池存
     const kvTok = d.kvTokElems*kvb + idx;
     const w = (d.pQKV+d.pO+d.pAttnRep+(d.pIdx||0))*wb;
@@ -125,6 +134,18 @@ const rowsOf = (wl, hw) => wl.phase==="decode" ? wl.B : wl.phase==="prefill" ? c
 function explain(m, hw, g, wl, id, B){
   B = B ?? rowsOf(wl, hw);
   const f=m.full, l=m.lin, e=m.moe, n=Math.max(1,wl.n), kvb=dtB(wl.kvDt), x={ B, n };
+  if((id==="full" || id==="swa") && f.kind==="csa"){
+    /* CSA（每条序列、每层的平均）：attention 看 kc 个压缩 latent + ks 个滑窗 latent；index source 层打分的位置数 scored（自己的 n / m，
+       候选层之后最多 blocks·bs 个），读 scored 个 index K */
+    const kv=csaKv(m, wl.kvDt), P=derive(m).csa, ks=Math.min(n, f.W);
+    Object.assign(x, { kvTok: facts(m, wl)[id].kvTok, swaB:kv.swa, latB:kv.lat, idxTok:kv.idx, ks, W:f.W });
+    if(id==="swa") return Object.assign(x, { keys:ks, attB:ks*kv.swa, attF:4*f.H*f.dh*ks });
+    const full=P.filter(q=>q.m>0), idx=P.filter(q=>q.idx), cap=f.cand ? f.cand.blocks*f.cand.bs : Infinity;
+    const kc=full.reduce((s,q)=>s+Math.min(f.topk, n/q.m), 0)/full.length;
+    const sc=q => n/q.m<=f.topk ? 0 : q.useCand ? Math.min(n/q.m, cap) : n/q.m, scored=idx.reduce((s,q)=>s+sc(q), 0)/Math.max(1, idx.length);
+    return Object.assign(x, { kc, keys:kc+ks, nFull:full.length, nIdx:idx.length, nSrc:P.filter(q=>q.kv).length, scored, cap, keep:Math.min(1, f.topk/Math.max(1, n/2)),
+      attB:kc*kv.lat + ks*kv.swa, idxB:scored*kv.idx*idx.length/full.length, attF:4*f.H*f.dh*(kc+ks), idxF:2*f.idxH*f.idxD*scored*idx.length/full.length });
+  }
   if(id==="full" || id==="swa"){
     x.kvTok = facts(m, wl)[id].kvTok;
     if(id==="swa" || f.kind==="gqa") return Object.assign(x, { groups:f.Hq/f.Hkv, keys: id==="swa" ? Math.min(n,f.W) : n });

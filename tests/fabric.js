@@ -29,7 +29,7 @@ for (const mk of Object.keys(MODELS)) for (const [hk, tk] of PAIRS) for (const g
 const NETS = [{ scale: 8 }, { scale: 64, over: 8, route: "ecmp" }, { scale: 8, intra: "pcie" }, { scale: 16, nvls: true, sharp: true }, { scale: 4, gdr: false },
   { scale: 32, domain: 64 }, { scale: 16, nic: 200, pcie: 4 }, { scale: 8, nvlFrac: 0.5, ports: 16, over: 15 }];
 let nLb = 0;
-for (const mk of ["qwen35", "kimik3", "glm53f", "qwen38_27b"]) for (const [hk, tk] of [["H200", "hgx8"], ["GB300", "nvl64"]]) for (const net of NETS) {
+for (const mk of ["qwen35", "kimik3", "glm53f", "qwen38_27b", "dsv41f"]) for (const [hk, tk] of [["H200", "hgx8"], ["GB300", "nvl64"]]) for (const net of NETS) {
   const m = MODELS[mk], hw = HW[hk], topo = TOPO[tk], ct = trnOf(tk), ci = infOf(m, 32);
   const pairs = [["train", ct], ["decode", ci], ["prefill", ci]];
   for (const [k, c] of pairs) {

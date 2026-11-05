@@ -91,7 +91,7 @@
     <div id="ar-inf">
       <label class="ctl"><span data-i18n="arch.rack.wDt"></span><select data-bind="arch.wDt" data-i18n-attr="aria-label=arch.rack.wDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option></select></label>
       <label class="ctl"><span data-i18n="arch.rack.eDt"></span><select data-bind="arch.eDt" data-i18n-attr="aria-label=arch.rack.eDt"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
-      <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="arch.kvDt" data-i18n-attr="aria-label=common.ctl.kvCache"><option value="bf16">BF16</option><option value="fp8">FP8</option><option value="nvfp4">NVFP4</option></select></label>
+      <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="arch.kvDt" data-i18n-attr="aria-label=common.ctl.kvCache"><option value="bf16">BF16</option><option value="fp8">FP8</option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
       <label class="ctl"><span data-i18n="arch.rack.stateDt"></span><select data-bind="arch.stateDt" data-i18n-attr="aria-label=arch.rack.stateDt"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
     </div>
     <label class="ctl" id="ar-prec"><span data-i18n="arch.rack.prec"></span><select data-bind="arch.prec" data-i18n-attr="aria-label=arch.rack.prec"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.blockFp8"></option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
@@ -131,11 +131,12 @@
     <div data-phase="prefill">
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.P"></span><output data-out="inf.P"></output><input type="range" min="1024" max="262144" step="1024" data-bind="inf.P"></label>
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.C"></span><input type="number" min="256" step="256" data-bind="inf.C"></label>
+      <label class="check"><input type="checkbox" data-bind="inf.replay"><span data-i18n="infer.rack.ctl.inf.replay"></span></label>
     </div>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.wDt"></span><select data-bind="inf.wDt" data-i18n-attr="aria-label=infer.rack.attr.inf.wDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option><option value="mxfp4">MXFP4</option><option value="nvfp4">NVFP4</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.eAct"></span><select data-bind="inf.eAct" data-i18n-attr="aria-label=infer.rack.attr.inf.eAct.aria-label"><option value="" data-i18n="infer.rack.opt.inf.eAct.empty"></option><option value="bf16" data-i18n="infer.rack.opt.inf.eAct.bf16"></option><option value="mxfp8" data-i18n="infer.rack.opt.inf.eAct.mxfp8"></option><option value="same" data-i18n="infer.rack.opt.inf.eAct.same"></option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dDt"></span><select data-bind="inf.dDt" data-i18n-attr="aria-label=infer.rack.attr.inf.dDt.aria-label"><option value="bf16">BF16</option><option value="fp8" data-i18n="common.dt.fp8Block"></option><option value="mxfp8">MXFP8</option></select></label>
-    <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option><option value="nvfp4">NVFP4</option></select></label>
+    <label class="ctl"><span data-i18n="common.ctl.kvCache"></span><select data-bind="inf.kvDt" data-i18n-attr="aria-label=infer.rack.attr.inf.kvDt.aria-label"><option value="bf16">BF16</option><option value="fp8">FP8</option><option value="mxfp8">MXFP8</option><option value="nvfp4">NVFP4</option></select></label>
     <label class="ctl"><span data-i18n="infer.rack.ctl.inf.stateDt"></span><select data-bind="inf.stateDt" data-i18n-attr="aria-label=infer.rack.attr.inf.stateDt.aria-label"><option value="fp32">FP32</option><option value="bf16">BF16</option></select></label>
     <label class="check"><input type="checkbox" data-bind="inf.graph"><span data-i18n="infer.rack.ctl.inf.graph"></span></label>
     <label class="check"><input type="checkbox" data-bind="inf.tbo"><span data-i18n="infer.rack.ctl.inf.tbo"></span></label>
@@ -148,6 +149,7 @@
       <label class="check"><input type="checkbox" data-bind="inf.dispFp8"><span data-i18n="infer.rack.ctl.inf.dispFp8"></span></label>
       <label class="check"><input type="checkbox" data-bind="inf.prefixCache"><span data-i18n="infer.rack.ctl.inf.prefixCache"></span></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dcp"></span><input type="number" step="1" min="1" data-bind="inf.dcp"></label>
+      <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramAt"></span><select data-bind="inf.engramAt" data-i18n-attr="aria-label=infer.rack.attr.inf.engramAt.aria-label"><option value="gpu" data-i18n="infer.rack.opt.inf.engramAt.gpu"></option><option value="host" data-i18n="infer.rack.opt.inf.engramAt.host"></option></select></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.redundant"></span><input type="number" step="1" min="0" data-bind="inf.redundant"></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.imb"></span><input type="number" step="0.05" min="1" data-bind="inf.imb"></label>
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.memFrac"></span><input type="number" step="0.01" min="0.3" max="0.98" data-bind="inf.memFrac"></label>
@@ -307,6 +309,7 @@
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.gapUs"></span><input type="number" step="0.05" min="0" data-bind="glob.gapUs"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.dpSyncUs"></span><input type="number" step="10" min="0" data-bind="glob.dpSyncUs"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.a2aLLus"></span><input type="number" step="1" min="0" data-bind="glob.a2aLLus"></label>
+    <label class="ctl"><span data-i18n="shell.ctl.glob.etaTbo"></span><input type="number" step="0.05" min="0" max="1" data-bind="glob.etaTbo"></label>
     <label class="ctl"><span data-i18n="shell.ctl.glob.etaAg"></span><input type="number" step="0.02" min="0.1" max="1" data-bind="glob.etaAg"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.deepepUs"></span><input type="number" step="1" min="0" data-bind="glob.deepepUs"></label>
     <label class="ctl"><span data-i18n-html="shell.ctl.glob.barrierUs"></span><input type="number" step="1" min="0" data-bind="glob.barrierUs"></label>
@@ -672,6 +675,12 @@
     <div class="xvol" id="x-i-vol"></div>
     <div class="tbl"><table id="x-i-tbl"></table></div>
     <p class="lede" id="x-i-note"></p>
+  </div>
+  <div class="block" id="deploy-tbo"><h2 data-i18n="infer.deploy.tbo.h2"></h2>
+    <p class="lede" id="i-tbo-lede"></p>
+    <div class="fig" id="i-tbo-fig"><svg id="i-tbo" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=infer.deploy.tbo.aria"></svg></div>
+    <div class="legend" id="i-tbo-legend"></div>
+    <div class="hint" id="i-tbo-read"></div>
   </div>
   <div class="block" id="infer-tradeoff"><h2 data-i18n="infer.deploy.b3.h2"></h2>
     <p class="lede" data-i18n="infer.deploy.b3.lede"></p>

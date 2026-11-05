@@ -32,9 +32,12 @@ function cpLayer(meth, x){
   const o = { meth, wire:0, calls:0, tw:0, exposed:0, lk:lk(hw,topo,C,tp), ok:true, why:"", xs:[] };
   if(C<=1) return o;
   const l = o.lk, gqa = f.kind==="gqa";
-  const kvTok = (gqa ? d.kvTokElems/Math.min(tp, f.Hkv) : d.kvTokElems) + (f.kind==="dsa" ? f.idxD : 0);   // 每 token 的 K+V（或 latent + indexer key）元素
+  // 每 token 的 K+V（或 latent + indexer key）元素。CSA 只有 kv source 层产生压缩 latent + index K（每 m 个 token 一份），复用层不用再收：
+  // 摊到每个压缩层；滑窗层另算（kind = swa）
+  const csaTok = f.kind==="csa" ? d.csa.filter(x=>x.kv).reduce((s,x)=>s+(f.dh+f.idxD)/x.m, 0)/Math.max(1, d.csa.filter(x=>x.m>0).length) : 0;
+  const kvTok = f.kind==="csa" ? (kind==="swa" ? f.dh : csaTok) : (gqa ? d.kvTokElems/Math.min(tp, f.Hkv) : d.kvTokElems) + (f.kind==="dsa" ? f.idxD : 0);
   const Lb = 2*(S/C)*kvTok;                                     // 本卡一份 K + V 的字节
-  const kvK = gqa ? "gqa" : f.kind==="dsa" ? "dsa" : "mla", kv = Msg.of("engine_par.cp.kv."+kvK);
+  const kvK = gqa ? "gqa" : f.kind==="dsa" ? "dsa" : f.kind==="csa" ? "csa" : "mla", kv = Msg.of("engine_par.cp.kv."+kvK);
   const split = det => { o.wire = det.reduce((s,x)=>s+x.bytes,0); for(const x of det) x.t = o.wire>0 ? o.tw*x.bytes/o.wire : 0; o.xs = det; };   // 每次调用按字节分摊总时间
   if(kind==="swa" && meth!=="ulysses"){                         // 滑窗：只和邻居交换最后 W 个 token
     const w1 = 2*Math.min(f.W, S/C)*kvTok, det = [xc("fwd","P2P",Msg.of("engine_par.cp.swa.fwd", { W: f.W }),w1)];

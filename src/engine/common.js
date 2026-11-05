@@ -33,6 +33,21 @@ const MODELS = {
     moe:{ E:256, k:8, F:4096, Fs:0, sharedGate:false, Dlat:4096 }, dense:{ n:0, F:0 },
     wDefault:"nvfp4", official:Msg.of("engine_common.model.musespark.official"),
     note:Msg.of("engine_common.model.musespark.note") },
+  /* DeepSeek-V4.1-Flash（HF config.json 的 text_config；结构见 inference/model.py）。kind "csa"：每层一个 512 维 latent 同时当 K 和 V（MQA，
+     64 个 query 头），每层自己的滑窗 KV（W = 128）；压缩的 latent 只在 kv source 层产生（cr = compress_ratios 的前 40 项，2 是两个 token
+     压成一个），后面同 ratio 的层复用；index source 层自己打分选 top-k，第 20 层先挑 2048 个 8 位置的块，之后的 index 层只在块里重打分。
+     输出是分组的低秩投影：o_groups 组各 (H·dh / oG) → oLora（bf16），再 oG·oLora → D。Engram：两层 n-gram 哈希表（fp8，按行切），
+     每 token 每层查 (ngram − 1)·heads 行。DSpark：自带的 3 层草稿模型（滑窗 attention + 128 选 3 的 MoE），读目标第 37–39 层的特征 */
+  dsv41f: { name:"DeepSeek-V4.1-Flash", short:"DSV4.1-Flash", family:"deepseek", D:5120, L:40, V:129280, mtp:0,
+    full:{ n:40, kind:"csa", H:64, qLora:1280, dh:512, rope:64, oG:8, oLora:1024, oDt:"bf16", W:128, swaDt:"mxfp8",
+      cr:[0,0, 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2, 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], kvSrc:[2,8,14,20], idxSrc:[2,8,14,20,24,28,32,36],
+      topk:512, idxH:32, idxD:128, idxDt:"mxfp4", cand:{ src:20, blocks:2048, bs:8 }, cmpDt:"fp32" },
+    lin:{ n:0, kind:"GDN", Hk:0, Hv:0, dk:128, dv:128, conv:4 },
+    moe:{ E:384, k:6, F:2304, Fs:2304, sharedGate:false, Dlat:0 }, dense:{ n:0, F:0 },
+    mhc:4, engram:{ layers:[1,14], rows:[384006168,384016682], ngram:4, heads:8, hd:256 },
+    drafter:{ kind:"dspark", layers:3, feats:3, block:5, rank:256, moe:{ E:128, k:3, F:2304, Fs:2304 } },
+    wDefault:"mxfp4", dDefault:"fp8", kvDefault:"nvfp4", official:Msg.of("engine_common.model.dsv41f.official"),
+    note:Msg.of("engine_common.model.dsv41f.note") },
   qwen38_27b: { name:Msg.of("engine_common.model.qwen38_27b.name"), short:"Qwen3.8-27B", family:"qwen", D:5120, L:64, V:248320, mtp:1,
     full:{ n:16, kind:"gqa", Hq:24, Hkv:4, dh:256, gate:true },
     lin:{ n:48, kind:"GDN", Hk:16, Hv:48, dk:128, dv:128, conv:4 },
@@ -68,7 +83,7 @@ const linkRidge = (peak, gbs, g) => peak*g.etaC/(gbs*1e9*g.etaAg);             /
 const freeze = o => { for(const v of Object.values(o)) if(v && typeof v==="object") freeze(v); return Object.freeze(o); };
 /* gapUs：CUDA graph 里前一个 kernel 结束到下一个开始的间隔（vLLM PR 64846、flashinfer PR 8135 在 H200 上量到约 0.45 µs；推理配置 pdl = true 时去掉）。 */
 const G0 = freeze({ etaC:0.7, etaM:0.8, etaN:0.7, etaAg:0.78, alphaNv:8, alphaIb:20, kernelUs:2, launchUs:4, graphLaunchUs:15, gapUs:0.45, schedUs:0, dpSyncUs:100, a2aLLus:25, deepepUs:10, barrierUs:5,
-  kEff:1, lb:0 });
+  etaTbo:0.5, kEff:1, lb:0 });   // etaTbo：TBO 时一个 micro-batch 的 a2a 能藏在另一个计算后面的比例（每层两次 a2a 各对上一段计算，默认按一半）
 /* 理想下限：这个配置（模型、并行切法、批大小、引擎的 kernel 序列和重叠方式）不可能更快的时间。可达比例都是 1、固定开销和延迟都是 0，
    另外 lb = 1 换成下限的口径（计算核心里凡是 g.lb 的地方）：
    - 只算必要的量：不补齐 CUDA graph / FP4 hidden，routed expert 只读一定会碰到的最少 expert（TP 切时 top-k 个切片，按 expert 切时最忙的
@@ -121,11 +136,39 @@ const qoW = f => f.Hq*f.dh + (f.gate ? (f.gateHead ? f.Hq : f.Hq*f.dh) : 0);
 const capKeys = (ctx, C, K) => ctx>=K ? K : ctx+C<=K ? ctx+C/2 : ((K*K - ctx*ctx)/2 + (ctx+C-K)*K)/C;
 const swaKeys = (S, W) => capKeys(0, S, W);
 
+/* CSA（DeepSeek-V4.1）每层的角色，全部从 config 推出来：m = compress ratio（0 = 只有滑窗）；kv = kv source（自己压缩 KV，也存 index K）；
+   idx = index source（自己打分选 top-k，其余层复用前面最近的那份）；cand = 候选块的来源层；useCand = 只在候选块里重打分。
+   f.from 是这段模型从第几层开始（prefill 的 bounded replay 把模型切成前后两段，见 Infer.step） */
+const csaPlan = f => Array.from({ length:f.n }, (_, j) => { const i = (f.from||0)+j, idx = f.idxSrc.includes(i);
+  return { i, m:f.cr[i]||0, kv:f.kvSrc.includes(i), idx, cand:!!f.cand && i===f.cand.src, useCand:!!f.cand && idx && i>f.cand.src }; });
+/* CSA 一份 512 维 latent 的字节：fp8 按 V4 的布局（448 fp8 nope + 64 bf16 rope + 8 B scale，SGLang dsv4/kv_layout.py 的 V4），
+   Hopper 上 SGLang 只有这一种；nvfp4 是 V41_FP4（256 + 32 个 e4m3 scale），mxfp8 是 V41（512 + 16），其余按 DT */
+const csaLatB = (f, dt) => dt==="fp8" ? (f.dh-f.rope) + f.rope*2 + 8 : f.dh*dtB(dt);
+/* 每 token 的 KV（整个模型，单个 attention rank）：压缩 KV 和 index K 只在 kv source 层存，每 m 个 token 一份；滑窗 KV 每层都有，
+   每个请求最多 W 个 token。kvDt = nvfp4 时滑窗用 f.swaDt（SGLang 的 main = V41 fp8、extra = V41_FP4 这一对），其余两者同精度 */
+function csaKv(m, kvDt){
+  const f = m.full, P = csaPlan(Object.assign({}, f, { from:0, n:f.cr.length }));
+  const lat = csaLatB(f, kvDt), idx = f.idxD*dtB(f.idxDt), swa = csaLatB(f, kvDt==="nvfp4" ? f.swaDt : kvDt);
+  const src = P.filter(x => x.kv);
+  return { lat, idx, swa, main:src.reduce((s,x)=>s+lat/x.m, 0), index:src.reduce((s,x)=>s+idx/x.m, 0), swaTok:P.length*swa, W:f.W, src:src.length, layers:P.length };
+}
+
 /* 参数量：按层类型拆开，推理和训练都从这里取 */
 function derive(m){
   const D=m.D, f=m.full, l=m.lin, e=m.moe;
   const r = { nMoe: m.L-m.dense.n, De: e.Dlat||D };
-  if(f.n>0){
+  if(f.n>0 && f.kind==="csa"){
+    const P = csaPlan(f), Hd = f.H*f.dh;
+    r.pAttnRep = D*(f.qLora + f.dh);                                 // wq_a + wkv（滑窗 KV），各 TP rank 复制
+    r.pQKV = f.qLora*Hd;                                             // wq_b
+    r.pOa = Hd*f.oLora;                                              // wo_a：oG 组，每组 (H·dh / oG) → oLora
+    r.pO = r.pOa + f.oG*f.oLora*D;                                   // + wo_b
+    r.nIdx = P.filter(x=>x.idx).length; r.nSrc = P.filter(x=>x.kv).length;
+    r.pIdx1 = f.qLora*f.idxH*f.idxD + D*f.idxH;                      // indexer 的 q（wq_b）+ weights_proj
+    r.pCmp = P.filter(x=>x.kv).reduce((s,x)=>s + D*f.dh*(x.m>1?2:1) + f.dh*f.idxD, 0);   // compressor 的 wkv（m > 1 再加 wgate）+ index K 的 wk
+    r.pIdx = (r.nIdx*r.pIdx1 + r.pCmp)/f.n;                          // 摊到每层
+    r.kvTokElems = f.dh; r.Hattn=f.H; r.dqk=f.dh; r.dv=f.dh; r.csa = P;
+  } else if(f.n>0){
     if(f.kind==="gqa"){
       r.pQKV = D*(qoW(f) + 2*f.Hkv*f.dh); r.pO = f.Hq*f.dh*D; r.pAttnRep = 0;
       r.kvTokElems = 2*f.Hkv*f.dh; r.Hattn=f.Hq; r.dqk=f.dh; r.dv=f.dh;
@@ -156,8 +199,14 @@ function derive(m){
   r.pLat = e.Dlat ? 2*D*e.Dlat : 0;
   r.pDense = 3*D*m.dense.F;
   r.pEmb = m.V*D; r.pHead = m.V*D;
-  r.total = f.n*r.pAttn + l.n*r.pLin + r.nMoe*(r.pRouted+r.pShared+r.pRouter+r.pLat) + m.dense.n*r.pDense + r.pEmb + r.pHead;
-  r.active = f.n*r.pAttn + l.n*r.pLin + r.nMoe*(e.k*r.pExpert+r.pShared+r.pRouter+r.pLat) + m.dense.n*r.pDense + r.pHead;
+  // Engram：哈希表（每层一张，rows 行 × hd）和每层的 wkv（(ngram − 1)·heads·hd → D·(hc + 1)）+ 两个 hc×D 的门向量
+  const eg = m.engram, hc = m.mhc||1;
+  r.nEng = eg ? eg.layers.length : 0; r.engCols = eg ? (eg.ngram-1)*eg.heads : 0;
+  r.pEngTab = eg ? eg.rows.reduce((s,x)=>s+x, 0)*eg.hd : 0;
+  r.pEngW1 = eg ? r.engCols*eg.hd*D*(hc+1) + 2*hc*D : 0;
+  r.pEngW = r.nEng*r.pEngW1;
+  r.total = f.n*r.pAttn + l.n*r.pLin + r.nMoe*(r.pRouted+r.pShared+r.pRouter+r.pLat) + m.dense.n*r.pDense + r.pEmb + r.pHead + r.pEngTab + r.pEngW;
+  r.active = f.n*r.pAttn + l.n*r.pLin + r.nMoe*(e.k*r.pExpert+r.pShared+r.pRouter+r.pLat) + m.dense.n*r.pDense + r.pHead + r.pEngW;
   r.pExpertsAll = r.nMoe*r.pRouted;
   r.pDenseAll = r.total - r.pExpertsAll;
   return r;
@@ -166,6 +215,7 @@ function derive(m){
 /* 每层的类型：attn = full（全注意力）/ swa（滑窗）/ lin（线性注意力），mlp = moe / dense。
    全注意力层均匀插在线性层之间（第 every−1、2·every−1… 层，尾部不够时补齐）；滑窗层按 i % gEvery ≠ gOff 判断；前 dense.n 层是 dense FFN。 */
 function layerPlan(m){
+  if(m.full.kind==="csa") return csaPlan(m.full).map((x, j) => ({ attn: x.m>0 ? "full" : "swa", mlp: j>=m.dense.n ? "moe" : "dense" }));
   const f=m.full, every = m.lin.n>0 ? Math.round(m.L/Math.max(1,f.n)) : 1, sw=f.swa||0;
   let left=f.n; const out=[];
   for(let i=0;i<m.L;i++){
@@ -242,5 +292,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, qoW, capKeys, swaKeys, ecmpMax, spineX, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, csaPlan, csaLatB, csaKv, qoW, capKeys, swaKeys, ecmpMax, spineX, link, agT, arT, a2aT, roof };
 })();

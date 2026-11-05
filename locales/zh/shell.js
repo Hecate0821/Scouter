@@ -88,6 +88,7 @@ I18N.add("zh", "shell", {
   "ctl.glob.etaAg": "all-gather / reduce-scatter 可达带宽比例",
   "ctl.glob.deepepUs": "DeepEP 每次交换的固定开销 <small>µs</small>",
   "ctl.glob.barrierUs": "对称显存 barrier <small>µs</small>",
+  "ctl.glob.etaTbo": "TBO：a2a 能藏到另一个 micro-batch 计算后面的比例",
   "hint": "η<sub>n</sub>=0.7 参考：TRT-LLM 在 NVL72 上 a2a 达到峰值约 80%，8 卡 NVSwitch 上 NCCL a2a 约 550/900 GB/s。",
   "inert.noMoe": "这个模型没有 MoE 层，这项不起作用",
   "inert.noEp": "EP = 1，没有 expert 通信和组间不均，这项不起作用",
@@ -118,4 +119,8 @@ I18N.add("zh", "shell", {
   "inert.oneDomain": "所有卡都在一个 NVLink 域里，训练和推理不过网卡，这项不起作用",
   "inert.oneSegment": "所有卡都在一个 segment 里，不过 spine，这项不起作用",
   "inert.notEcmp": "只有 ECMP 用这项",
+  "inert.noReplay": "只有 CSA 模型（DeepSeek-V4.1）有 bounded replay",
+  "inert.engineNoReplay": "这个引擎不支持 bounded replay",
+  "inert.decodeNoReplay": "bounded replay 只影响 prefill",
+  "inert.noEngram": "这个模型没有 Engram",
 });

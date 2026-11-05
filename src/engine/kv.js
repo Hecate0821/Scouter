@@ -14,7 +14,8 @@
    - 全注意力 / MLA / DSA：每个 token 一份 KV（DSA 再加 indexer 的 key），前缀多长就存多长；
    - 滑窗层：下一轮只需要前缀最后 W 个 token，窗口外的页可以释放（SGLang UnifiedRadixCache 的 SWA 组件、vLLM SlidingWindowManager、
      TRT-LLM VSWA 的 per_request / per_conversation）；
-   - 线性注意力：没有逐 token 的 KV，只有固定大小的状态；要命中，就得在命中位置存过一份状态快照。 */
+   - 线性注意力：没有逐 token 的 KV，只有固定大小的状态；要命中，就得在命中位置存过一份状态快照；
+   - CSA（DeepSeek-V4.1）：压缩 KV + index K 只在 kv source 层存，随前缀变长；每层的滑窗 KV 只留最后 W 个 token（Infer.step 的 kvFull / kvSwa）。 */
 const KV = (function(){
 
 /* 各引擎的前缀缓存画像（现实建模用；理想下限按 1 个 token 的粒度、装回全部重叠）
@@ -39,9 +40,11 @@ const BASE = Common.freeze({ sys:8192, turnIn:2048, turnOut:512, turns:40, sessi
 /* 每张卡上：每个 token 的 KV、滑窗层每个 token、一份线性注意力状态快照（字节） */
 function perRank(m, hw, topo, c, g){
   const r = Infer.step(m, hw, topo, Object.assign({}, c, { phase:"decode", B:1, n:1024, specK:0 }), g);
-  const f = m.full, l = m.lin, nSwa = f.n>0 ? (f.swa||0) : 0;
-  return { r, full:f.n>0 ? (f.n-nSwa)*(r.kvTokRank+(r.idxTok||0)) : 0, swa:nSwa*r.kvTokRank, W:nSwa ? f.W : 0, snap:l.n>0 ? l.n*(r.Sl+r.Cl) : 0,
-    nFull:f.n-nSwa, nSwa, nLin:l.n, kvTokRank:r.kvTokRank };
+  const f = m.full, l = m.lin, nSwa = f.n>0 && f.kind==="gqa" ? (f.swa||0) : 0, lay = r.kvLayers || { full:f.n-nSwa, swa:nSwa };
+  // allFull：对照“每层都存自己的一份”。CSA 按每层都存不压缩的 latent + index K（不压缩、不复用）
+  const allFull = f.kind==="csa" ? m.L*(Common.csaLatB(f, c.kvDt) + f.idxD*Common.dtB(f.idxDt))/Math.max(1, c.dcp||1)
+    : (lay.full+lay.swa+l.n)*(lay.full ? r.kvFull/lay.full : r.kvTokRank);
+  return { r, full:r.kvFull, swa:r.kvSwa, W:r.kvW, snap:l.n>0 ? l.n*(r.Sl+r.Cl) : 0, nFull:lay.full, nSwa:lay.swa, nLin:l.n, kvTokRank:r.kvTokRank, allFull };
 }
 
 /* 一个请求在上下文 L 时缓存里的字节（每张卡）：全注意力按 L、滑窗按 min(L, W)、线性注意力一份快照 */
@@ -50,7 +53,7 @@ const bytesAt = (p, L) => p.full*L + p.swa*(p.W ? Math.min(L, p.W) : L) + p.snap
 /* prefill：从位置 p0 开始算 P 个新 token，按 chunk C 切（attention 看整个前缀）；返回总时间 */
 function prefillFrom(m, hw, topo, c, g, p0, P){
   let t = 0;
-  for(let x=0; x<P; x+=c.C){ const cc=Math.min(c.C, P-x); t += Infer.step(m, hw, topo, Object.assign({}, c, { phase:"prefill", C:cc, p:p0+x, reqPerChunk:1 }), g).stepT; }
+  for(let x=0; x<P; x+=c.C){ const cc=Math.min(c.C, P-x); t += Infer.step(m, hw, topo, Object.assign({}, c, { phase:"prefill", C:cc, p:p0+x, reqPerChunk:x+cc>=P ? 1 : 0 }), g).stepT; }
   return t;
 }
 
@@ -105,7 +108,7 @@ function plan(m, hw, topo, c, g){
   const fit = (C) => ws1>0 ? C/ws1*dp : Infinity;                      // 一个副本能留住多少个会话
   // 空间：每个请求的缓存字节随上下文；"全换成全注意力"的对照（同样的 KV 每 token，所有注意力类层都按 L 存）
   const Ls = [1024, 4096, 16384, 65536, 131072, 262144, 524288, 1048576];
-  const allFull = (p.nFull+p.nSwa+p.nLin)*(p.nFull ? p.full/p.nFull : p.kvTokRank);
+  const allFull = p.allFull;
   const space = Ls.map(L => ({ L, bytes:bytesAt(p, L), full:p.full*L, swa:p.swa*(p.W?Math.min(L,p.W):L), lin:p.snap, allFull:allFull*L,
     perGpu:mem.avail>0 ? Math.floor(mem.avail/bytesAt(p, L)) : 0 }));
   const dtypes = ["bf16","fp8","nvfp4"].map(dt => { const q = perRank(m, hw, topo, Object.assign({}, c, { kvDt:dt }), g);

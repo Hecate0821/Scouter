@@ -11,7 +11,7 @@ const load = require("./load");
   const VIEWS = ["overview", "train/quant", "train/calib", "infer/deploy", "infer/quant", "infer/spec", "infer/kv", "rl/mismatch", "rl/determinism", "rl/lowprec", "rl/qat", "appendix/data", "appendix/quant", "arch/overview", "arch/module", "arch/compare", "appendix/method"];
   const NEW = new Set(["h200cp8", "uly256", "mok64", "dm64"]);
   const t0 = Date.now();
-  for (const pass of [0, 1]) for (const m of ["qwen35", "qwen38_27b", "glm53f", "musespark", "kimik3"]) {
+  for (const pass of [0, 1]) for (const m of ["qwen35", "qwen38_27b", "glm53f", "musespark", "kimik3", "dsv41f"]) {
     setSel("#g-model", m);
     for (const fw of ["megatron", "torchtitan"]) {
       go("train/step"); setSel("[data-bind='trn.fw']", fw);

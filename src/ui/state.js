@@ -30,7 +30,7 @@ function fillSel(sel, obj, val, label){ sel.innerHTML=Object.keys(obj).map(k=>'<
 function fillOpts(sel, list, val){ sel.innerHTML=list.map(x=>'<option value="'+x[0]+'">'+esc(x[1])+'</option>').join(""); sel.value=val; }
 fillSel($("g-model"),MODELS,S.modelKey); fillSel($("g-hw"),HW,S.hw,h=>h.name+" · "+h.mem+" GB"); fillSel($("g-topo"),TOPO,S.topo);
 $("g-model").addEventListener("change",e=>{ S.modelKey=e.target.value; S.model=clone(MODELS[S.modelKey]);
-  const ad=Arch.defaults(S.model); S.arch.wDt=ad.wDt; S.arch.eDt=ad.eDt;      // 架构页的权重精度跟着新模型的官方 checkpoint
+  const ad=Arch.defaults(S.model); S.arch.wDt=ad.wDt; S.arch.eDt=ad.eDt; S.arch.kvDt=ad.kvDt;      // 架构页的权重 / KV 精度跟着新模型的官方默认
   setTopo(S.topo, prefHW(S.modelKey,S.topo)); applyAll(); qShape(); buildEditor(); syncInputs(); render(); });
 $("g-hw").addEventListener("change",e=>{ if(!hwOK(e.target.value,S.topo)){ setTopo(e.target.value.startsWith("GB")?"nvl64":"hgx8", e.target.value); } else S.hw=e.target.value;
   if(S.inf.engine==="titan" && S.infPreset!=="custom") applyInf(S.infPreset); syncInputs(); render(); });
@@ -70,13 +70,17 @@ document.addEventListener("change",e=>{ const el=e.target; if(el.dataset && el.d
 /* ---------- 模型编辑器 ---------- */
 function buildEditor(){
   const m=S.model, k=m.full.kind, fk=m.full;
-  if(k!=="gqa"){ for(const [a,b] of [["H",64],["qLora",1536],["kvLora",512],["nope",128],["rope",64],["vh",128]]) if(fk[a]==null) fk[a]=b; }
-  else { for(const [a,b] of [["Hq",32],["Hkv",4],["dh",128]]) if(fk[a]==null) fk[a]=b; }
+  if(k!=="gqa" && k!=="csa"){ for(const [a,b] of [["H",64],["qLora",1536],["kvLora",512],["nope",128],["rope",64],["vh",128]]) if(fk[a]==null) fk[a]=b; }
+  else if(k==="gqa"){ for(const [a,b] of [["Hq",32],["Hkv",4],["dh",128]]) if(fk[a]==null) fk[a]=b; }   // CSA 的字段都在 config 里，不补 GQA 的
   if(k==="dsa"){ for(const [a,b] of [["topk",2048],["idxH",32],["idxD",128],["kpool",4]]) if(fk[a]==null) fk[a]=b; }
   const L=k=>t("arch.editor."+k);
-  const F=[[L("basic")],["D",L("D")],["L",L("L")],["V",L("V")],
-    [L("full")],["full.n",L("n")],["full.kind",L("kind"),"selA"],
-    ...(k==="gqa"?[["full.Hq",L("Hq")],["full.Hkv",L("Hkv")],["full.dh","head_dim"]]
+  // CSA 的层数和每层角色来自 config 的 compress_ratios / kv_source_layer_ids / index_source_layer_ids，不在这里改层数
+  const csa=k==="csa";
+  const F=[[L("basic")],["D",L("D")],...(csa?[]:[["L",L("L")]]),["V",L("V")],
+    [L("full")],...(csa?[]:[["full.n",L("n")]]),["full.kind",L("kind"),"selA"],
+    ...(csa?[["full.H",L("H")],["full.qLora","q_lora_rank"],["full.dh","head_dim"],["full.rope","qk_rope_head_dim"],["full.oG","o_groups"],["full.oLora","o_lora_rank"],
+        ["full.W","sliding_window"],["full.topk","index_topk"],["full.idxH",L("idxH")],["full.idxD",L("idxD")]]
+       :k==="gqa"?[["full.Hq",L("Hq")],["full.Hkv",L("Hkv")],["full.dh","head_dim"]]
        :[["full.H",L("H")],["full.qLora","q_lora_rank"],["full.kvLora","kv_lora_rank"],["full.nope","qk_nope_dim"],["full.rope","qk_rope_dim"],["full.vh","v_head_dim"]]),
     ...(k==="dsa"?[["full.topk","DSA top-k"],["full.idxH",L("idxH")],["full.idxD",L("idxD")],["full.kpool",L("kpool")]]:[]),
     [L("lin")],["lin.n",L("n")],["lin.kind",L("kind"),"selL"],["lin.Hk",L("Hk")],["lin.Hv",L("Hv")],["lin.dk",L("dk")],["lin.dv",L("dv")],
@@ -85,7 +89,7 @@ function buildEditor(){
   let h="";
   for(const f of F){
     if(f.length===1){ h+='<h3>'+esc(f[0])+'</h3>'; continue; }
-    if(f[2]==="selA") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(L("dsaOpt"))+'</option></select></label>';
+    if(f[2]==="selA") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="gqa">GQA</option><option value="mla">MLA</option><option value="dsa">'+esc(L("dsaOpt"))+'</option>'+(fk.cr?'<option value="csa">CSA</option>':'')+'</select></label>';
     else if(f[2]==="selL") h+='<label class="ctl"><span>'+f[1]+'</span><select data-bind="model.'+f[0]+'"><option value="GDN">'+esc(t("arch.mod.lin.gdn"))+'</option><option value="KDA">KDA</option></select></label>';
     else h+='<label class="ctl"><span>'+esc(f[1])+'</span><input type="number" min="0" step="1" data-bind="model.'+f[0]+'"></label>';
   }

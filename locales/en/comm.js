@@ -187,7 +187,7 @@ I18N.add("en", "comm", {
   "tbl.perTokIn": "Per input token",
   "tbl.times": "{n} times",
   "tbl.none": "In this configuration an instance has only one GPU (or the GPUs are independent), so there is no intra-layer communication.",
-  "inf.noteTbo": "Two micro-batches alternate (TBO): one computes while the other communicates",
+  "inf.noteTbo": "Two micro-batches alternate (TBO): one computes while the other communicates; times in the chart add up both micro-batches",
   "inf.noteFused": "Fused into the MoE kernel",
   "inf.arAttn": "attention output{fused}",
   "inf.arMoe": "MoE output{fused}",
@@ -225,4 +225,6 @@ I18N.add("en", "comm", {
   "inf.note": "Each GPU sends {b} on the wire per step, wire time {wt} (step {step}). {tail}",
   "inf.noteDec": "Decode messages are small (tens of KB to a few MB), and the time is mostly the fixed per-call latency, so latency-saving approaches such as AR fusion, one-shot / two-shot and DeepEP low-latency matter more than saving bytes.",
   "inf.notePre": "A prefill chunk's messages are hundreds of times larger than decode's, so they become bandwidth-limited and wire time roughly tracks bytes.",
+  "attn.preCsa": "q / kv projection + compressor + indexer scoring",
+  "inf.qkvCsa": " (CSA: wq_a / wkv down-projection + wq_b)",
 });

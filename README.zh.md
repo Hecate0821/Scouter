@@ -42,7 +42,7 @@ cd tests && npm install && npm test
 | 集群 | 网络结构：每张卡从 HBM 到 spine 每一层的带宽，NVSwitch 和 NVLS，机内 PCIe 和 GPUDirect，只有 PCIe 的机器，rail、收敛比和 ECMP；以及在一套组网上训练和推理的时间花在哪、怕带宽还是怕延迟、NVLink 域多大合适、PD 分离和权重同步的传输。 |
 | 附录 | 实测 kernel 对照屋顶、效率表、公开数据点、建模方法。 |
 
-**模型：** Qwen3.5-35B-A3B、Kimi K3、GLM-5.3-Flash、Muse Spark Open、Qwen3.8-27B（dense 基线）。**GPU：** H100、H200、B200、B300、GB200、GB300。**拓扑：** HGX 单机 8 卡、NVL72 机柜（64 卡）。
+**模型：** Qwen3.5-35B-A3B、Kimi K3、GLM-5.3-Flash、Muse Spark Open、DeepSeek-V4.1-Flash、Qwen3.8-27B（dense 基线）。**GPU：** H100、H200、B200、B300、GB200、GB300。**拓扑：** HGX 单机 8 卡、NVL72 机柜（64 卡）。
 
 地址带着上下文，比如 `?model=kimik3&hw=B200&src=ideal#infer/step`。界面文字都在 `locales/`（[docs/i18n.md](docs/i18n.md)）。
 
@@ -78,8 +78,8 @@ Scouter 建立在这些开源项目公开的代码、PR、文档和基准之上�
 | MoE 并行 | [DeepEP](https://github.com/deepseek-ai/DeepEP), [dist_moe](https://github.com/meta-pytorch/dist_moe), [mixture-of-kittens](https://github.com/cursor/mixture-of-kittens) |
 | KV cache | [Dynamo](https://github.com/ai-dynamo/dynamo), [LMCache](https://github.com/LMCache/LMCache), [Mooncake](https://github.com/kvcache-ai/Mooncake), [llm-d](https://github.com/llm-d/llm-d) |
 | 低精度、投机解码 | [torchao](https://github.com/pytorch/ao), [SpecForge](https://github.com/sgl-project/SpecForge) |
-| 基准和 profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
-| 模型结构 | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) |
+| 基准和 profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [vLLM recipes](https://github.com/vllm-project/recipes), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
+| 模型结构 | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp), [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) |
 | 理想下限 | [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0) |
 | 机制示意图 | [Attention Lab](https://divagr.com/attention-lab/) |
 | 网络 | [NCCL](https://github.com/NVIDIA/nccl)（NVLS、CollNet / SHARP 和 rail 组网的文档），[zartbot/micro_arch](https://github.com/zartbot/micro_arch)（MIT；只有 PCIe 的机器的测量，整套报告每一页都注明由 AI 生成、未经作者审阅） |

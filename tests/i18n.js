@@ -161,7 +161,7 @@ for (const m of html.matchAll(/data-i18n(?:-html)?="([^"]+)"|data-i18n-attr="([^
 
     scan("shell", d.body);
     const views = Array.from(d.querySelectorAll("section[data-pane]")).map(s => s.dataset.pane);
-    for (const m of ["qwen35", "qwen38_27b", "glm53f", "musespark", "kimik3"]) {
+    for (const m of ["qwen35", "qwen38_27b", "glm53f", "musespark", "kimik3", "dsv41f"]) {
       setSel("#g-model", m);
       for (const v of views) go(v);
       for (const eng of ["sglang", "vllm", "tokenspeed", "titan"]) { setSel("[data-bind='inf.engine']", eng);
