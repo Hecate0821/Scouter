@@ -28,6 +28,8 @@ I18N.add("zh", "tradeoff", {
   "cfg.head.gpus": "卡 / 实例",
   "cfg.head.wt": "每卡权重",
   "cfg.head.cap": "并发上限 / rank",
+  "cfg.head.ttft": "空载 TTFT（{isl} 的 prompt）",
+  "cfg.xfer": "含 {t} 把 KV 搬到 decode",
   "cfg.head.src": "来源",
   "cfg.gpusPd": "{n} + {pd}（prefill）",
   "cfg.single": "单卡",

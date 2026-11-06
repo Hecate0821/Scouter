@@ -28,6 +28,8 @@ I18N.add("en", "tradeoff", {
   "cfg.head.gpus": "GPUs / instance",
   "cfg.head.wt": "Weights per GPU",
   "cfg.head.cap": "Max concurrency / rank",
+  "cfg.head.ttft": "Idle TTFT ({isl} prompt)",
+  "cfg.xfer": "incl. {t} KV transfer to decode",
   "cfg.head.src": "Source",
   "cfg.gpusPd": "{n} + {pd} (prefill)",
   "cfg.single": "Single GPU",

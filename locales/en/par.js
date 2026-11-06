@@ -245,6 +245,7 @@ I18N.add("en", "par", {
   "fsdp.pref.legAg": "FSDP all-gather",
   "fsdp.n.hgx": "8 × {hw}, one HGX: {deg}",
   "fsdp.n.nvl": "64 × {hw}, one NVL72: {deg}",
+  "fsdp.n.pcie": "8 × {hw}, one PCIe server: {deg}",
   "fsdp.n.deg": "{fs}-way dense FSDP (TP {tp} / CP {cp} / EP {ep})",
   "fsdp.n.xLab": "Tokens per GPU per micro-batch",
   "fsdp.n.yLab": "FSDP exposed time / micro-batch",

@@ -33,6 +33,7 @@ I18N.add("en", "train", {
   "rack.ctl.trn.tpOverlap.text": "TP communication overlap",
   "rack.ctl.trn.reshard": "reshard_after_forward (all-gather parameters again in backward)",
   "rack.ctl.trn.cpLB": "CP causal load balancing (head-tail paired sharding)",
+  "rack.ctl.trn.hsi": "Hierarchical Sparse Indexer (post-training; <small>pretraining scores the full context</small>)",
   "rack.hint_2": "How each dimension is split and how the bytes are computed: see <a href=\"#train/par\">post-training · parallelism</a>.",
   "rack.summary": "More",
   "rack.ctl.trn.imb": "expert load imbalance factor",

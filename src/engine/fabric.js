@@ -24,6 +24,7 @@ function resolve(hw, topo, net){
   x.nic = x.nic || hw.ib*8;
   x.pcie = x.pcie || (x.nic/8 > PCIE[5] ? 6 : 5);
   x.ports = x.ports || 32;
+  if(topo.pcieOnly) x.intra = "pcie";                   // 没有 NVLink 的卡（RTX PRO 6000）只能走 PCIe
   x.node = nodeOf(hw);
   x.domain = x.intra==="pcie" ? x.node : (x.domain || topo.domain);
   x.N = topo.gpus*x.scale;
@@ -45,6 +46,7 @@ function apply(hw, topo, net, g){
 function inert(hw, topo, net, g, inf){
   const x = resolve(hw, topo, net), o = {}, put = (why, ...ks) => { for(const k of ks) if(!o[k]) o[k] = why; };
   const span = Math.max(x.N, (inf&&inf.N)||1);
+  if(topo.pcieOnly) put("pcieCard", "intra");
   if(x.intra==="pcie") put("pcieNoNvl", "domain", "nvlFrac", "nvls");
   if(span<=x.domain) put("oneDomain", "ports", "over", "route", "qps", "sharp");   // 网卡和 GPUDirect 还管 PD 分离和权重同步的传输
   if(span<=x.segment) put("oneSegment", "over", "route", "qps");
@@ -193,5 +195,22 @@ function transfers(m, hw, topo, cInf, net, g){
     w, wOne:w/nic, wShard:w/(Ninf*nic), Ninf };
 }
 
-return { PCIE, DOMAINS, SCALES, DEF, ENUMS, KNOBS, LAT, MSGS, nodeOf, resolve, inert, groups, apply, train, decode, prefill, split, sens, domainSweep, tpPcie, coll, arSweep, ladder, pcieFit, scaleOut, overSweep, qpSweep, transfers };
+/* 公开实测的对照（集群页"模型对实测"一节）：一行实测写成 spec，这里按同一套 link / arT / a2aT 算模型的数，不另调参数。
+   spec：hw（HW 的 key）、op（ar = all-reduce、a2a = 每卡发 bytes 的 all-to-all、p2p = 两卡之间一次 RDMA 写）、bytes、n（卡数）、
+   domain（一个 NVLink 域 / 分区几张卡）、nic（每卡网卡 Gb/s，缺省按硬件表）、nvls / sharp（交换机里做归约）、
+   metric：busbw（nccl-tests 的 bus bandwidth，GB/s）、us（一次的时间）、gbps（点对点吞吐，Gb/s）。
+   跨机按每个 segment 无限大、不收敛（公开的数字都没写 spine 收敛比） */
+function bench(spec, g){
+  const hw = Object.assign({}, Common.HW[spec.hw], spec.nic ? { ib:spec.nic/8 } : {});
+  const n = spec.n, B = spec.bytes;
+  const topo = { gpus:n, domain:spec.domain, net:{ nvls:!!spec.nvls, sharp:!!spec.sharp } };
+  const lk = link(hw, topo, n, 1);
+  const t = spec.op==="ar" ? arT(B, n, lk, g)
+    : spec.op==="a2a" ? a2aT(B, n, lk, g)
+    : (lk.intra ? g.alphaNv : g.alphaIb)*1e-6 + B/(lk.p2p*g.etaN);
+  const v = spec.metric==="busbw" ? B/t*(spec.op==="ar" ? 2*(n-1)/n : (n-1)/n)/1e9 : spec.metric==="gbps" ? B*8/t/1e9 : t*1e6;
+  return { model:v, t, intra:lk.intra, linkGBs:(spec.op==="p2p" ? lk.p2p : spec.op==="a2a" ? lk.a2a : lk.bw)/1e9, ratio:spec.meas>0 ? v/spec.meas : null };
+}
+
+return { PCIE, DOMAINS, SCALES, DEF, ENUMS, KNOBS, LAT, MSGS, nodeOf, resolve, inert, groups, apply, train, decode, prefill, split, sens, domainSweep, tpPcie, coll, arSweep, ladder, pcieFit, scaleOut, overSweep, qpSweep, transfers, bench };
 })();

@@ -273,12 +273,12 @@ t("par.fsdp.f.states", { p: fN(r.Pshard), bytes: fB(r.mem.states) });
   gantt("p-f-pref",[{label:"",lanes:["sm",lane],segs}]);
   $("p-f-pref-lede").textContent=t("par.fsdp.pref.lede", { n: layers, full: fT(compFull), lin: m.lin.n ? t("par.fsdp.pref.ledeLin", { t: fT(linPer+ffn) }) : "", gather: fT(gT(Math.max(0,LP.findIndex(x=>x.attn!=="lin")))), link: fs.lkD.kind })+(fs.fs<=1?t("par.fsdp.pref.noGather"):"");
   legendInto("p-f-pref-legend",[{name:t("par.fsdp.pref.legFull"),col:CAT.attn},{name:t("par.fsdp.pref.legLin"),col:CAT.lin},{name:t("par.fsdp.pref.legAg"),col:CAT.fsdp}]);
-  /* 每卡 token：两种拓扑各跑一遍 Train.run（各用自己那一代的卡：HGX 用 B200 / B300 / H200，NVL72 用 GB200 / GB300） */
-  const PAIR={B200:"GB200",GB200:"B200",B300:"GB300",GB300:"B300",H200:"GB200",H100:"GB200"}, gb=/^GB/.test(S.hw), hH=gb?PAIR[S.hw]:S.hw, hN=gb?S.hw:PAIR[S.hw];
+  /* 每卡 token：两种拓扑各跑一遍 Train.run（各用自己那一代的卡：HGX 用 B200 / B300 / H200，NVL72 用 GB200 / GB300；PCIe 卡在自己的 8 卡服务器上，对照 GB200） */
+  const PAIR={B200:"GB200",GB200:"B200",B300:"GB300",GB300:"B300",H200:"GB200",H100:"GB200",RTXP6000:"GB200"}, gb=/^GB/.test(S.hw), hH=gb?PAIR[S.hw]:S.hw, hN=gb?S.hw:PAIR[S.hw];
   const runN=(tk,hk,n)=>{ const c2=fitPar(Object.assign(parBase(),{tok:n,S:Math.max(n*S.trn.cp,1024)}),TOPO[tk].gpus); return { c2, r2:Train.run(m,HW[hk],TOPO[tk],Object.assign({N:TOPO[tk].gpus},c2),g) }; };
   const deg=(tk,hk)=>{ const {c2,r2}=runN(tk,hk,r.Tc), f=r2.par.fsdp; return { fs:f?f.fs:1, fe:f?f.fe:1, tp:c2.tp, cp:c2.cp, ep:c2.ep }; };   // 这套配置放到这个拓扑上实际的 FSDP 路数（TP / CP / EP 可能被缩小）
-  const dH=deg("hgx8",hH), dN=deg("nvl64",hN), dTxt=d=>t("par.fsdp.n.deg", { fs: d.fs, tp: d.tp, cp: d.cp, ep: d.ep });
-  const scen=[["hgx8",hH,t("par.fsdp.n.hgx", { hw: HW[hH].name, deg: dTxt(dH) }),"s1","8 × "+HW[hH].name],["nvl64",hN,t("par.fsdp.n.nvl", { hw: HW[hN].name, deg: dTxt(dN) }),"s2","64 × "+HW[hN].name]];
+  const tH=Common.homeTopo(hH), dH=deg(tH,hH), dN=deg("nvl64",hN), dTxt=d=>t("par.fsdp.n.deg", { fs: d.fs, tp: d.tp, cp: d.cp, ep: d.ep });
+  const scen=[[tH,hH,t(tH==="pcie8"?"par.fsdp.n.pcie":"par.fsdp.n.hgx", { hw: HW[hH].name, deg: dTxt(dH) }),"s1","8 × "+HW[hH].name],["nvl64",hN,t("par.fsdp.n.nvl", { hw: HW[hN].name, deg: dTxt(dN) }),"s2","64 × "+HW[hN].name]];
   const ns=[512,1024,2048,4096,8192,16384,32768,65536,131072];
   const ser=scen.map(([tk,hk,name,col,short])=>({name,short,col,pts:ns.map(n=>{ const {r2}=runN(tk,hk,n);
     return [n, runOK(r2) ? r2.fsdpExposedMB/r2.tMB : null, {hollow:!runFit(r2)}]; })}));

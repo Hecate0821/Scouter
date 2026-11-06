@@ -39,6 +39,8 @@ PUBLIC = {
    conditions="各家公布的数字，模型、负载和测法各不相同，只看量级和方向。"),
  "cluster_public": dict(file="cluster.json", stage="cluster", title="集群网络：公开的规格、文档、论文和测量",
    conditions="规格来自 NVIDIA 产品页和文档；论文是公布方自己的集群和负载；kind = measured 的行是第三方测量，看 caveat。"),
+ "profile_public": dict(file="profile.json", stage="profile", title="线上 profile：工具、开销和公开的拆解",
+   conditions="开销是 susun 博客在 GB300 上测的（硬件、驱动和负载各不相同时只看量级）；工具的限制摘自 NVIDIA 文档。"),
  "releases": dict(file="releases.json", stage="meta", title="过去一年的发布与博客",
    conditions="LMSYS 博客，SGLang / vLLM / slime / Miles / AReaL 的 GitHub release；只摘和推理、训练、低精度、投机解码、RL 相关的要点。"),
 }

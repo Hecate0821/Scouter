@@ -15,6 +15,7 @@ I18N.add("zh", "engine_common", {
   "hw.B300": "B300（HGX）",
   "topo.hgx8": "8 卡：单台 HGX（NVLink 域 8）",
   "topo.nvl64": "64 卡：同一 NVL72 机柜（NVLink 域 72）",
+  "topo.pcie8": "8 卡：一台只有 PCIe 的服务器（没有 NVLink；RTX PRO 6000）",
   "model.dsv41f.official": "552B 骨干 / 每个 prompt token 激活 8B、每个输出 token 16B（另有 Engram 表）",
   "model.dsv41f.note": "40 层全是 CSA：MQA，64 个 q 头共用一个 512 维 latent 当 K 和 V；每层都写 128 token 的滑窗 KV。压缩 KV 只在第 2、8、14、20 层（kv source）写，第 2–19 层每 2 个 token 压成一个（m = 2），第 20–39 层不压（m = 1），第 0、1 层只有滑窗；其余层读最近一个 source 的压缩 latent。indexer 在 8 个 index source 层上打分选 top-512，第 20 层挑出 2048 个 8-token 块，之后的 index 层只在这些块里重打分。输出走 8 组 wo_a（4096 → 1024，BF16）再 wo_b。每层 MoE：384 选 6 + 1 个 shared。第 1、14 层有 Engram（n-gram 哈希查表，约 197B 参数，FP8），4 路 mHC，自带 3 层 DSpark drafter（block 5）。checkpoint：expert MXFP4；dense FP8（32×32 block、ue8m0 scale，按 FP8 block 算）。KV 默认 NVFP4 压缩 latent + MXFP8 滑窗 + MXFP4 index key（SGLang 在 Blackwell 上的默认）。prefill 默认 bounded replay（第 20 层之后只算每个请求最后 W 个 token），和完整 prefill 数值上不等价。训练时 Engram 表按稀疏行更新、放在主机内存，不计入 dense 参数、梯度、优化器和梯度同步（技术报告的做法，这里是假设）。",
 });

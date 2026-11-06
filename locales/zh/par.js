@@ -245,6 +245,7 @@ I18N.add("zh", "par", {
   "fsdp.pref.legAg": "FSDP all-gather",
   "fsdp.n.hgx": "8 × {hw}，一台 HGX：{deg}",
   "fsdp.n.nvl": "64 × {hw}，一个 NVL72：{deg}",
+  "fsdp.n.pcie": "8 × {hw}，一台 PCIe 服务器：{deg}",
   "fsdp.n.deg": "dense FSDP {fs} 路（TP {tp} / CP {cp} / EP {ep}）",
   "fsdp.n.xLab": "每卡每 micro-batch token",
   "fsdp.n.yLab": "FSDP 露出 / micro-batch 时间",

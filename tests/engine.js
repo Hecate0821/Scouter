@@ -163,11 +163,73 @@ for (const hk of Object.keys(HW)) {
   const gpu = dec({}), host = dec({ engramAt: "host" });
   const tab = d.pEngTab * Common.dtB("mxfp8") / 4;
   if (!near(gpu.mem.weights - host.mem.weights, tab, 0.01)) bad("dsv41f", `host Engram should free ${tab / 1e9} GB per GPU, freed ${(gpu.mem.weights - host.mem.weights) / 1e9}`);
-  if (!host.comm.some(x => x.key === "enghost") || host.comm.some(x => x.key === "engar")) bad("dsv41f", "host Engram should read rows from host memory, not all-reduce them");
+  // SGLang --engram-config (docs/advanced_features/engram.mdx): host + replication none keeps a shard per rank, so the
+  // rows still meet in a collective; per_node maps a whole table per node and needs none; GPU tables inside one NVLink
+  // domain default to peer_read
+  const ck = r => r.comm.map(x => x.key);
+  if (!ck(host).includes("enghost") || !ck(host).includes("engar")) bad("dsv41f", "host Engram (replication none) should read this rank's shard from host and all-reduce");
+  const pn = dec({ engramAt: "host", engramRepl: "per_node" });
+  if (!ck(pn).includes("enghost") || ck(pn).some(k => ["engar", "engrs", "enga2a", "engpeer"].includes(k))) bad("dsv41f", "per_node host Engram needs no collective");
+  if (!ck(gpu).includes("engpeer") || ck(gpu).includes("engar")) bad("dsv41f", "GPU Engram on one NVLink domain should default to peer_read");
+  if (!ck(dec({ engramLookup: "all_reduce" })).includes("engar")) bad("dsv41f", "an explicit all_reduce lookup should be kept");
+  const dpH = dec({ N: 8, dpA: 8, moePar: "deepep", engramAt: "host" });
+  if (!ck(dpH).includes("enga2a")) bad("dsv41f", "host Engram under DP 8 should look up by all_to_all (24 columns divide over 8)");
+  if (!wk(dec({ engramLookup: "all_to_all" })).includes("engine_infer.warn.engDp")) bad("dsv41f", "all_to_all without DP attention should be flagged");
+  if (!wk(dec({ N: 16, engramAt: "host", engramRepl: "per_node" })).includes("engine_infer.warn.engNode")) bad("dsv41f", "per_node across nodes should be flagged");
+  // staging hides the host read of a prefill batch behind the previous forward (non-Grace only)
+  const pfs = c => Infer.step(m, HW.B200, TOPO.hgx8, Object.assign({}, base, { phase: "prefill", C: 8192, p: 0, engramAt: "host", engramRepl: "per_node" }, c), G);
+  const st0 = pfs({}), st1 = pfs({ engramStage: true });
+  if (!(st1.stepT < st0.stepT) || !st1.comm.some(x => x.overlap === "stage")) bad("dsv41f", "Engram staging should hide the prefill host read");
+  if (pfs({ engramStage: true }).exposedStage > 0) bad("dsv41f", "an 8K prefill's Engram rows should fit behind one forward");
+  // MXFP4 tables halve the HBM they take
+  const m4 = dec({ engramDt: "mxfp4" });
+  if (!(m4.mem.weights < gpu.mem.weights)) bad("dsv41f", "MXFP4 Engram tables should take less HBM");
+  // CSA KV waterfall: the model card puts 890 B/token at roughly 1/4 of DeepSeek-V4-Flash
+  const steps = E.KV.csaSteps(m, 1), r4 = steps[3].tok / steps[0].tok;
+  if (Math.round(steps[3].tok) !== 890 || !(r4 > 0.2 && r4 < 0.3)) bad("dsv41f", `CSA waterfall ${steps.map(x => Math.round(x.tok)).join(" → ")}, 890 should be about 1/4 of V4-Flash`);
+  // HSI is introduced in post-training (tech report 2.3.2): at 64K a pretraining step scores the full context in the reindex layers
+  const { Train } = E;
+  const tr = hsi => Train.run(m, HW.B200, TOPO.nvl64, Object.assign({}, Train.BASE, { N: 64, ep: 64, cp: 8, S: 65536, tok: 65536, hsi }), G);
+  const idxFl = r => r.ops.filter(o => o.key === "aidx").reduce((s, o) => s + o.fwd.fl, 0);
+  const tPre = tr(false), tPost = tr(true);
+  if (!(idxFl(tPre) > 1.5 * idxFl(tPost))) bad("dsv41f", `pretraining (no HSI) at 64K should score far more positions: ${idxFl(tPre)} vs ${idxFl(tPost)}`);
   // DSpark is the model's own drafter: its weights count once, on top of the target's
   const sp = dec({ specK: 5, specMethod: "dspark", accept: 2 });
   if (!(sp.mem.weights > gpu.mem.weights)) bad("dsv41f", "the DSpark drafter's weights should be counted");
   if (!(sp.tpot < gpu.tpot)) bad("dsv41f", "DSpark with 2 accepted tokens per step should lower TPOT at B 64");
+}
+
+// --- Profile: the categories add up to the step (plus the DP wait), DP wait only with DP attention, EPLB only with an EP group ---
+{
+  const { Profile } = E, G = Object.assign({}, G0), d = MODELS.dsv41f;
+  const c = o => Object.assign({}, Infer.BASE, { engine: "sglang", N: 8, dpA: 8, moePar: "deepep", B: 64, n: 8192, C: 8192, P: 8192 }, o);
+  for (const phase of ["decode", "prefill"]) {
+    const sp = Profile.split(d, HW.GB300, TOPO.nvl64, c({ phase, imb: 1.3 }), G, { dpSkew: 1.2 });
+    const sum = sp.cats.reduce((s, x) => s + x.t, 0), ks = sp.kern.compute.t + sp.kern.comm.t + sp.kern.idle.t;
+    if (Math.abs(sum - sp.total) > 1e-9 * sp.total || Math.abs(ks - sp.total) > 1e-9 * sp.total) bad("profile", `${phase}: categories ${sum} / kern ${ks} should add up to ${sp.total}`);
+    if (!(sp.dpLoss > 0 && sp.eplbLoss > 0)) bad("profile", `${phase}: DP 8 with dpSkew 1.2 and imb 1.3 should lose time to both DPLB and EPLB`);
+    if (!(Profile.observer(sp, 0.6).t < Profile.observer(sp, 0.8).t)) bad("profile", "a cheaper observer should cost less");
+  }
+  const one = Profile.split(d, HW.GB300, TOPO.nvl64, c({ phase: "decode", N: 1, dpA: 1, moePar: "tp" }), G, { dpSkew: 1.5 });
+  if (one.dpLoss !== 0 || one.eplbLoss !== 0 || one.total !== one.stepT) bad("profile", "one GPU has no DP wait and no EP imbalance");
+  if (!Profile.inert(d, c({ dpA: 1 })).dpSkew || Profile.inert(d, c({})).dpSkew) bad("profile", "dpSkew is inert exactly when DP = 1");
+}
+
+// --- RTX PRO 6000 (SM120, PCIe only): its home is the PCIe 8-GPU box, TP > 2 falls back to an unfused NCCL ring,
+//     and the SM100-only kernels (V4.1 FP4 KV layout, Dist-MoE) are off ---
+{
+  const { Common } = E, hw = HW.RTXP6000, topo = TOPO.pcie8, G = Object.assign({}, G0);
+  if (Common.homeTopo("RTXP6000") !== "pcie8" || Common.homeTopo("GB300") !== "nvl64" || Common.homeTopo("H200") !== "hgx8") bad("rtxp6000", "homeTopo should map GB → nvl64, PCIe cards → pcie8, the rest → hgx8");
+  if (Common.sm10x(hw) || !Common.sm10x(HW.B300) || Common.sm10x(HW.H200)) bad("rtxp6000", "sm10x should be true only for SM100 / SM103");
+  const q = MODELS.qwen38_27b, base = Object.assign({}, Infer.BASE, { engine: "vllm", phase: "decode", N: 8, dpA: 1, moePar: "tp", B: 32, n: 8192 });
+  const onPcie = Infer.decode(q, hw, topo, base, G), onHgx = Infer.decode(q, hw, TOPO.hgx8, base, G);
+  const arOf = r => r.comm.filter(x => x.key === "ar").reduce((s, x) => s + x.t, 0);
+  if (!(arOf(onPcie) > arOf(onHgx))) bad("rtxp6000", "TP8 on a PCIe-only box should use the slower NCCL ring for the layer all-reduce");
+  if (onPcie.comm.some(x => x.key === "ar" && x.name.key === "engine_infer.comm.arFused")) bad("rtxp6000", "AR + norm fusion should be off on a PCIe-only box with TP > 2");
+  const d = MODELS.dsv41f, dc = Object.assign({}, Infer.BASE, { engine: "sglang", phase: "decode", N: 8, dpA: 1, moePar: "replicated", B: 16, n: 8192, kvDt: "nvfp4" });
+  const wk = r => r.warn.map(w => w.key || "");
+  if (!wk(Infer.step(d, hw, topo, dc, G)).includes("engine_infer.warn.csaKvHopper")) bad("rtxp6000", "SM120 has no V4.1 NVFP4 KV layout kernel and should warn");
+  if (wk(Infer.step(d, HW.B200, TOPO.hgx8, dc, G)).includes("engine_infer.warn.csaKvHopper")) bad("rtxp6000", "B200 has the V4.1 NVFP4 KV layout kernel");
 }
 
 // --- calibration: each set's prediction for every measured point it claims to reproduce ---

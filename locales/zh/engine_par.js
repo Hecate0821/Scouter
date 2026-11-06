@@ -62,7 +62,7 @@ I18N.add("zh", "engine_par", {
   "ep.dist.bWire": "对端 load / store",
   "ep.dist.bSum": "barrier + 归约",
   "ep.dist.whyDomain": "Dist-MoE 用 symmetric memory 的指针 load / store，EP 组只能在一个 NVLink 域内",
-  "ep.dist.whySm": "Dist-MoE 的融合 kernel 只支持 SM100+",
+  "ep.dist.whySm": "Dist-MoE 的融合 kernel 只支持 SM100 / SM103（B200、B300、GB200、GB300）",
   "ep.mok.fGemm": "MoK megakernel：计算 SM 跑 grouped GEMM + SwiGLU",
   "ep.mok.fWire": "通信 SM：pull dispatch / push combine",
   "ep.mok.bGemm": "MoK 反向：reverse-combine → dgrad → reverse-dispatch，wgrad 最后整轴累加",

@@ -1,9 +1,9 @@
 /* ---------- 状态 ---------- */
 const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"GB300", topo:"nvl64", glob:clone(GLOB),
-  inf:clone(BASE_INF), trn:clone(BASE_TRN), kv:clone(KV.BASE), net:clone(Fabric.DEF),
+  inf:clone(BASE_INF), trn:clone(BASE_TRN), kv:clone(KV.BASE), net:clone(Fabric.DEF), prof:clone(Profile.DEF),
   infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"", anchor:"",
   arch:Object.assign({ mod:"full" }, Arch.defaults(MODELS.qwen35)),
-  q:{ scheme:"nvfp4", fuse:"fused", shape:"up", N:1024, K:2048, M:64, T:512, ep:8, align:"auto", recipe:"mxfp8", Mt:8192, nMicro:4, tokFused:false, roll:0.7, deqRate:40, BM:128 } };
+  q:{ scheme:"nvfp4", fuse:"fused", shape:"up", N:1024, K:2048, M:64, T:512, ep:8, align:"auto", recipe:"mxfp8", Mt:8192, nMicro:4, tokFused:false, roll:0.7, deqRate:40, BM:128, flip:0.1 } };
 function getP(path){ return path.split(".").reduce((o,k)=>o==null?o:o[k], S); }
 function setP(path,v){ const ks=path.split("."); let o=S; for(let i=0;i<ks.length-1;i++) o=o[ks[i]]; o[ks[ks.length-1]]=v; }
 
@@ -32,12 +32,13 @@ fillSel($("g-model"),MODELS,S.modelKey); fillSel($("g-hw"),HW,S.hw,h=>h.name+" �
 $("g-model").addEventListener("change",e=>{ S.modelKey=e.target.value; S.model=clone(MODELS[S.modelKey]);
   const ad=Arch.defaults(S.model); S.arch.wDt=ad.wDt; S.arch.eDt=ad.eDt; S.arch.kvDt=ad.kvDt;      // 架构页的权重 / KV 精度跟着新模型的官方默认
   setTopo(S.topo, prefHW(S.modelKey,S.topo)); applyAll(); qShape(); buildEditor(); syncInputs(); render(); });
-$("g-hw").addEventListener("change",e=>{ if(!hwOK(e.target.value,S.topo)){ setTopo(e.target.value.startsWith("GB")?"nvl64":"hgx8", e.target.value); } else S.hw=e.target.value;
-  if(S.inf.engine==="titan" && S.infPreset!=="custom") applyInf(S.infPreset); syncInputs(); render(); });
-$("g-topo").addEventListener("change",e=>{ setTopo(e.target.value);
+/* 拓扑变了（换拓扑，或者换的卡只能放在另一种拓扑里）：推理和训练的预设按新拓扑重新套 */
+function presetsForTopo(){
   applyInf(S.infPreset==="custom"?"rec":S.infPreset);
-  const tp=trnPresets(S.trn.fw,S.modelKey,S.topo), cur=tp.find(x=>x.id===S.trnPreset&&x.cfg); applyTrn(cur&&needOK(cur)?cur.id:firstOK(tp),false);
-  syncInputs(); render(); });
+  const tp=trnPresets(S.trn.fw,S.modelKey,S.topo), cur=tp.find(x=>x.id===S.trnPreset&&x.cfg); applyTrn(cur&&needOK(cur)?cur.id:firstOK(tp),false); }
+$("g-hw").addEventListener("change",e=>{ const t0=S.topo; if(!hwOK(e.target.value,S.topo)){ setTopo(Common.homeTopo(e.target.value), e.target.value); } else S.hw=e.target.value;
+  if(S.topo!==t0) presetsForTopo(); else if(S.inf.engine==="titan" && S.infPreset!=="custom") applyInf(S.infPreset); syncInputs(); render(); });
+$("g-topo").addEventListener("change",e=>{ setTopo(e.target.value); presetsForTopo(); syncInputs(); render(); });
 $("i-preset").addEventListener("change",e=>{ applyInf(e.target.value); syncInputs(); render(); });
 $("t-preset").addEventListener("change",e=>{ applyTrn(e.target.value); syncInputs(); render(); });
 $("model-reset").addEventListener("click",()=>{ S.model=clone(MODELS[S.modelKey]); buildEditor(); render(); });

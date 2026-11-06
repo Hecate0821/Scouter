@@ -12,9 +12,9 @@ function compatMoe(eng, mp){ const ok=MOEPAR[eng].map(x=>x[0]); if(ok.includes(m
   if(mp==="replicated"||mp==="ag"||mp==="standard") return Infer.ENGINES[eng].defaultMoe;
   if(mp==="deepep") return eng==="titan"?"standard":"deepep"; return ok[0]; }
 
-const blackwell = () => HW[S.hw].sm>=100;
-const hwOK = (h,t) => /^nvl/.test(t) ? /^GB/.test(h) : !/^GB/.test(h);
-const prefHW = (mk,t) => /^nvl/.test(t) ? (mk==="kimik3"||mk==="musespark"||mk==="dsv41f"?"GB300":"GB200") : (mk==="kimik3"?"B300":mk==="glm53f"||mk==="musespark"||mk==="dsv41f"?"B200":"H200");
+const blackwell = () => Common.sm10x(HW[S.hw]);   // 预设里的 Blackwell 分支用的是 SM100 的 kernel（FP4 KV、Dist-MoE、trtllm-gen），SM120 走另一支
+const hwOK = (h,t) => Common.homeTopo(h)===t;
+const prefHW = (mk,t) => t==="pcie8" ? "RTXP6000" : /^nvl/.test(t) ? (mk==="kimik3"||mk==="musespark"||mk==="dsv41f"?"GB300":"GB200") : (mk==="kimik3"?"B300":mk==="glm53f"||mk==="musespark"||mk==="dsv41f"?"B200":"H200");
 
 /* ---------- 推理预设：引擎 × 模型 × 拓扑 ---------- */
 function infPresets(eng, mk, topoKey){

@@ -1,4 +1,4 @@
-/* ================= 集群：网络结构（cluster/fabric）和对训练、推理的影响（cluster/impact） =================
+/* ================= 其他 · 网络（other/network）：网络结构、对训练和推理的影响、模型对公开实测 =================
    数都来自 Fabric（src/engine/fabric.js），它把这里的配置折算成 hw / topo 再交给训练和推理的同一套模型；这里只画 */
 const CL = {
   sel: { scale:Fabric.SCALES, domain:Fabric.ENUMS.domain, nvlFrac:Fabric.ENUMS.nvlFrac, pcie:Fabric.ENUMS.pcie, nic:Fabric.ENUMS.nic, ports:Fabric.ENUMS.ports, over:Fabric.ENUMS.over, qps:Fabric.ENUMS.qps },
@@ -30,6 +30,8 @@ function syncNetRack(){
     el.value = String(S.net[k]); if(el.selectedIndex<0){ S.net[k] = Fabric.DEF[k]; el.value = String(Fabric.DEF[k]); }
   }
   markInert("net", Fabric.inert(hw, topo, S.net, g, S.inf));
+  const intra = document.querySelector('[data-rack] [data-bind="net.intra"]');
+  if(intra) intra.value = Fabric.resolve(hw, topo, S.net).intra;      // 没有 NVLink 的卡：灰掉的下拉框显示实际走的 PCIe，S.net 不改
 }
 document.addEventListener("click", e => { if(e.target && e.target.id==="cl-reset"){ S.net = clone(Fabric.DEF); syncInputs(); render(); } });
 
@@ -160,7 +162,7 @@ function renderClusterFabric(){
   table($("cl-spec"), [t("cluster.pub.head.platform"), t("cluster.pub.head.what"), t("cluster.pub.head.value"), t("cluster.pub.head.src")],
     P.filter(p=>p.kind==="spec").map(p => [esc(p.platform||"—"), esc(p.what), esc(p.value), CL.link(p)]));
   table($("cl-pub"), [t("cluster.pub.head.what"), t("cluster.pub.head.value"), t("cluster.pub.head.src")],
-    P.filter(p=>p.kind!=="spec").map(p => [esc(p.what)+(p.platform?'<br><span class="tag">'+esc(p.platform)+'</span>':''),
+    P.filter(p=>p.kind!=="spec" && p.kind!=="bench").map(p => [esc(p.what)+(p.platform?'<br><span class="tag">'+esc(p.platform)+'</span>':''),
       esc(p.value)+(p.caveat?'<br><span style="color:var(--warn)">'+esc(p.caveat)+'</span>':''), CL.link(p)+'<br><span class="tag">'+esc(p.date)+'</span>']));
 }
 
@@ -228,4 +230,24 @@ function renderClusterImpact(){
     [t("cluster.xfer.kv", { p:fInt(X.P) }), fB(X.kv), fT(X.kvNic), t("cluster.xfer.kvNvl", { t:fT(X.kvNvl) }), t("cluster.xfer.kvVs", { r:pct(X.kvNic, X.ttft), ttft:fT(X.ttft) })],
     [t("cluster.xfer.w"), fB(X.w), fT(X.wOne), t("cluster.xfer.wShard", { n:X.Ninf, t:fT(X.wShard) }), "—"]], [1,2]);
   $("cl-xfer-read").innerHTML = ul([ t("cluster.xfer.readKv"), t("cluster.xfer.readW") ]);
+}
+
+/* ---- 模型对公开实测：每行实测的 spec 交给 Fabric.bench，用同一套 link / arT / a2aT 算，不另调参数 ---- */
+function renderClusterBench(){
+  const { g } = ctx(), unit = { busbw:"GB/s", us:"µs", gbps:"Gb/s" };
+  const fv = (v, mt) => (v>=100 ? fInt(v) : v>=10 ? v.toFixed(1) : v.toFixed(2))+" "+unit[mt];
+  const R = CL.pub().filter(p => p.kind==="bench" && p.bench).map(p => ({ p, b:Fabric.bench(p.bench, g) }));
+  table($("cl-bench"), [t("cluster.bench.head.setup"), t("cluster.bench.head.meas"), t("cluster.bench.head.model"), t("cluster.bench.head.ratio"), t("cluster.pub.head.src")],
+    R.map(({ p, b }) => [esc(p.platform)+'<br><span class="tag">'+esc(p.what)+'</span>',
+      esc(fv(p.bench.meas, p.bench.metric))+(p.caveat ? '<br><span style="color:var(--warn)">'+esc(p.caveat)+'</span>' : ''),
+      esc(fv(b.model, p.bench.metric)), b.ratio==null ? "—" : "× "+b.ratio.toFixed(2), CL.link(p)+'<br><span class="tag">'+esc(p.date)+'</span>']), [1, 2, 3]);
+  const rt = id => { const x = R.find(r => r.p.id==="cluster_public:"+id); return x && x.b.ratio!=null ? x.b.ratio : null; };
+  const span = ids => { const v = ids.map(rt).filter(x => x!=null); return v.length ? (Math.min(...v)===Math.max(...v) ? "× "+v[0].toFixed(2) : "× "+Math.min(...v).toFixed(2)+"–"+Math.max(...v).toFixed(2)) : "—"; };
+  $("cl-bench-read").innerHTML = ul([
+    t("cluster.bench.readBw", { r:V(span(["crusoe-ib-ar16", "coreweave-gb200-r2", "nccl1801-nvl4", "nccl1801-nvl8", "fabriclib-cx7-32m"])), eta:V(g.etaN) }),
+    t("cluster.bench.readLat", { r1:V(span(["crusoe-ib-lat16"])), r2:V(span(["fabriclib-cx7-256k"])), a:V(g.alphaIb+" µs") }),
+    t("cluster.bench.readInNet", { r:V(span(["coreweave-gb200-r1", "coreweave-h100-sharp64"])) }),
+    t("cluster.bench.readScale", { r:V(span(["coreweave-gb200-r20"])) }),
+    t("cluster.bench.readNvl", { r:V(span(["trtllm-blog18-ep8"])) }),
+    t("cluster.bench.readKeep") ]);
 }

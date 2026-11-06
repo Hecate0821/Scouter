@@ -62,7 +62,7 @@ I18N.add("en", "engine_par", {
   "ep.dist.bWire": "peer load / store",
   "ep.dist.bSum": "barrier + reduction",
   "ep.dist.whyDomain": "Dist-MoE uses symmetric-memory pointer load / store, so the EP group must stay within one NVLink domain",
-  "ep.dist.whySm": "The Dist-MoE fused kernel only supports SM100+",
+  "ep.dist.whySm": "The Dist-MoE fused kernel only supports SM100 / SM103 (B200, B300, GB200, GB300)",
   "ep.mok.fGemm": "MoK megakernel: compute SMs run grouped GEMM + SwiGLU",
   "ep.mok.fWire": "communication SMs: pull dispatch / push combine",
   "ep.mok.bGemm": "MoK backward: reverse-combine → dgrad → reverse-dispatch, wgrad accumulated over the whole axis at the end",

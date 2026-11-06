@@ -87,6 +87,7 @@ I18N.add("zh", "arch", {
   "ov.th.F": "expert F（@latent）",
   "ov.th.kv": "KV / token（BF16，随上下文增长）",
   "ov.th.state": "固定大小的状态 / 序列（线性 FP32、滑窗 KV BF16）",
+  "ov.th.perLayer1m": "1M 上下文时每 token 每层的缓存（KV + 状态摊到 1M 个 token，÷ 层数）",
   "ov.sharedTag": " + shared",
   "ov.denseTag": "dense",
   "ov.swaOf": "（{n} 层滑窗 {w}）",

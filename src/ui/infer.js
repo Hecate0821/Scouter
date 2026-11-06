@@ -58,9 +58,11 @@ function renderInfer(){
   $("i-lede").innerHTML=t("infer.lede.main",{model:esc(m.short),hw:hw.name,topo:esc(topo.name),engine:ENGN[c.engine],n:c.N,tp:fI(r.tpA),dp:r.dpA,moe:MOENAME[r.moePar],inst})+
     (dec? t("infer.lede.decode",{b:r.Breq,ctx:fInt(c.n),spec:r.specK?t("infer.lede.decodeSpec",{method:specName(c),k:r.specK,accept:c.accept}):""}) : t("infer.lede.prefill",{p:fInt(c.P),c:fInt(c.C)}));
   const wPer=r.mem.weights;
+  const sol = dec ? r.solT : 0;      // HBM 的光速（Infer.decode 的 solT）
   if(dec) kpis($("i-kpis"),[
     ["TPOT",fT(r.tpot),r.specK?t("infer.kpi.tpotFootSpec",{step:fT(r.stepT),tok:(1+c.accept).toFixed(1)}):t("infer.kpi.tpotFoot",{step:fT(r.stepT)})],
     [t("infer.kpi.thr"),fN(r.tokPerGpu)+" tok/s/GPU",t("infer.kpi.thrFoot",{v:fN(r.tokPerGpu*topo.gpus)})],
+    [t("infer.kpi.sol"),fT(sol),t("infer.kpi.solFoot",{u:fN(1/sol),x:(r.tpot/sol).toFixed(1)})],
     [t("infer.kpi.graph"),r.graph?t("infer.kpi.graphPad",{rows:r.rowsG}):t("infer.kpi.graphEager"),r.graph?t("infer.kpi.graphFoot",{rows:r.rowsR,pct:pct(r.rowsG-r.rowsR,r.rowsR)}):t("infer.kpi.eagerFoot",{n:r.nKern,us:g.launchUs}),!r.graph&&c.graph],
     [t("infer.kpi.fit"),t("infer.kpi.fitVal",{n:fInt(r.mem.Bmax)}),t("infer.kpi.fitFoot",{n:fInt(c.n)}),r.mem.Bmax<r.Breq],
     [t("infer.kpi.wPer"),fB(wPer),t("infer.kpi.wPerFoot",{b:fB(r.mem.wExp)}),r.mem.avail<=0],
@@ -77,6 +79,7 @@ function renderInfer(){
   for(const x of r.comm) if(!x.overlap) items.push({label:x.name,v:x.t,color:COMMC[x.key]||css("net"),tag:pill("comm")});
   if(r.exposedTbo>0) items.push({label:t("infer.bar.tbo"),v:r.exposedTbo,color:css("c-a2a"),tag:pill("comm")});
   if(r.exposedOverlap>0) items.push({label:t("infer.bar.exposed"),v:r.exposedOverlap,color:css("c-a2a"),tag:pill("comm")});
+  if(r.exposedStage>0) items.push({label:t("infer.bar.stage"),v:r.exposedStage,color:COMMC.enghost||css("net"),tag:pill("comm")});
   const base=r.stepT-(r.draftT||0)-(r.commitT||0), dpSync=(c.engine==="vllm"||c.engine==="titan")&&r.dpA>1?g.dpSyncUs*1e-6:0;
   if(r.graph) items.push({label:t("infer.bar.graph"),v:g.graphLaunchUs*1e-6,color:css("c-free"),tag:pill("launch")});
   const cpuExtra=base-dpSync-r.gpu-(r.graph?g.graphLaunchUs*1e-6:0);

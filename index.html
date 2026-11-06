@@ -38,9 +38,9 @@
     <a href="#rl/lowprec" data-route="rl/lowprec" data-i18n="shell.nav.rl.lowprec"></a>
     <a href="#rl/qat" data-route="rl/qat" data-i18n="shell.nav.rl.qat"></a>
   </div>
-  <div class="grp" data-grp="cluster"><h4 data-i18n="shell.nav.cluster"></h4>
-    <a href="#cluster/fabric" data-route="cluster/fabric" data-i18n="shell.nav.cluster.fabric"></a>
-    <a href="#cluster/impact" data-route="cluster/impact" data-i18n="shell.nav.cluster.impact"></a>
+  <div class="grp" data-grp="other"><h4 data-i18n="shell.nav.other"></h4>
+    <a href="#other/network" data-route="other/network" data-i18n="shell.nav.other.network"></a>
+    <a href="#other/profile" data-route="other/profile" data-i18n="shell.nav.other.profile"></a>
   </div>
   <div class="grp" data-grp="appendix"><h4 data-i18n="shell.nav.appendix"></h4>
     <a href="#appendix/data" data-route="appendix/data" data-i18n="shell.nav.appendix.data"></a>
@@ -105,7 +105,7 @@
   </div>
 
   <!-- 推理 -->
-  <div data-rack="infer/step infer/deploy infer/spec infer/kv infer/calib">
+  <div data-rack="infer/step infer/deploy infer/spec infer/kv infer/calib other/profile">
     <h3 data-i18n="infer.rack.h3"></h3>
     <select data-bind="inf.engine" class="full" data-i18n-attr="aria-label=infer.rack.attr.inf.engine.aria-label">
       <option value="sglang">SGLang</option>
@@ -127,6 +127,7 @@
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.specMethod"></span><select data-bind="inf.specMethod" data-i18n-attr="aria-label=infer.rack.attr.inf.specMethod.aria-label"><option value="mtp" data-i18n="infer.rack.opt.inf.specMethod.mtp"></option><option value="eagle3">EAGLE-3</option><option value="dflash">DFlash</option><option value="dspark">DSpark</option></select></label>
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.specK"></span><input type="number" min="0" max="15" step="1" data-bind="inf.specK"></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.accept"></span><input type="number" min="0" max="15" step="0.1" data-bind="inf.accept"></label>
+      <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.specVer"></span><input type="number" min="0.05" max="1" step="0.05" data-bind="inf.specVer"></label>
     </div>
     <div data-phase="prefill">
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.P"></span><output data-out="inf.P"></output><input type="range" min="1024" max="262144" step="1024" data-bind="inf.P"></label>
@@ -150,6 +151,10 @@
       <label class="check"><input type="checkbox" data-bind="inf.prefixCache"><span data-i18n="infer.rack.ctl.inf.prefixCache"></span></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dcp"></span><input type="number" step="1" min="1" data-bind="inf.dcp"></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramAt"></span><select data-bind="inf.engramAt" data-i18n-attr="aria-label=infer.rack.attr.inf.engramAt.aria-label"><option value="gpu" data-i18n="infer.rack.opt.inf.engramAt.gpu"></option><option value="host" data-i18n="infer.rack.opt.inf.engramAt.host"></option></select></label>
+      <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramRepl"></span><select data-bind="inf.engramRepl" data-i18n-attr="aria-label=infer.rack.attr.inf.engramRepl.aria-label"><option value="none" data-i18n="infer.rack.opt.inf.engramRepl.none"></option><option value="per_node" data-i18n="infer.rack.opt.inf.engramRepl.per_node"></option></select></label>
+      <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramLookup"></span><select data-bind="inf.engramLookup" data-i18n-attr="aria-label=infer.rack.attr.inf.engramLookup.aria-label"><option value="auto" data-i18n="infer.rack.opt.inf.engramLookup.auto"></option><option value="peer_read">peer_read</option><option value="all_reduce">all_reduce</option><option value="reduce_scatter">reduce_scatter</option><option value="all_to_all">all_to_all</option></select></label>
+      <label class="check"><input type="checkbox" data-bind="inf.engramStage"><span data-i18n="infer.rack.ctl.inf.engramStage"></span></label>
+      <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramDt"></span><select data-bind="inf.engramDt" data-i18n-attr="aria-label=infer.rack.attr.inf.engramDt.aria-label"><option value="mxfp8">FP8 (MX)</option><option value="mxfp4">MXFP4</option></select></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.redundant"></span><input type="number" step="1" min="0" data-bind="inf.redundant"></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.imb"></span><input type="number" step="0.05" min="1" data-bind="inf.imb"></label>
       <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.memFrac"></span><input type="number" step="0.01" min="0.3" max="0.98" data-bind="inf.memFrac"></label>
@@ -170,6 +175,8 @@
     <label class="ctl"><span data-i18n-html="kv.rack.hostGB"></span><input type="number" min="0" step="16" data-bind="kv.hostGB"></label>
     <label class="ctl"><span data-i18n-html="kv.rack.remoteGB"></span><input type="number" min="0" step="64" data-bind="kv.remoteGB"></label>
     <label class="check"><input type="checkbox" data-bind="kv.inclusive"><span data-i18n="kv.rack.inclusive"></span></label>
+    <label class="ctl"><span data-i18n-html="kv.rack.copyUs"></span><input type="number" min="0" step="0.5" data-bind="kv.copyUs"></label>
+    <label class="ctl"><span data-i18n-html="kv.rack.snapEvery"></span><input type="number" min="0" step="256" data-bind="kv.snapEvery"></label>
     <label class="ctl"><span data-i18n="kv.rack.replicas"></span><input type="number" min="1" step="1" data-bind="kv.replicas"></label>
     <label class="ctl"><span data-i18n="kv.rack.routing"></span><select data-bind="kv.routing" data-i18n-attr="aria-label=kv.rack.routing"><option value="aware" data-i18n="kv.rack.opt.aware"></option><option value="random" data-i18n="kv.rack.opt.random"></option></select></label>
     <p class="hint" data-i18n-html="kv.rack.hint"></p>
@@ -209,6 +216,7 @@
     <label class="check"><input type="checkbox" data-bind="trn.tpOverlap"><span><span data-i18n="train.rack.ctl.trn.tpOverlap.text"></span> <small data-fw="megatron">--tp-comm-overlap</small><small data-fw="torchtitan" data-i18n="train.rack.ctl.trn.tpOverlap.tt"></small></span></label>
     <label class="check" data-fw="torchtitan"><input type="checkbox" data-bind="trn.reshard"><span data-i18n="train.rack.ctl.trn.reshard"></span></label>
     <label class="check" data-fw="torchtitan"><input type="checkbox" data-bind="trn.cpLB"><span data-i18n="train.rack.ctl.trn.cpLB"></span></label>
+    <label class="check"><input type="checkbox" data-bind="trn.hsi"><span data-i18n-html="train.rack.ctl.trn.hsi"></span></label>
     <p class="hint" data-i18n-html="train.rack.hint_2"></p>
     <details class="adv"><summary data-i18n="train.rack.summary"></summary>
       <label class="ctl"><span data-i18n="train.rack.ctl.trn.imb"></span><input type="number" step="0.05" min="1" data-bind="trn.imb"></label>
@@ -265,9 +273,10 @@
   <div data-rack="rl/lowprec rl/determinism">
     <h3>RL</h3>
     <label class="ctl"><span data-i18n="rl.rack.ctl.q.roll"></span><input type="number" min="0" max="1" step="0.05" data-bind="q.roll"></label>
+    <label class="ctl"><span data-i18n="rl.rack.ctl.q.flip"></span><input type="number" min="0" max="1" step="0.01" data-bind="q.flip"></label>
   </div>
 
-  <div data-rack="cluster/fabric cluster/impact">
+  <div data-rack="other/network">
     <h3 data-i18n="cluster.rack.h3"></h3>
     <label class="ctl"><span data-i18n="cluster.rack.scale"></span><select data-bind="net.scale" data-i18n-attr="aria-label=cluster.rack.scale"></select></label>
     <label class="ctl"><span data-i18n="cluster.rack.infN"></span><input type="number" min="1" step="1" data-bind="inf.N"></label>
@@ -289,6 +298,11 @@
     <p class="hint" data-i18n-html="cluster.rack.hint"></p>
   </div>
 
+  <div data-rack="other/profile">
+    <h3 data-i18n="profile.rack.h3"></h3>
+    <label class="ctl"><span data-i18n="profile.rack.dpSkew"></span><input type="number" min="1" max="3" step="0.01" data-bind="prof.dpSkew"></label>
+    <p class="hint" data-i18n-html="profile.rack.hint"></p>
+  </div>
   <div data-rack="overview"><p class="hint" data-i18n="overview.rack.hint"></p></div>
   <div data-rack="train/calib"><p class="hint" data-i18n="train.rack.hint_3"></p></div>
   <div data-rack="infer/calib"><p class="hint" data-i18n="calib.inf.rack"></p></div>
@@ -328,7 +342,7 @@
       <a class="card" href="#train/step"><h4 data-i18n="overview.card.train_step.h4"></h4><p data-i18n="overview.card.train_step.p"></p></a>
       <a class="card" href="#infer/step"><h4 data-i18n="overview.card.infer_step.h4"></h4><p data-i18n="overview.card.infer_step.p"></p></a>
       <a class="card" href="#rl/mismatch"><h4>RL</h4><p data-i18n="overview.card.rl_mismatch.p"></p></a>
-      <a class="card" href="#cluster/fabric"><h4 data-i18n="overview.card.cluster.h4"></h4><p data-i18n="overview.card.cluster.p"></p></a>
+      <a class="card" href="#other/network"><h4 data-i18n="overview.card.cluster.h4"></h4><p data-i18n="overview.card.cluster.p"></p></a>
       <a class="card" href="#appendix/data"><h4 data-i18n="overview.card.appendix_data.h4"></h4><p data-i18n="overview.card.appendix_data.p"></p></a>
     </div>
   </div>
@@ -785,6 +799,7 @@
     <div class="fig"><svg id="kv-space" viewBox="0 0 680 320" role="img" data-i18n-attr="aria-label=kv.b2.aria"></svg></div>
     <div class="tbl"><table id="kv-layers"></table></div>
     <div class="tbl"><table id="kv-dt"></table></div>
+    <div class="tbl" id="kv-csa-w"><table id="kv-csa"></table></div>
     <div class="hint" id="kv-space-read"></div>
   </div>
   <div class="block" id="kv-hit-b"><h2 data-i18n="kv.b3.h2"></h2>
@@ -841,11 +856,15 @@
         <tr><td data-i18n="rl.mismatch.b1.tbl.row4.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row4.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row4.c3"></td></tr>
         <tr><td data-i18n="rl.mismatch.b1.tbl.row5.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row5.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row5.c3"></td></tr>
         <tr><td data-i18n="rl.mismatch.b1.tbl.row6.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row6.c2"></td><td data-i18n="rl.mismatch.b1.tbl.row6.c3"></td></tr>
+        <tr><td data-i18n="rl.mismatch.b1.tbl.row7.c1"></td><td data-i18n="rl.mismatch.b1.tbl.row7.c2"></td><td data-i18n-html="rl.mismatch.b1.tbl.row7.c3"></td></tr>
       </tbody></table></div>
+    <p class="lede" id="r-mm-flip-lede"></p>
+    <div class="tbl"><table id="r-mm-flip"></table></div>
   </div>
   <div class="block" data-src="measured"><h2 data-i18n="rl.mismatch.b2.h2"></h2>
     <p data-i18n-html="rl.mismatch.b2.p"></p>
     <p data-i18n-html="rl.mismatch.b2.p_2"></p>
+    <p data-i18n-html="rl.mismatch.b2.p_3"></p>
     <div class="tbl"><table id="r-mm-pub"></table></div>
   </div>
   <div class="block"><h2 data-i18n="rl.mismatch.b3.h2"></h2>
@@ -939,8 +958,8 @@
   </div>
 </section>
 
-<!-- ============ 集群 · 网络结构 ============ -->
-<section class="pane" data-pane="cluster/fabric" hidden>
+<!-- ============ 其他 · 网络 ============ -->
+<section class="pane" data-pane="other/network" hidden>
   <div class="block"><h2 data-i18n="cluster.fab.b1.h2"></h2>
     <p class="lede" id="cl-ladder-lede"></p>
     <div class="kpis" id="cl-kpis"></div>
@@ -973,18 +992,6 @@
     <div class="fig"><svg id="cl-qp" viewBox="0 0 680 260" role="img" data-i18n-attr="aria-label=cluster.fab.b4.qpAria"></svg></div>
     <div class="hint" id="cl-out-read"></div>
   </div>
-  <div class="block" data-src="both"><h2 data-i18n="cluster.fab.b5.h2"></h2>
-    <p class="lede" data-i18n="cluster.fab.b5.lede"></p>
-    <div class="tbl"><table id="cl-spec"></table></div>
-  </div>
-  <div class="block" data-src="measured"><h2 data-i18n="cluster.fab.b6.h2"></h2>
-    <p class="lede" data-i18n-html="cluster.fab.b6.lede"></p>
-    <div class="tbl"><table id="cl-pub"></table></div>
-  </div>
-</section>
-
-<!-- ============ 集群 · 对训练和推理的影响 ============ -->
-<section class="pane" data-pane="cluster/impact" hidden>
   <div class="block"><h2 data-i18n="cluster.imp.b1.h2"></h2>
     <p class="lede" id="cl-imp-lede"></p>
     <div class="kpis" id="cl-imp-kpis"></div>
@@ -1008,6 +1015,44 @@
     <p class="lede" data-i18n-html="cluster.imp.b4.lede"></p>
     <div class="tbl"><table id="cl-xfer"></table></div>
     <div class="hint" id="cl-xfer-read"></div>
+  </div>
+  <div class="block" data-src="both" id="cl-bench-b"><h2 data-i18n="cluster.bench.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.bench.lede"></p>
+    <div class="tbl"><table id="cl-bench"></table></div>
+    <div class="hint" id="cl-bench-read"></div>
+  </div>
+  <div class="block" data-src="both"><h2 data-i18n="cluster.fab.b5.h2"></h2>
+    <p class="lede" data-i18n="cluster.fab.b5.lede"></p>
+    <div class="tbl"><table id="cl-spec"></table></div>
+  </div>
+  <div class="block" data-src="measured"><h2 data-i18n="cluster.fab.b6.h2"></h2>
+    <p class="lede" data-i18n-html="cluster.fab.b6.lede"></p>
+    <div class="tbl"><table id="cl-pub"></table></div>
+  </div>
+</section>
+
+<!-- ============ 其他 · Profile ============ -->
+<section class="pane" data-pane="other/profile" hidden>
+  <div class="block"><h2 data-i18n="profile.b1.h2"></h2>
+    <p class="lede" id="pf-lede"></p>
+    <div class="kpis" id="pf-kpis"></div>
+    <div class="bar" id="pf-bar"></div>
+    <div class="barlist" id="pf-barlist"></div>
+    <div class="hint" id="pf-read"></div>
+  </div>
+  <div class="block"><h2 data-i18n="profile.b2.h2"></h2>
+    <p class="lede" data-i18n-html="profile.b2.lede"></p>
+    <div class="kpis" id="pf-lb-kpis"></div>
+    <div class="hint" id="pf-lb-read"></div>
+  </div>
+  <div class="block" data-src="both"><h2 data-i18n="profile.b3.h2"></h2>
+    <p class="lede" data-i18n-html="profile.b3.lede"></p>
+    <div class="tbl"><table id="pf-obs"></table></div>
+    <div class="hint" id="pf-obs-read"></div>
+  </div>
+  <div class="block" data-src="measured"><h2 data-i18n="profile.b4.h2"></h2>
+    <p class="lede" data-i18n-html="profile.b4.lede"></p>
+    <div class="tbl"><table id="pf-tools"></table></div>
   </div>
 </section>
 
@@ -1206,6 +1251,7 @@
 <script src="locales/zh/spec.js"></script>
 <script src="locales/zh/kv.js"></script>
 <script src="locales/zh/cluster.js"></script>
+<script src="locales/zh/profile.js"></script>
 <script src="locales/zh/config.js"></script>
 <script src="locales/zh/quant.js"></script>
 <script src="locales/zh/rl.js"></script>
@@ -1229,6 +1275,7 @@
 <script src="src/engine/trace.js"></script>
 <script src="src/engine/kv.js"></script>
 <script src="src/engine/fabric.js"></script>
+<script src="src/engine/profile.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
 <script src="src/plane/scouter.js"></script>
@@ -1252,6 +1299,7 @@
 <script src="src/ui/spec.js"></script>
 <script src="src/ui/kv.js"></script>
 <script src="src/ui/cluster.js"></script>
+<script src="src/ui/profile.js"></script>
 <script src="src/ui/rl.js"></script>
 <script src="src/ui/shell.js"></script>
 <script src="src/ui/app.js"></script>

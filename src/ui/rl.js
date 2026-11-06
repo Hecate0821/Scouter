@@ -11,7 +11,11 @@ const MM_PUB = [
   ["lmsys","2026-10-15-meta-muse-spark-open",t("rl.mismatch.pub.museSparkOpen")],
   ["lmsys","2026-10-16-beam",t("rl.mismatch.pub.beam")],
   ["lmsys","2026-10-25-minite",t("rl.mismatch.pub.minite")],
-  ["lmsys","2026-10-22-miles-mi355x-agentic-rl",t("rl.mismatch.pub.mi355xAgenticRl")]];
+  ["lmsys","2026-10-22-miles-mi355x-agentic-rl",t("rl.mismatch.pub.mi355xAgenticRl")],
+  {det:"r3-moe-kl",t:t("rl.mismatch.pub.r3Kl")},
+  {det:"r3-repeat",t:t("rl.mismatch.pub.r3Repeat")},
+  {det:"r3-replay",t:t("rl.mismatch.pub.r3Replay")},
+  {det:"dsv32-grpo",t:t("rl.mismatch.pub.dsv32")}];
 const MM_OSS = [
   ["slime","v0.2.0",t("rl.mismatch.oss.slimeV020")],
   ["sglang","v0.5.6",t("rl.mismatch.oss.sglangV056")],
@@ -91,11 +95,20 @@ function renderMismatch(){
     ...(e.E?[[t("rl.mismatch.carry.r3", {layers:d.nMoe, k:e.k}),r3,t("rl.mismatch.carry.r3Note", {bits:idB*8, x:4/idB})]]:[]),
     [t("rl.mismatch.carry.mask"),160,t("rl.mismatch.carry.maskNote")]];
   const tot=sum(R,x=>x[1]);
-  $("r-mm-lede").innerHTML=t("rl.mismatch.carry.lede", {model:esc(m.short), S:fInt(Sq), r3:e.E ? t("rl.mismatch.carry.ledeR3", {pct:V(pct(r3,kvTok))}) : ""});
+  $("r-mm-lede").innerHTML=t("rl.mismatch.carry.lede", {model:esc(m.short), S:fInt(Sq), r3:e.E ? t("rl.mismatch.carry.ledeR3", {pct:V(pct(r3,kvTok))}) : ""})
+    +(e.E ? " "+t("rl.mismatch.carry.r3Cache", {src:detLink("r3-replay","R3 §4.2")}) : "");
   table($("r-mm"),[t("rl.mismatch.carry.head.what"),t("rl.mismatch.carry.head.perTok"),t("rl.mismatch.carry.head.perSeq"),t("rl.mismatch.carry.head.note")],R.map(x=>[esc(x[0]),fB(x[1]),fB(x[1]*Sq),esc(x[2])]).concat([
     {cls:"hl",cells:["<b>"+t("rl.mismatch.carry.total")+"</b>",fB(tot),fB(tot*Sq),""]},
     [t("rl.mismatch.carry.kv"),fB(kvTok),fB(kvTok*Sq),t("rl.mismatch.carry.kvNote")],
     [e.E ? t("rl.mismatch.carry.hiddenMoe") : t("rl.mismatch.carry.hidden"),fB(nL*m.D*2),fB(nL*m.D*2*Sq),t("rl.mismatch.carry.hiddenNote")]]),[1,2]);
+  // 路由翻转：每层的翻转率 → 每个 token 有几层不同（Common.routeFlips）；对照 R3 论文的实测
+  const rf=detOf("r3-moe-kl"), p=Math.min(1,Math.max(0,S.q.flip));
+  $("r-mm-flip-lede").innerHTML=t("rl.mismatch.flip.lede", {src:detLink("r3-moe-kl","R3"), p:V(pct(p,1))});
+  if(e.E){ const cur=Common.routeFlips(d.nMoe,p), ref=Common.routeFlips(rf.layers,rf.flipRouter);
+    table($("r-mm-flip"),[t("rl.mismatch.flip.head.model"),t("rl.mismatch.flip.head.layers"),t("rl.mismatch.flip.head.exp"),t("rl.mismatch.flip.head.any"),t("rl.mismatch.flip.head.meas")],[
+      {cls:"hl",cells:[esc(m.short),d.nMoe,cur.exp.toFixed(1),pct(cur.any,1),"—"]},
+      [esc(rf.model),rf.layers,ref.exp.toFixed(1),pct(ref.any,1),detLink("r3-moe-kl",pct(rf.flipTok,1))]],[1,2,3]); }
+  else table($("r-mm-flip"),[t("rl.mismatch.flip.head.model")],[[t("rl.mismatch.flip.dense",{model:esc(m.short)})]]);
   ossTable($("r-mm-pub"),MM_PUB);
   ossTable($("r-mm-oss"),MM_OSS);
 }

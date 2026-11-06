@@ -33,6 +33,7 @@ I18N.add("zh", "train", {
   "rack.ctl.trn.tpOverlap.text": "TP 通信重叠",
   "rack.ctl.trn.reshard": "reshard_after_forward（反向再 all-gather 一次参数）",
   "rack.ctl.trn.cpLB": "CP causal 负载均衡（首尾配对切分）",
+  "rack.ctl.trn.hsi": "Hierarchical Sparse Indexer（post-training 才有；<small>预训练对整段打分</small>）",
   "rack.hint_2": "每一维怎么切、字节怎么算，见<a href=\"#train/par\">后训练 · 并行</a>。",
   "rack.summary": "更多",
   "rack.ctl.trn.imb": "expert 负载不均系数",

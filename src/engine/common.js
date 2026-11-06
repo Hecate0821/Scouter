@@ -65,12 +65,23 @@ const HW = {
   B200:{ name:"B200", sm:100, bf16:2250, fp8:4500, fp4:9000, hbm:8000, mem:180, nvl:900, ib:50, host:25 },
   B300:{ name:Msg.of("engine_common.hw.B300"), sm:103, bf16:2250, fp8:4500, fp4:13500, hbm:8000, mem:288, nvl:900, ib:100, host:25 },
   GB200:{ name:"GB200", grace:true, sm:100, bf16:2500, fp8:5000, fp4:10000, hbm:8000, mem:186, nvl:900, ib:50, host:200 },
-  GB300:{ name:"GB300", grace:true, sm:103, bf16:2500, fp8:5000, fp4:15000, hbm:8000, mem:288, nvl:900, ib:100, host:200 }
+  GB300:{ name:"GB300", grace:true, sm:103, bf16:2500, fp8:5000, fp4:15000, hbm:8000, mem:288, nvl:900, ib:100, host:200 },
+  /* RTX PRO 6000 Blackwell Server Edition（SM120，GDDR7，没有 NVLink）。nvidia.com 规格页写 FP4 4 PF / FP8 2 PF / BF16 1 PF，没标稀疏；
+     同一代 RTX Blackwell 架构白皮书的规格表把带稀疏的数写在斜杠后面（RTX 5090 FP4 1676 / 3352），按 188 SM、约 2.6 GHz 折算稠密 FP4 约 2 PF，
+     所以这里按"规格页是带稀疏的数"减半。hbm 字段在这里是 GDDR7 带宽 1597 GB/s；nvl 是卡间 PCIe Gen5 x16 点对点（每方向 64 GB/s 规范速率）；
+     ib 按每卡 400G 网卡。SM120 没有 tcgen05 / TMEM：只给 SM100 写的 kernel（trtllm-gen、FlashMLA SM100、DeepGEMM、V4.1 的 FP4 KV 布局）都不可用，见 sm10x */
+  RTXP6000:{ name:"RTX PRO 6000 Server", pcie:true, sm:120, bf16:500, fp8:1000, fp4:2000, hbm:1597, mem:96, nvl:64, ib:50, host:25 }
 };
 const TOPO = {
-  hgx8:{ name:Msg.of("engine_common.topo.hgx8"), gpus:8, domain:8 },
-  nvl64:{ name:Msg.of("engine_common.topo.nvl64"), gpus:64, domain:72 }
-};   // 只算这两种：所有并行组都在一个 NVLink 域内。跨机走 IB 的公式（link、Par.epLayer）还在，但没有拓扑会用到
+  hgx8:{ name:Msg.of("engine_common.topo.hgx8"), gpus:8, domain:8, node:8 },
+  nvl64:{ name:Msg.of("engine_common.topo.nvl64"), gpus:64, domain:72, node:4 },
+  pcie8:{ name:Msg.of("engine_common.topo.pcie8"), gpus:8, domain:8, node:8, pcieOnly:true }
+};   // 所有并行组都在一台机器 / 一个机柜内。跨机走 IB 的公式（link、Par.epLayer）还在，集群页把规模放大时会用到
+/* 每种 GPU 默认放在哪种拓扑：GB 系列在 NVL72 机柜，PCIe 卡在只有 PCIe 的 8 卡服务器，其余在 HGX。界面和数据平面共用这条规则 */
+const homeTopo = k => HW[k].grace ? "nvl64" : HW[k].pcie ? "pcie8" : "hgx8";
+/* 数据中心 Blackwell（SM100 / SM103，tcgen05 + TMEM）。只看格式支持（FP4 / MXFP8 的块缩放 MMA）时用 sm >= 100，SM120 也有；
+   只为 SM100 写的 kernel 用这个 */
+const sm10x = hw => hw.sm>=100 && hw.sm<110;
 const peakOf = (hw,d) => hw[peakKey(d)]*1e12;
 /* roofline 的几个量（界面画图和标注也用这些，不另写公式）。peak 是 FLOP/s（peakOf 的结果），η 来自 g */
 const compT = (flops, peak, g) => flops/(peak*g.etaC);                          // 按可达算力算的时间
@@ -285,6 +296,10 @@ function arT(msg, n, lk, g, algo){
 /* all-to-all：每卡发 sent 字节，(n−1)/n 离开本卡；跨域时按 link 给的 a2a 带宽（三段里最慢的那段） */
 function a2aT(sent, n, lk, g, alphaUs){ if(n<=1||sent<=0) return 0; return (alphaUs ?? (lk.intra?g.alphaNv:g.alphaIb))*1e-6 + sent*(n-1)/n/(lk.a2a*g.etaN); }
 
+/* MoE 路由翻转：每层 router 在训练和推理里选得不一样的概率 p（R3 论文实测约 10%）。按各层独立算，一个 token 平均有 nMoe·p 层不同，
+   至少一层不同的概率是 1 − (1 − p)^nMoe；实测往往比独立假设低（翻转在层间相关），所以这是上界 */
+const routeFlips = (nMoe, p) => ({ exp:nMoe*p, any:1-Math.pow(1-p, nMoe) });
+
 /* 单个算子的 roofline：t = max(FLOPs/峰值, 字节/带宽, kernel 数 × 最短 kernel 时间) */
 function roof(flops, bytes, peak, hw, g, kernels){
   const tc = compT(flops, peak, g), tm = memT(bytes, hw, g), tf=(kernels||0)*g.kernelUs*1e-6;
@@ -292,5 +307,5 @@ function roof(flops, bytes, peak, hw, g, kernels){
   return { t, tc, tm, tf, bound: t===tf&&tf>0 ? "launch" : tc>=tm ? "compute" : "memory", I: bytes>0?flops/bytes:Infinity };
 }
 
-return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, derive, layerPlan, csaPlan, csaLatB, csaKv, qoW, capKeys, swaKeys, ecmpMax, spineX, link, agT, arT, a2aT, roof };
+return { DT, dtB, peakKey, peakOf, compT, memT, ridge, attainable, linkRidge, G0, IDEAL, BASIS, KEFF, etaK, gK, freeze, MODELS, HW, TOPO, homeTopo, sm10x, derive, layerPlan, csaPlan, csaLatB, csaKv, qoW, capKeys, swaKeys, ecmpMax, spineX, link, agT, arT, a2aT, routeFlips, roof };
 })();

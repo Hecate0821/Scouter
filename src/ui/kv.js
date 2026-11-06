@@ -33,6 +33,11 @@ function renderKV(){
   table($("kv-layers"),[t("kv.layers.head.type"),t("kv.layers.head.n"),t("kv.layers.head.tok"),t("kv.layers.head.at128k"),t("kv.layers.head.need")],rows,[1,2,3]);
   table($("kv-dt"),[t("kv.dt.head.dt"),t("kv.dt.head.tok"),t("kv.dt.head.at128k"),t("kv.dt.head.fit")],
     dts.map(d=>({cls:d.kvDt===ci.kvDt?"hl":"",cells:[d.kvDt.toUpperCase(),fB(d.full+d.swa),fB(d.at128k),fInt(d.perGpu128k*r.dpA)]})),[1,2,3]);
+  // CSA：从 V4-Flash 的布局一步步压到当前模型
+  $("kv-csa-w").hidden=!r.csaSteps;
+  if(r.csaSteps){ const v4=r.csaSteps[0].tok;
+    table($("kv-csa"),[t("kv.csa.head.step"),t("kv.csa.head.tok"),t("kv.csa.head.vs")],
+      r.csaSteps.map(x=>({cls:x.key===ci.kvDt?"hl":"",cells:[t("kv.csa."+x.key),fB(x.tok),x.key==="v4f"?"1":fX(x.tok/v4)]})),[1,2]); }
   const save=(lay.swa||lay.lin)&&s1m.allFull>0 ? s1m.allFull/s1m.bytes : 0;
   $("kv-space-read").innerHTML=ul([
     save>1?t("kv.space.readHybrid",{x:V(fX(save)),at:"1M"}):t("kv.space.readFull"),
@@ -61,7 +66,7 @@ function renderKV(){
     {name:t("kv.turn.hbm"),col:"c-kv",pts:T.map(x=>[tx(x),x.hbm])}];
   lineChart("kv-turn",{series:turnSer,yLog:true,xFmt:v=>String(Math.round(v)),yFmt:fT,xLab:t("kv.turn.x"),yLab:t("kv.turn.y")});
   const last=T[T.length-1];
-  $("kv-turn-lede").innerHTML=t("kv.turn.lede",{host:fInt(hw.host),ib:fInt(hw.ib),ovl:r.overlap?t("kv.turn.ovl"):t("kv.turn.serial")});
+  $("kv-turn-lede").innerHTML=t("kv.turn.lede",{host:fInt(hw.host),ib:fInt(hw.ib),ovl:r.overlap?t("kv.turn.ovl"):t("kv.turn.serial")})+(r.swaReplay?" "+t("kv.turn.swaReplay",{w:fInt(r.perTok.W)}):"");
   $("kv-turn-read").innerHTML=ul([
     t("kv.turn.readLast",{t:last.t,L:fK(Math.round(last.Lin/1024)*1024),none:fT(last.none),hit:fT(last.hbm),x:V(fX(last.none/last.hbm))}),
     t("kv.turn.readLoad",{bytes:fB(last.bytes),load:fT(last.loadHost),remote:fT(last.loadRemote),re:fT(last.miss)}),

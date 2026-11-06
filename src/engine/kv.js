@@ -22,11 +22,13 @@ const KV = (function(){
    page：一页多少 token（前缀按页匹配，最后一页平均空一半）；
    tail：在提示结尾 / 请求结束处额外发布页内的部分页，下一轮能精确命中到上一轮结束的位置（TokenSpeed）；
    linBlock：线性注意力状态只存在 block 边界上（vLLM 的 align 模式），混合模型的 block 要放大到一个注意力页不小于一个状态页；
-   hostOverlap：从主机内存装回和 prefill 逐层重叠（SGLang HiCache、TokenSpeed L2），否则先装完再算（vLLM OffloadingConnector 的异步拷贝）。
+   hostOverlap：从主机内存装回和 prefill 逐层重叠（SGLang HiCache、TokenSpeed L2），否则先装完再算（vLLM OffloadingConnector 的异步拷贝）；
+   swaReplay：CSA 的滑窗 KV 不进前缀缓存，只跟着请求槽走；命中时把前缀最后 min(前缀, W) 个 token 拼在这次 extend 前面重算
+   （SGLang srt/model_executor/encoder_swa_replay.py 的 replay_len）。
    出处：SGLang --page-size 默认 1、--mamba-radix-cache-strategy auto = no_buffer（只留序列结尾的状态）；vLLM block_size 默认 16，
    docs/design/hybrid_kv_cache_manager.md；TokenSpeed docs/design/cache-concepts.md、kernel_page_sizes.py。 */
 const ENGINES = {
-  sglang:     { page:1,  tail:false, linBlock:false, hostOverlap:true },
+  sglang:     { page:1,  tail:false, linBlock:false, hostOverlap:true, swaReplay:true },
   vllm:       { page:16, tail:false, linBlock:true,  hostOverlap:false },
   tokenspeed: { page:64, tail:true,  linBlock:false, hostOverlap:true },
   titan:      { page:1,  tail:false, linBlock:false, hostOverlap:true }
@@ -35,7 +37,20 @@ const ENGINES = {
 /* 默认的 agent 会话和缓存层级。hostGB / remoteGB 是每张卡分给 KV 的主机内存 / 远端池容量；inclusive = 下层包含上层
    （SGLang HiCache、TokenSpeed L2 默认 write_through） */
 const BASE = Common.freeze({ sys:8192, turnIn:2048, turnOut:512, turns:40, sessions:64, hostGB:200, remoteGB:0, inclusive:true,
-  replicas:1, routing:"aware" });
+  replicas:1, routing:"aware", copyUs:0, snapEvery:0 });
+
+/* CSA 的 KV 是怎么压到 890 B / token 的（技术报告：约为 DeepSeek-V4-Flash 的 1/4）。对照用 V4-Flash 的公开 config.json：
+   43 层里 compress_ratios 为 4 的 21 层（CSA，各自一份 indexer）、128 的 20 层（HCA）、0 的 2 层（只有滑窗）；每层自己存压缩 latent
+   （V4 的 FP8 布局 584 B）、CSA 层再存 index K（128 个 fp8 + 一个 fp32 scale）。V4.1 一行按本模型的 csaKv：只有 kv source 层存，
+   先按 V4 的 FP8 布局，再换 V41 的 MXFP8、V41_FP4 */
+const V4F = Common.freeze({ cr:[0,0].concat(Array.from({ length:40 }, (_, i) => i%2 ? 128 : 4), [4]), dh:512, rope:64, idxD:128 });
+function csaSteps(m, dcp){
+  if(m.full.kind!=="csa") return null;
+  const lat = Common.csaLatB(V4F, "fp8"), idx = V4F.idxD + 4;
+  const v4 = V4F.cr.reduce((s, r) => s + (r>0 ? lat/r : 0) + (r===4 ? idx/r : 0), 0);
+  const v41 = dt => { const k = Common.csaKv(m, dt); return (k.main + k.index)/Math.max(1, dcp||1); };
+  return [{ key:"v4f", tok:v4/Math.max(1, dcp||1) }, { key:"fp8", tok:v41("fp8") }, { key:"mxfp8", tok:v41("mxfp8") }, { key:"nvfp4", tok:v41("nvfp4") }];
+}
 
 /* 每张卡上：每个 token 的 KV、滑窗层每个 token、一份线性注意力状态快照（字节） */
 function perRank(m, hw, topo, c, g){
@@ -67,8 +82,13 @@ function plan(m, hw, topo, c, g){
   const gran = lb || E.tail ? 1 : blk;
   const step = c.turnIn + c.turnOut, T = Math.max(1, Math.round(c.turns));
   const endL = t => c.sys + t*step;                                   // 第 t 轮结束时的上下文
-  const unique = L => bytesAt(p, L) - p.full*c.sys - (p.W ? 0 : p.swa*c.sys);   // 共享前缀只存一份
-  const shared = bytesAt(p, c.sys);
+  const rpl = !lb && !!E.swaReplay && m.full.kind==="csa" && p.W>0;   // 滑窗不缓存，命中时重算最后 W 个 token
+  /* 线性注意力的中间快照：snapEvery > 0 时每这么多 token 留一份状态（SGLang --mamba-radix-cache-strategy extra_buffer，
+     --mamba-track-interval 默认 256），缓存里一个会话要多存 floor(L / snapEvery) 份；0 = 只留序列结尾那份（no_buffer） */
+  const mid = L => !lb && c.snapEvery>0 && p.snap>0 ? Math.floor(L/c.snapEvery)*p.snap : 0;
+  const cached = L => (rpl ? bytesAt(p, L) - p.swa*Math.min(L, p.W) : bytesAt(p, L)) + mid(L);
+  const unique = L => cached(L) - p.full*c.sys - (p.W ? 0 : p.swa*c.sys);   // 共享前缀只存一份
+  const shared = cached(c.sys);
   const frag = lb ? 0 : (blk/2)*(p.full + p.swa);                     // 最后一页平均空一半
   let ws1 = 0; for(let t=1;t<=T;t++) ws1 += unique(endL(t)) + frag; ws1 /= T;   // 一个会话在两轮之间留下的平均字节
   const dp = Math.max(1, p.r.dpA), ws = c.sessions/dp*ws1;          // DP attention：会话分到 dpA 组，每张卡只存自己那组的
@@ -82,20 +102,25 @@ function plan(m, hw, topo, c, g){
     return { hbm, host, remote, miss:Math.max(0, 1-hbm-host-remote) };
   };
   const eta = lb ? 1 : g.etaN, ovl = lb || E.hostOverlap;
-  const load = (bytes, bw) => bytes/(bw*1e9*eta);
+  /* 从主机 / 远端装回：字节 / 带宽，加上每次拷贝的固定开销 copyUs（每页每个存 KV 的层各一次，按 layer-first 的布局）。
+     SGLang HiCache 的 kernel IO、vLLM 的 cuMemcpyBatchAsync / Triton swap 都把页收拢成一次提交，默认 0；逐页一个 cudaMemcpyAsync
+     时每次约 1.5–5 µs（zartbot/gfd docs/reason.md 的实测：4 KB 一次只有约 3 GB/s，收拢后 46–53 GB/s） */
+  const kvLayers = (p.nFull||0) + (p.nSwa||0);
+  const load = (bytes, bw, tok) => bytes/(bw*1e9*eta) + (lb ? 0 : (c.copyUs||0)*1e-6*Math.ceil((tok||0)/blk)*kvLayers);
   // 抽样若干轮算 TTFT（每轮的几种情况和会话数无关，换会话数只换比例）
   const ts = T<=12 ? Array.from({length:T}, (_,i)=>i+1) : Array.from({length:12}, (_,i)=>1+Math.round(i*(T-1)/11));
   const turns = ts.map(t => {
     const Lprev = endL(t-1), Lin = Lprev + c.turnIn, h = t===1 ? c.sys : Math.floor(Lprev/gran)*gran;
     const hSys = Math.floor(c.sys/gran)*gran;
-    const tHit = prefillFrom(m, hw, topo, c, g, h, Lin-h);
+    const rp = rpl && t>1 ? Math.min(h, p.W) : 0;                     // 拼在 extend 前面重算的滑窗行
+    const tHit = prefillFrom(m, hw, topo, c, g, h-rp, Lin-h+rp);
     const bytesH = Math.max(0, unique(h));
-    const lh = load(bytesH, hw.host), lr = load(bytesH, hw.ib);
+    const lh = load(bytesH, hw.host, h), lr = load(bytesH, hw.ib, h);
     const tHost = t===1 ? tHit : ovl ? Math.max(lh, tHit) : lh + tHit;
     const tRemote = t===1 ? tHit : ovl ? Math.max(lr, tHit) : lr + tHit;
     const tMiss = t===1 ? tHit : prefillFrom(m, hw, topo, c, g, hSys, Lin-hSys);
     const tNone = prefillFrom(m, hw, topo, c, g, 0, Lin);
-    return { t, Lprev, Lin, hit:h, newTok:Lin-h, hbm:tHit, host:tHost, remote:tRemote, miss:tMiss, none:tNone, loadHost:lh, loadRemote:lr, bytes:bytesH };
+    return { t, Lprev, Lin, hit:h, newTok:Lin-h, replay:rp, hbm:tHit, host:tHost, remote:tRemote, miss:tMiss, none:tNone, loadHost:lh, loadRemote:lr, bytes:bytesH };
   });
   const expect = (S) => { const f = res(S); let tt=0, hit=0, inTok=0;
     for(const x of turns){ const first = x.t===1;
@@ -109,17 +134,17 @@ function plan(m, hw, topo, c, g){
   // 空间：每个请求的缓存字节随上下文；"全换成全注意力"的对照（同样的 KV 每 token，所有注意力类层都按 L 存）
   const Ls = [1024, 4096, 16384, 65536, 131072, 262144, 524288, 1048576];
   const allFull = p.allFull;
-  const space = Ls.map(L => ({ L, bytes:bytesAt(p, L), full:p.full*L, swa:p.swa*(p.W?Math.min(L,p.W):L), lin:p.snap, allFull:allFull*L,
-    perGpu:mem.avail>0 ? Math.floor(mem.avail/bytesAt(p, L)) : 0 }));
+  const space = Ls.map(L => ({ L, bytes:bytesAt(p, L)+mid(L), full:p.full*L, swa:p.swa*(p.W?Math.min(L,p.W):L), lin:p.snap+mid(L), allFull:allFull*L,
+    perGpu:mem.avail>0 ? Math.floor(mem.avail/(bytesAt(p, L)+mid(L))) : 0 }));
   const dtypes = ["bf16","fp8","nvfp4"].map(dt => { const q = perRank(m, hw, topo, Object.assign({}, c, { kvDt:dt }), g);
     const mq = Infer.memory(m, hw, Object.assign({}, c, { kvDt:dt, B:1 }), q.r);
     return { kvDt:dt, full:q.full, swa:q.swa, snap:q.snap, at128k:bytesAt(q, 131072), perGpu128k:mq.avail>0 ? Math.floor(mq.avail/bytesAt(q, 131072)) : 0 }; });
   const sweep = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096].map(S => Object.assign({ sessions:S }, expect(S)));
   return { perTok:{ full:p.full, swa:p.swa, W:p.W, snap:p.snap, kvTokRank:p.kvTokRank, snapTok:p.full>0 ? p.snap/p.full : 0 },
-    layers:{ full:p.nFull, swa:p.nSwa, lin:p.nLin }, page:blk, gran, overlap:ovl, avail:mem.avail, weights:mem.weights,
+    layers:{ full:p.nFull, swa:p.nSwa, lin:p.nLin }, page:blk, gran, overlap:ovl, swaReplay:rpl, avail:mem.avail, weights:mem.weights,
     shared, ws1, ws, cap:{ hbm:C1, host:C2, remote:C3 }, fit:{ hbm:fit(C1), host:fit(C2), remote:fit(C3) },
-    frac:cur.frac, hitRate:cur.hitRate, ttft:cur.ttft, ttftNone:none, ttftHit:allHit, turns, sweep, space, dtypes, N:p.r.N, tpA:p.r.tpA, dpA:p.r.dpA, warn };
+    csaSteps:csaSteps(m, c.dcp), frac:cur.frac, hitRate:cur.hitRate, ttft:cur.ttft, ttftNone:none, ttftHit:allHit, turns, sweep, space, dtypes, N:p.r.N, tpA:p.r.tpA, dpA:p.r.dpA, warn };
 }
 
-return { ENGINES, BASE, plan, perRank, bytesAt };
+return { ENGINES, BASE, V4F, plan, perRank, bytesAt, csaSteps };
 })();

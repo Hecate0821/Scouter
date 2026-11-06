@@ -39,6 +39,7 @@ function inert(m, c, g){
   put(!c.offload,"noOffload","cpuAdamGBs","overlapOffload");
   put(!!g.lb,"ideal","etaA","imb","hostSyncUs");
   put(c.pp<=1,"noPp","vpp");
+  put(!(m.full.kind==="csa"&&m.full.cand),"noHsi","hsi");
   const dp=c.N/(c.tp*c.cp*c.pp), edp=mg ? c.N/(Math.max(1,c.etp||1)*c.ep*c.pp) : dp*c.cp*c.tp/c.ep, R=Math.max(1,c.hsdp||1);
   put(mg&&dp*c.cp<=1&&edp<=1,"noDp","overlapGrad","overlapParam");
   put(!mg&&dp*c.cp/R<=1&&edp/R<=1,"noFsdp","gradDt","reshard");
@@ -114,7 +115,7 @@ function run(m, hw, topo, c, g){
       /* DeepSeek-V4.1（Common.csaPlan）：wq_a + wkv 各 TP rank 复制，wq_b 按头切；compressor 只在 kv source 层，indexer 只在 index source 层
          （和 DSA 一样每个 TP rank 对整段序列重复算）；attention 每个 query 看 ≤ top-k 个压缩 latent + 最近 W 个滑窗 latent（MQA，K = V），
          平均数按整段从头算（capKeys）；输出走分组的 wo_a（按头切）再 wo_b */
-      const H=f.H, dh=f.dh, Pl=d.csa, cap=f.cand ? f.cand.blocks*f.cand.bs : Infinity;
+      const H=f.H, dh=f.dh, Pl=d.csa, hsi=!!f.cand && !!c.hsi, cap=hsi ? f.cand.blocks*f.cand.bs : Infinity;   // HSI 只在 post-training 引入（技术报告 2.3.2），预训练时 Reindex 层对整段打分
       op("aqa",mg?Msg.of("engine_train.op.csaQaMg"):Msg.of("engine_train.op.csaQaTt"),"attn",f.n,...gemm(mg?Tl:Tc,D,f.qLora+dh,1));
       op("aqb",Msg.of("engine_train.op.aqb"),"attn",f.n,...gemm(Tc,f.qLora,H*dh,tp));
       const src=Pl.filter(x=>x.kv);
@@ -122,8 +123,8 @@ function run(m, hw, topo, c, g){
       const idx=Pl.filter(x=>x.idx);
       op("aidxp",Msg.of("engine_train.op.aidxp"),"attn",idx.length,...gemm(Tc,D,(f.qLora*f.idxH*f.idxD + D*f.idxH)/D,1),{mod:"full"});
       for(const mm of [...new Set(idx.map(x=>x.m))]) for(const re of [false,true]){ const grp=idx.filter(x=>x.m===mm && x.useCand===re); if(!grp.length || S/mm<=f.topk) continue;
-        const np = re ? capKeys(0,S/mm,cap) : S/2/mm, fi=2*f.idxH*f.idxD*np*Tc;
-        op("aidx",Msg.of(re?"engine_train.op.csaIdxRe":"engine_train.op.csaIdx",{m:mm}),"attn",grp.length,{fl:fi*2,by:Tc*np*4*2,pk:pkA},{fl:fi*2,by:Tc*np*4*2,pk:pkA},null,{mod:"full"}); }
+        const np = re && hsi ? capKeys(0,S/mm,cap) : S/2/mm, fi=2*f.idxH*f.idxD*np*Tc;
+        op("aidx",Msg.of(re&&hsi?"engine_train.op.csaIdxRe":"engine_train.op.csaIdx",{m:mm}),"attn",grp.length,{fl:fi*2,by:Tc*np*4*2,pk:pkA},{fl:fi*2,by:Tc*np*4*2,pk:pkA},null,{mod:"full"}); }
       const coreOf=(layers,keys,mm)=>{ const fl=4*(H/tp)*dh*keys*Tc;
         op("acore",Msg.of(mm>0?"engine_train.op.acoreCsa":"engine_train.op.acoreCsaSwa",{k:f.topk,w:f.W,m:mm}),"attn",layers,{fl,by:Tc*(mm>0?f.topk*4:0) + Tc*(H/tp)*dh*2*2,pk:pkAt},{fl:2.5*fl,by:2*Tc*(H/tp)*dh*2*2 + Tc*(mm>0?f.topk*4:0),pk:pkAt},null,{mod:mm>0?"full":"swa"}); return ops[ops.length-1]; };
       const nF=Pl.filter(x=>x.m>0), nS=Pl.length-nF.length, ks=swaKeys(S,f.W);
@@ -447,7 +448,7 @@ function run(m, hw, topo, c, g){
 const BASE = Common.freeze({ fw:"torchtitan", tp:1, cp:1, pp:1, vpp:1, ep:8, etp:1, dispatcher:"standard", cpType:"allgather", linCP:"state", tok:16384, S:8192, Gtok:2097152,
   prec:"bf16", recompute:"default", rcModules:[], offload:false, overlapOffload:true, cpuAdamGBs:30, overlapGrad:true, overlapParam:true,
   epOverlap:false, sharedOverlap:false, tpOverlap:false, reshard:true, imb:1.15, hostSyncUs:20, workspaceGB:6,
-  cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0 });
+  cpLB:true, hsdp:1, gradDt:"fp32", mokF:0.25, etaA:0, hsi:false });
 
 /* 每个框架自己的默认选项：枚举值不通用，切框架时用这份盖到 BASE 上（BASE 是 torchtitan 的） */
 const FW_DEF = Common.freeze({ megatron:{ dispatcher:"alltoall", cpType:"p2p", linCP:"chunkwise", recompute:"full", offload:true },

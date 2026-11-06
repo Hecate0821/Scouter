@@ -87,6 +87,7 @@ I18N.add("en", "arch", {
   "ov.th.F": "expert F (@latent)",
   "ov.th.kv": "KV / token (BF16, grows with context)",
   "ov.th.state": "Fixed-size state / sequence (linear FP32, sliding-window KV BF16)",
+  "ov.th.perLayer1m": "Cache per token per layer at 1M (KV + state spread over 1M tokens, ÷ layers)",
   "ov.sharedTag": " + shared",
   "ov.denseTag": "dense",
   "ov.swaOf": " ({n} sliding-window layers, {w})",

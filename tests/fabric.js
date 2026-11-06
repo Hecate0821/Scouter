@@ -6,7 +6,7 @@ const { MODELS, HW, TOPO, Train, Infer, Common, Fabric } = E;
 const G0 = Common.G0, IDEAL = Common.IDEAL;
 const fails = [], fail = m => { if (fails.length < 40) fails.push(m); };
 const near = (a, b) => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
-const PAIRS = [["H200", "hgx8"], ["B300", "hgx8"], ["GB200", "nvl64"], ["GB300", "nvl64"]];
+const PAIRS = [["H200", "hgx8"], ["B300", "hgx8"], ["GB200", "nvl64"], ["GB300", "nvl64"], ["RTXP6000", "pcie8"]];
 const infOf = (m, N) => Object.assign({}, Infer.BASE, { N, dpA: m.moe.E ? N : 1, moePar: m.moe.E ? "deepep" : "tp", B: 32 });
 const trnOf = topo => Object.assign({}, Train.BASE, { N: TOPO[topo].gpus });
 
@@ -23,6 +23,16 @@ for (const mk of Object.keys(MODELS)) for (const [hk, tk] of PAIRS) for (const g
     if (!near(s.t, s.nic + s.nvl + s.rest)) fail(`split does not add up ${mk} ${hk}`);
     nId++;
   }
+}
+
+// ---- public measurements: every bench row gives a finite model number, and the ideal is never slower than the modeled ----
+{
+  const DBJ = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "..", "data", "db.json"), "utf8"));
+  const rows = DBJ.points.filter(p => p.set === "cluster_public" && p.kind === "bench");
+  if (rows.length < 8) fail(`expected the public bench rows, got ${rows.length}`);
+  for (const p of rows) { const m = Fabric.bench(p.bench, G0), i = Fabric.bench(p.bench, IDEAL);
+    if (!(m.model > 0 && isFinite(m.model) && m.ratio > 0)) fail(`bench ${p.id}: model ${m.model}`);
+    if (p.bench.metric === "us" ? i.model > m.model + 1e-9 : i.model < m.model - 1e-9) fail(`bench ${p.id}: ideal ${i.model} slower than modeled ${m.model}`); }
 }
 
 // ---- ideal ≤ modeled under every fabric variation ----

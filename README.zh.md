@@ -39,10 +39,10 @@ cd tests && npm install && npm test
 | 后训练 | 一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）、并行、低精度配方。 |
 | 推理 | decode / prefill、部署与并行、低精度、投机解码、KV cache（每种层存多少、多轮 agent 会话在 HBM / 主机 / 远端三层里的前缀命中率、SGLang / vLLM / TRT-LLM / TokenSpeed 各怎么管），以及和 SGLang cookbook、自己的 profiler trace 对照。 |
 | RL | 训推不一致、确定性 rollout、低精度 rollout 与 QAT。 |
-| 集群 | 网络结构：每张卡从 HBM 到 spine 每一层的带宽，NVSwitch 和 NVLS，机内 PCIe 和 GPUDirect，只有 PCIe 的机器，rail、收敛比和 ECMP；以及在一套组网上训练和推理的时间花在哪、怕带宽还是怕延迟、NVLink 域多大合适、PD 分离和权重同步的传输。 |
+| 其他 | **网络**：每张卡从 HBM 到 spine 每一层的带宽，NVSwitch 和 NVLS，机内 PCIe 和 GPUDirect，只有 PCIe 的机器，rail、收敛比和 ECMP；在一套组网上训练和推理的时间花在哪、怕带宽还是怕延迟、NVLink 域多大合适、PD 分离和权重同步的传输，以及模型对公开的 nccl-tests 结果。**Profile**：推理一步按线上 trace 的分法拆开（kern 的 compute / comm / idle 和 CUPTI HES 那篇文章的几类）、DP 和 EP 负载不均、常开 trace 的开销，以及各个工具。 |
 | 附录 | 实测 kernel 对照屋顶、效率表、公开数据点、建模方法。 |
 
-**模型：** Qwen3.5-35B-A3B、Kimi K3、GLM-5.3-Flash、Muse Spark Open、DeepSeek-V4.1-Flash、Qwen3.8-27B（dense 基线）。**GPU：** H100、H200、B200、B300、GB200、GB300。**拓扑：** HGX 单机 8 卡、NVL72 机柜（64 卡）。
+**模型：** Qwen3.5-35B-A3B、Kimi K3、GLM-5.3-Flash、Muse Spark Open、DeepSeek-V4.1-Flash、Qwen3.8-27B（dense 基线）。**GPU：** H100、H200、B200、B300、GB200、GB300、RTX PRO 6000 Server。**拓扑：** HGX 单机 8 卡、NVL72 机柜（64 卡）、只有 PCIe 的 8 卡服务器。
 
 地址带着上下文，比如 `?model=kimik3&hw=B200&src=ideal#infer/step`。界面文字都在 `locales/`（[docs/i18n.md](docs/i18n.md)）。
 
@@ -78,8 +78,11 @@ Scouter 建立在这些开源项目公开的代码、PR、文档和基准之上�
 | MoE 并行 | [DeepEP](https://github.com/deepseek-ai/DeepEP), [dist_moe](https://github.com/meta-pytorch/dist_moe), [mixture-of-kittens](https://github.com/cursor/mixture-of-kittens) |
 | KV cache | [Dynamo](https://github.com/ai-dynamo/dynamo), [LMCache](https://github.com/LMCache/LMCache), [Mooncake](https://github.com/kvcache-ai/Mooncake), [llm-d](https://github.com/llm-d/llm-d) |
 | 低精度、投机解码 | [torchao](https://github.com/pytorch/ao), [SpecForge](https://github.com/sgl-project/SpecForge) |
-| 基准和 profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [vLLM recipes](https://github.com/vllm-project/recipes), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces) |
+| 基准和 profiling | [sgl-cookbook](https://github.com/sgl-project/sgl-cookbook), [vLLM recipes](https://github.com/vllm-project/recipes), [sglang-amd-cookbook](https://github.com/jhinpan/sglang-amd-cookbook), [lora_perf_lora_profile](https://github.com/yushengsu-thu/lora_perf_lora_profile), [llm_reproducibility](https://github.com/nanomaoli/llm_reproducibility), [torch_utils](https://github.com/fzyzcjy/torch_utils), [combine_traces](https://github.com/tlrmchlsmth/combine_traces)，[kern](https://github.com/pegainfer-project/kern)（Apache-2.0；常开的 HES trace、它的指标和性能图谱），[CUPTI](https://docs.nvidia.com/cupti/13.4.1/main/main.html) 和 [Nsight Systems](https://docs.nvidia.com/nsight-systems/UserGuide/index.html) 文档 |
 | 模型结构 | [open-weights-carousel](https://github.com/NickLucche/open-weights-carousel), [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp), [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) |
 | 理想下限 | [k3-inference-calculator](https://github.com/ByronHsu/k3-inference-calculator) (Apache-2.0) |
 | 机制示意图 | [Attention Lab](https://divagr.com/attention-lab/) |
-| 网络 | [NCCL](https://github.com/NVIDIA/nccl)（NVLS、CollNet / SHARP 和 rail 组网的文档），[zartbot/micro_arch](https://github.com/zartbot/micro_arch)（MIT；只有 PCIe 的机器的测量，整套报告每一页都注明由 AI 生成、未经作者审阅） |
+| 网络 | [NCCL](https://github.com/NVIDIA/nccl)（NVLS、CollNet / SHARP 和 rail 组网的文档），[zartbot/micro_arch](https://github.com/zartbot/micro_arch)（MIT；只有 PCIe 的机器的测量，整套报告每一页都注明由 AI 生成、未经作者审阅），[coreweave/nccl-tests](https://github.com/coreweave/nccl-tests) 和 [Crusoe 的 InfiniBand 验证文档](https://docs.crusoe.ai/networking/infiniband/validating-infiniband-performance)（公开的 nccl-tests 结果），[zartbot/gfd](https://github.com/zartbot/gfd)（MIT；每次拷贝调用的固定开销） |
+| 论文和文章 | [CUPTI HES：Blackwell 上用硬件采集 kernel 时间戳](https://susun-blog.com/blog/cupti-hes/)（susun；Profile 页的拆法和开销数字），[R3](https://arxiv.org/abs/2510.11370)（路由回放），[DeepSeek-V3.2](https://arxiv.org/abs/2512.02556)（Keep Routing、Keep Sampling Mask），[模型页](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)上的 DeepSeek-V4.1 技术报告，[fabric-lib](https://arxiv.org/abs/2510.27656)，[De Sensi 等，SC24](https://arxiv.org/abs/2408.14090) |
+| 硬件规格 | [RTX PRO 6000 Blackwell Server Edition](https://www.nvidia.com/en-us/data-center/rtx-pro-6000-blackwell-server-edition/)，[RTX Blackwell 架构白皮书](https://images.nvidia.com/aem-dam/Solutions/geforce/blackwell/nvidia-rtx-blackwell-gpu-architecture.pdf)（稠密和稀疏峰值） |
+| 延伸阅读 | [zartbot/blog](https://github.com/zartbot/blog)（没有许可证，这里只用思路和注明出处的数字） |

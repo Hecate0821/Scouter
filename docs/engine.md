@@ -18,6 +18,8 @@
 | `calib.js` | `Calib` | 和实测对照：每个数据集筛哪些点、实测是哪个字段、预测怎么算（`SETS`；`set` 字段指向别的数据集，比如 cookbook 的两个视图都读 `sglang_cookbook`），公开数据的 replay（`mokRatio`），cookbook 行到推理配置的映射 `serveCfg` |
 | `kv.js` | `KV` | KV cache：每种层每个 token / 每个请求的字节（`perRank`、`bytesAt`），各引擎的前缀缓存画像 `ENGINES`（页大小、tail、线性状态只在 block 边界、装回是否逐层重叠），默认的 agent 会话 `BASE`，`plan`：会话工作集、HBM / 主机 / 远端的驻留比例（容量 / 工作集）、命中率和每轮 TTFT |
 | `trace.js` | `Trace` | 实测 trace 对照：kernel 名按正则归类（`CAT`、`catOf`），本页算子归到同样的类别（`OPCAT`），`scan` / `kernelsOf` 汇总 trace（按 rank 平均、每条 stream 取独占时间、kernel 并集与首尾跨度、通信下限），`compare` 逐类比每步时间 |
+| `fabric.js` | `Fabric` | 集群网络：配置 → hw / topo（`apply`、`resolve`、`inert`），每层带宽、反事实拆分、扫参，公开实测的对照 `bench`（同一套 link / arT / a2aT，不另调参数） |
+| `profile.js` | `Profile` | 线上 profile：`split` 把 `Infer.step` 的一步按 kern 的 compute / comm / idle 和 CUPTI HES 文章的几类拆开（EPLB 用 imb = 1 的反事实，DPLB 用 `dpSkew`），`observer` 算常开 trace 的开销上限 |
 
 ## 接口约定
 

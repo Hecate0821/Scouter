@@ -1,7 +1,7 @@
 /* 并行原语：CP 三种取 K / V 的办法、EP 五个后端、FSDP 每层的字节与时间。训练核心和后训练的并行一节都只调这里，
    两边看到的是同一组公式。所有函数按“一层、最忙那张卡”算，调用方再乘层数和文档数。 */
 const Par = (function(){
-const { link } = Common;
+const { link, sm10x } = Common;
 
 const binomRatio = (Z, z, K) => { let r=1; for(let i=0;i<K;i++) r *= Math.max(0, Z-z-i)/(Z-i); return r; };   // C(Z−z,K)/C(Z,K)
 const pDest = (Z, E, K) => E<=1 ? 1 : 1-binomRatio(Z, Z/E, K);   // 一个 token 命中某个 rank 的概率（不放回地选 K 个 expert）
@@ -134,7 +134,7 @@ function epLayer(be, x){
     o.parts = { f:[["sm",Msg.of("engine_par.ep.dist.fBarrier"),bar+1e-5,"sync"],["sm",Msg.of("engine_par.ep.dist.fGemm"),sF,"moe"],["nvl",Msg.of("engine_par.ep.dist.fWire"),tD+tC,"ep",true],["sm",Msg.of("engine_par.ep.dist.fSum"),bar,"sync"]],
                 b:[["sm",Msg.of("engine_par.ep.dist.bBarrier"),bar+1e-5,"sync"],["sm",Msg.of("engine_par.ep.dist.bGemm"),sB,"moe"],["nvl",Msg.of("engine_par.ep.dist.bWire"),tDB+tCB,"ep",true],["sm",Msg.of("engine_par.ep.dist.bSum"),bar,"sync"]] };
     if(!l.intra){ o.ok=false; o.why=Msg.of("engine_par.ep.dist.whyDomain").invalid(); }
-    if(hw.sm<100){ o.ok=false; o.why=Msg.of("engine_par.ep.dist.whySm").invalid(); }
+    if(!sm10x(hw)){ o.ok=false; o.why=Msg.of("engine_par.ep.dist.whySm").invalid(); }
   } else {
     const fr = Math.min(0.6, Math.max(0.05, x.mokF||0.25)), wEff = Math.min(1, fr/0.3);   // 通信 SM 比例 f：f ≥ 0.3 时打满 NVLink
     o.t = Math.max(tExp/(1-fr), o.tw/wEff) + 0.03*tExp;

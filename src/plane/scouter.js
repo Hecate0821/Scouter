@@ -13,8 +13,8 @@ const pick = (table, key, what) => {
   return table[key];
 };
 /* 效率参数：口径的那一套，再用 q.g 覆盖个别项 */
-/* 不指定时：GB300、64 卡。只指定 GPU 时拓扑跟着它走，和页面的规则一样：GB 系列在 NVL72 机柜，其余在单台 HGX */
-const DEF_HW = "GB300", topoOf = q => q.topo || (/^GB/.test(q.hw || DEF_HW) ? "nvl64" : "hgx8");
+/* 不指定时：GB300、64 卡。只指定 GPU 时拓扑跟着它走，和页面的规则一样（Common.homeTopo）：GB 系列在 NVL72 机柜，PCIe 卡在 PCIe 8 卡服务器，其余在单台 HGX */
+const DEF_HW = "GB300", topoOf = q => q.topo || (q.hw && q.hw in HW ? Common.homeTopo(q.hw) : q.hw ? "hgx8" : "nvl64");
 const gOf = q => Object.assign({}, pick(BASIS, (q && q.basis) || "modeled", "basis"), (q && q.g) || {});
 const ctxOf = q => ({
   m: q.model && typeof q.model === "object" ? q.model : pick(MODELS, q.model || "qwen35", "model"),
@@ -77,7 +77,16 @@ function cluster(q){
     train: Fabric.split("train", c.m, c.hw, c.topo, trn, net, c.g), prefill: Fabric.split("prefill", c.m, c.hw, c.topo, inf, net, c.g),
     decode: Fabric.split("decode", c.m, c.hw, c.topo, inf, net, c.g) }, q.pick);
 }
-const RUN = { roofline, infer, train, module, serve, kv, cluster };
+/* 线上 profile 的拆法（Profile.split）：配置和 infer 一样，另加 dpSkew（最慢的 DP rank 的 attention 工作量 ÷ 平均）；
+   observer 是 profile_public 里每一行实测的每节点开销乘上这一步的 kernel 数（上限） */
+function profile(q){
+  q = q || {}; const c = ctxOf(q), o = rest(q), dpSkew = o.dpSkew != null ? +o.dpSkew : Profile.DEF.dpSkew; delete o.dpSkew;
+  const cfg = Object.assign({}, Infer.BASE, o), sp = Profile.split(c.m, c.hw, c.topo, cfg, c.g, { dpSkew });
+  const observer = DB.set("profile_public").filter(p => p.usPerNode > 0).map(p => Object.assign({ id: p.id, tool: p.tool, usPerNode: p.usPerNode }, Profile.observer(sp, p.usPerNode)));
+  return select({ query: Object.assign(echo(q, c), { cfg, dpSkew }), total: sp.total, stepT: sp.stepT, nKern: sp.nKern, graph: sp.graph, kern: sp.kern, cats: sp.cats,
+    dpLoss: sp.dpLoss, eplbLoss: sp.eplbLoss, observer, warn: sp.r.warn }, q.pick);
+}
+const RUN = { roofline, infer, train, module, serve, kv, cluster, profile };
 /* 扫参：run 是上面的一个函数名，over 的每个字段给一组值（多个字段取笛卡儿积），pick 选出每一行要的字段 */
 function sweep(q){
   q = q || {}; const f = pick(RUN, q.run || "infer", "run"), over = q.over || {}, keys = Object.keys(over);
@@ -157,5 +166,5 @@ function catalog(){
     runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
 }
 
-return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, kv, cluster, sweep, sets, points, kernels, eff, calib, trace });
+return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, kv, cluster, profile, sweep, sets, points, kernels, eff, calib, trace });
 })();

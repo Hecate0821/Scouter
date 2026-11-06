@@ -194,6 +194,7 @@ I18N.add("zh", "appendix", {
   "db.stage.meta": "meta",
   "db.stage.kernel": "kernel",
   "db.stage.cluster": "集群",
+  "db.stage.profile": "profile",
   "db.yes": "是",
   "db.no": "否",
   "db.sets.head.set": "数据集",

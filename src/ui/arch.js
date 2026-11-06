@@ -274,11 +274,11 @@ function srcList(kind, phase){
 /* ---------- 跨模型对比 ---------- */
 /* 几个模型的结构字段和三个比例 */
 function renderModelTable(keys){
-  table($("m-compare"),[t("arch.ov.th.model"),t("arch.ov.th.total"),t("arch.ov.th.active"),t("arch.ov.th.official"),t("arch.ov.th.ratio"),t("arch.ov.th.attn"),t("arch.ov.th.experts"),t("arch.ov.th.F"),t("arch.ov.th.kv"),t("arch.ov.th.state")],
+  table($("m-compare"),[t("arch.ov.th.model"),t("arch.ov.th.total"),t("arch.ov.th.active"),t("arch.ov.th.official"),t("arch.ov.th.ratio"),t("arch.ov.th.attn"),t("arch.ov.th.experts"),t("arch.ov.th.F"),t("arch.ov.th.kv"),t("arch.ov.th.state"),t("arch.ov.th.perLayer1m")],
     keys.map(k=>{ const mm=k===S.modelKey?S.model:MODELS[k], dd=derive(mm), p=cacheParts(mm);
       return {cls:k===S.modelKey?"hl":"",cells:[esc(mm.short),fN(dd.total),fN(dd.active),esc(mm.official),(dd.active/dd.total*100).toFixed(1)+"%",
         (mm.full.kind==="csa" ? esc(t("arch.ov.attnCsa",{n:mm.full.n,c:dd.csa.filter(q=>q.m>0).length,s:dd.csa.filter(q=>q.m===0).length,w:mm.full.W}))
-          : mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):""))+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—"]}; }),[1,2,4,6,7,8,9]);
+          : mm.full.n+" "+mm.full.kind.toUpperCase()+(mm.full.swa?esc(t("arch.ov.swaOf",{n:mm.full.swa,w:mm.full.W})):""))+(mm.lin.n?" + "+mm.lin.n+" "+mm.lin.kind:""),mm.moe.E?mm.moe.E+" / "+mm.moe.k+(mm.moe.Fs?esc(t("arch.ov.sharedTag")):""):esc(t("arch.ov.denseTag")),mm.moe.E?mm.moe.F+(mm.moe.Dlat?" @"+mm.moe.Dlat:""):"FFN "+mm.dense.F,fB(p.kv),p.st?fB(p.st):"—",fB((p.kv+p.st/1048576)/mm.L)]}; }),[1,2,4,6,7,8,9,10]);
 }
 /* 每条序列的缓存随上下文 */
 function renderCacheCurves(keys){
