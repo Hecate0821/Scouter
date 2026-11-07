@@ -53,6 +53,7 @@ I18N.add("en", "shell", {
   "nav.train.calib": "Against measurements",
   "nav.infer.step": "One decode / prefill step",
   "nav.infer.deploy": "Deployment and parallelism",
+  "nav.infer.widep": "Why wide EP",
   "nav.infer.quant": "Low-precision inference",
   "nav.infer.spec": "Speculative decoding",
   "nav.infer.kv": "KV cache",

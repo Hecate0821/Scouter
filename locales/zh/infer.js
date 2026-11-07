@@ -93,7 +93,7 @@ I18N.add("zh", "infer", {
   "deploy.b1.tbl.head.c3": "训练：切什么，换来什么",
   "deploy.b1.tbl.row1.c2": "切权重和注意力头：每步读的权重字节 ÷ N，单用户速度上去；每层两次小消息 all-reduce，受延迟限制；KV 头少于 TP 度时每卡复制 KV",
   "deploy.b1.tbl.row1.c3": "和 SP 一起切激活和权重：每块前向 AG + RS、反向再来一遍，消息大、受带宽限制；主要为了放下激活",
-  "deploy.b1.tbl.row2.c2": "多实例：副本之间不通信。DP-attention：一个实例里按请求切 attention，KV 不复制，MoE 前后要 all-gather 或 a2a，所有 rank 每步对齐",
+  "deploy.b1.tbl.row2.c2": "多实例：副本之间不通信。DP-attention：一个实例里按请求切 attention，KV 不复制，MoE 前后要 all-gather 或 a2a，所有 rank 每步对齐。为什么大 MoE 都走这条路，见<a href=\"#infer/widep\">宽 EP 为什么是趋势</a>",
   "deploy.b1.tbl.row2.c3": "梯度 reduce-scatter + 参数 all-gather（分布式优化器每 step 一次，FSDP2 每个 micro-batch 一次）",
   "deploy.b1.tbl.row3.c2": "expert 分到各卡：省权重显存，每个 expert 看到全部 DP rank 的 token；decode 每层 dispatch + combine 是小消息（DeepEP low-latency）",
   "deploy.b1.tbl.row3.c3": "grouped GEMM 行数大；a2a 每层 4 次（重算 6 次），可以和另一个 micro-batch 的计算重叠",

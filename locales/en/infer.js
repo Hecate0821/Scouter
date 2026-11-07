@@ -93,7 +93,7 @@ I18N.add("en", "infer", {
   "deploy.b1.tbl.head.c3": "Training: what is sharded, what it buys",
   "deploy.b1.tbl.row1.c2": "Splits weights and attention heads: weight bytes read per step ÷ N, so per-user speed goes up; two small-message all-reduces per layer, latency-bound; when there are fewer KV heads than the TP degree, KV is replicated on each GPU",
   "deploy.b1.tbl.row1.c3": "Shards activations and weights together with SP: AG + RS per block in forward and again in backward, large messages, bandwidth-bound; mainly to fit activations",
-  "deploy.b1.tbl.row2.c2": "Multiple instances: no communication between replicas. DP-attention: attention split by request inside one instance, KV not replicated, all-gather or a2a before and after MoE, all ranks synchronize every step",
+  "deploy.b1.tbl.row2.c2": "Multiple instances: no communication between replicas. DP-attention: attention split by request inside one instance, KV not replicated, all-gather or a2a before and after MoE, all ranks synchronize every step. Why large MoE deployments take this route: <a href=\"#infer/widep\">Why wide EP</a>",
   "deploy.b1.tbl.row2.c3": "Gradient reduce-scatter + parameter all-gather (once per step with the distributed optimizer, once per micro-batch with FSDP2)",
   "deploy.b1.tbl.row3.c2": "Experts distributed across GPUs: saves weight memory, each expert sees tokens from all DP ranks; in decode the per-layer dispatch + combine are small messages (DeepEP low-latency)",
   "deploy.b1.tbl.row3.c3": "grouped GEMM has many rows; 4 a2a per layer (6 with recompute), can overlap with the compute of another micro-batch",

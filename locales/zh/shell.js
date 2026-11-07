@@ -53,6 +53,7 @@ I18N.add("zh", "shell", {
   "nav.train.calib": "和实测对照",
   "nav.infer.step": "一步 decode / prefill",
   "nav.infer.deploy": "部署与并行",
+  "nav.infer.widep": "宽 EP 为什么是趋势",
   "nav.infer.quant": "低精度推理",
   "nav.infer.spec": "投机解码",
   "nav.infer.kv": "KV cache",
