@@ -407,8 +407,11 @@ function run(m, hw, topo, c, g){
     : f.n>0 ? (f.kind==="gqa" ? (2*D*2 + (2*f.Hq+2*f.Hkv)*f.dh*2 + 4*f.Hq + (f.gate?2*f.Hq*f.dh*2:0))/sp
                  : (2*D*2 + (f.qLora+f.kvLora)*2 + (sel.has("mla_up_proj")?0:f.H*((f.nope+f.rope)*3+f.nope+f.vh)*2) + f.H*f.vh*2 + 4*f.H + (f.kind==="dsa"?f.topk*4*sp + (f.idxH*f.idxD+f.idxD)*2*sp:0))/sp) : 0;
   const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650)*(l.dk+l.dv)/256 + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
-  const rowAct = e.k*imb*(De*2 + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4);
-  const moeAct = (2*D*2 + e.E*4*3)/sp + (sel.has("moe")?0:rowAct)/1 + (e.Dlat?(D+e.Dlat)*2:0) + (e.Fs>0&&!sel.has("shared_experts")?3*e.Fs*2/tp:0);
+  // routed expert 的行和上面 moe1 / moe2 的 R 一致：每个 TP rank 只路由自己那 Tl = Tc/TP 个 token（torchtitan 在 EP 下按 TP 切 token，
+  // Megatron 在 SP 下也一样），所以每个 Tc token 摊到 k·imb/TP 行。ETP > 1 时 Megatron 先在 ETP 组内 all-gather 行：
+  // 每卡的行数 ×ETP，dispatch 进来的输入跟着 ×ETP，F 方向按 ETP 切，中间结果的总字节不变
+  const rowAct = e.k*imb/sp*(De*2*etp + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4*etp);
+  const moeAct = (2*D*2 + e.E*4*3)/sp + (sel.has("moe")?0:rowAct) + (e.Dlat?(D+e.Dlat)*2:0) + (e.Fs>0&&!sel.has("shared_experts")?3*e.Fs*2/tp:0);
   const denseAct = 2*D*2+3*m.dense.F*2/tp;
   let perTokLayers;
   if(rcFull){ perTokLayers = (m.L/pp)*D*2/sp; }
