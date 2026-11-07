@@ -261,18 +261,10 @@ t("par.fsdp.f.states", { p: fN(r.Pshard), bytes: fB(r.mem.states) });
   for(const xa of [x0+bw,x1+bw,x2+bw]) s+='<path d="M'+(xa+4)+','+(26+Fs*12)+' l'+(gap-10)+',0" style="stroke:var(--muted)" stroke-width="1.5" marker-end="url(#p-f-arr)"/>';
   $("p-f-flow").setAttribute("viewBox","0 0 680 "+(yb+24));
   $("p-f-flow").innerHTML='<defs><marker id="p-f-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 Z" style="fill:var(--muted)"/></marker></defs>'+s;
-  /* 连续几层的前向和预取 */
-  const ffn=moe?P.rep.f+P.exp.f:P.den.f, compFull=P.pre.f+P.core.f+P.post.f+ffn, compLin=(m.lin.n?P.lin.f/m.lin.n*m.L/m.L:0)+ffn;
+  /* 表里每种块的前向计算时间 */
+  const ffn=moe?P.rep.f+P.exp.f:P.den.f, compFull=P.pre.f+P.core.f+P.post.f+ffn;
   const linPer=m.lin.n? (()=>{ let f=0; for(const o of r.ops) if(o.group==="lin") f+=o.fwd.t/o.layers; return f; })() : 0;
-  const lane=fs.lkD.intra?"nvl":"ib", LP=Common.layerPlan(m), isFull=i=>LP[i].attn!=="lin", gT=i=>Par.wireT((isFull(i)?fs.pFull:fs.pLin)*(fs.fs-1)/fs.fs*2,fs.lkD,g.etaAg,1,g);
-  const layers=Math.min(6,m.L), segs=[]; let commEnd=gT(0), tc=commEnd;
-  if(commEnd>0) segs.push({lane,label:t("par.fsdp.pref.gather", { i: 0 }),t0:0,t1:commEnd,cat:"fsdp"});
-  for(let i=0;i<layers;i++){ const comp=isFull(i)?compFull:linPer+ffn, start=Math.max(tc,commEnd);
-    if(i+1<layers){ const nx=gT(i+1), cs=Math.max(commEnd,start); if(nx>0) segs.push({lane,label:t("par.fsdp.pref.prefetch", { i: i+1 }),t0:cs,t1:cs+nx,cat:"fsdp"}); commEnd=cs+nx; }
-    segs.push({lane:"sm",label:t("par.fsdp.pref.fwd", { i, kind: t("par.fsdp.pref."+LP[i].attn) }),t0:start,t1:start+comp,cat:isFull(i)?"attn":"lin"}); tc=start+comp; }
-  gantt("p-f-pref",[{label:"",lanes:["sm",lane],segs}]);
-  $("p-f-pref-lede").textContent=t("par.fsdp.pref.lede", { n: layers, full: fT(compFull), lin: m.lin.n ? t("par.fsdp.pref.ledeLin", { t: fT(linPer+ffn) }) : "", gather: fT(gT(Math.max(0,LP.findIndex(x=>x.attn!=="lin")))), link: fs.lkD.kind })+(fs.fs<=1?t("par.fsdp.pref.noGather"):"");
-  legendInto("p-f-pref-legend",[{name:t("par.fsdp.pref.legFull"),col:CAT.attn},{name:t("par.fsdp.pref.legLin"),col:CAT.lin},{name:t("par.fsdp.pref.legAg"),col:CAT.fsdp}]);
+  renderParMem(r);
   /* 每卡 token：两种拓扑各跑一遍 Train.run（各用自己那一代的卡：HGX 用 B200 / B300 / H200，NVL72 用 GB200 / GB300；PCIe 卡在自己的 8 卡服务器上，对照 GB200） */
   const PAIR={B200:"GB200",GB200:"B200",B300:"GB300",GB300:"B300",H200:"GB200",H100:"GB200",RTXP6000:"GB200"}, gb=/^GB/.test(S.hw), hH=gb?PAIR[S.hw]:S.hw, hN=gb?S.hw:PAIR[S.hw];
   const runN=(tk,hk,n)=>{ const c2=fitPar(Object.assign(parBase(),{tok:n,S:Math.max(n*S.trn.cp,1024)}),TOPO[tk].gpus); return { c2, r2:Train.run(m,HW[hk],TOPO[tk],Object.assign({N:TOPO[tk].gpus},c2),g) }; };
@@ -290,6 +282,110 @@ t("par.fsdp.f.states", { p: fN(r.Pshard), bytes: fB(r.mem.states) });
   $("p-f-tbl").innerHTML='<thead><tr><th>'+t("par.fsdp.tbl.th.kind")+'</th><th>'+t("par.fsdp.tbl.th.layers")+'</th><th>'+t("par.fsdp.tbl.th.params")+'</th><th>'+t("par.fsdp.tbl.th.group")+'</th><th>'+t("par.fsdp.tbl.th.bytes")+'</th><th>'+t("par.fsdp.tbl.th.wire")+'</th><th>'+t("par.fsdp.tbl.th.fwd")+'</th></tr></thead><tbody>'+
     [[t("par.fsdp.tbl.full", { rep }),m.full.n,fs.pFull,fs.fs,fs.lkD,compFull],...(m.lin.n?[[t("par.fsdp.tbl.lin", { rep }),m.lin.n,fs.pLin,fs.fs,fs.lkD,linPer+ffn]]:[]),...(m.dense.n?[[t("par.fsdp.tbl.dense"),m.dense.n,fs.pDen,fs.fs,fs.lkD,P.den.f]]:[]),...(moe?[[t("par.fsdp.tbl.exp"),r.nM,fs.pExpL,fs.fe,fs.lkE,P.exp.f]]:[])]
     .map(([k,nL,Pp,F,l,cf])=>{ const by=Par.fsdpBytes(Pp,F,fs.aG,fs.gB); return '<tr><td>'+esc(k)+'</td><td class="num">'+nL+'</td><td class="num">'+fN(Pp)+'</td><td class="num">'+(F>1?t("par.fsdp.tbl.groupLink", { F, link: l.kind }):F)+'</td><td class="num">'+(F>1?fB(by):"—")+'</td><td class="num">'+(F>1?fT(Par.fsdpT(Pp,F,l,g,fs.aG,fs.gB)):"—")+'</td><td class="num">'+fT(cf)+'</td></tr>'; }).join("")+'</tbody>';
+}
+
+/* ---------- FSDP：一个 step 的显存时间线（计算核心 MemTL，只排第一个和最后一个 micro-batch） ---------- */
+const PM_COL = { opt:"c-lm", gsh:"c-lm", work:"c-oth", agD:"c-fsdp", agE:"c-fsdp", actA:"c-attn", actL:"c-lin", actM:"c-moe", grad:"c-ar", rcws:"c-cp", qw:"c-dp", buf:"c-a2a", logit:"s4" };
+const PM_HATCH = new Set(["gsh","agE","rcws","qw"]);
+// 和左侧估计（Train.run 的 mem）一一对应的几组
+const PM_GROUP = [["states",["opt","gsh"],m=>m.states],["gathered",["agD","agE","grad"],m=>m.gathered],["act",["actA","actL","actM","rcws"],m=>m.act],["logits",["logit"],m=>m.logits],["buf",["buf"],m=>m.a2aBuf+m.cpBuf],["qW",["qw"],m=>m.qW],["work",["work"],m=>m.work]];
+let pmAg="shared", pmView="step";
+const pmHatchId = col => "pm-h-"+col;
+const pmFill = k => PM_HATCH.has(k) ? "url(#"+pmHatchId(PM_COL[k])+")" : css(PM_COL[k]);
+const pmSec = s => t("par.mem.sec."+s);
+const pmBlk = b => b.kind==="layer" ? t("par.mem.blk.layer", { i: b.i, attn: pmSec(b.attn), mlp: pmSec(b.mlp) }) : t("par.mem.blk."+b.kind);
+function pmName(s){
+  if(s.kind==="f"||s.kind==="b"||s.kind==="rc") return t("par.mem.seg."+s.kind, { what: s.b.kind==="layer" ? t("par.mem.blk.layerSec", { i: s.b.i, sec: pmSec(s.sec) }) : t("par.mem.blk."+s.b.kind) });
+  if(s.kind==="wait") return t("par.mem.seg.wait", { blk: pmBlk(s.b) });
+  if(s.kind==="opt") return t("par.mem.seg.opt");
+  if(s.kind==="agD"||s.kind==="agE") return t("par.mem.seg.ag", { grp: t("par.mem.grp."+(s.kind==="agD"?"dense":"exp")), blk: pmBlk(s.b), pass: t("par.mem.pass."+s.pass) });
+  if(s.kind==="rsD"||s.kind==="rsE") return t("par.mem.seg.rs", { grp: t("par.mem.grp."+(s.kind==="rsD"?"dense":"exp")), blk: pmBlk(s.b) });
+  if(s.kind==="ar") return t("par.mem.seg.ar", { blk: pmBlk(s.b) });
+  return s.op+" "+String(s.what);
+}
+function pmSegFill(s){
+  const secCol = { full:"c-attn", swa:"c-attn", lin:"c-lin", moe:"c-moe", dense:"c-moe", head:"c-lm", emb:"c-lm" };
+  return s.kind==="f"||s.kind==="b" ? css(secCol[s.sec]) : s.kind==="rc" ? css("c-cp") : s.kind==="wait" ? css("net") : s.kind==="opt" ? css("c-st")
+    : s.kind==="agD" ? css("c-fsdp") : s.kind==="agE" ? "url(#"+pmHatchId("c-fsdp")+")" : s.kind==="rsD" ? css("c-ar") : s.kind==="rsE" ? "url(#"+pmHatchId("c-ar")+")" : s.kind==="ar" ? css("c-dp")
+    : css(CAT[s.lane]||"c-oth");
+}
+function renderParMem(r){
+  const {m,hw,g}=ctx(), F=r.par.fsdp, x=MemTL.run(m,r,g,{agMode:pmAg});
+  const both = F && F.fs>1 && F.fe>1 && m.moe.E>0;                   // dense 和 expert 都要 gather 时 AG 流的两种排法才不同
+  $("p-f-mem-ag").hidden=!both||!x;
+  if(both) xSeg("p-f-mem-ag",[["shared",t("par.mem.ag.shared")],["split",t("par.mem.ag.split")]],pmAg,v=>{ pmAg=v; renderParMem(r); });
+  xSeg("p-f-mem-view",[["step",t("par.mem.view.step")],["peak",t("par.mem.view.peak")]],pmView,v=>{ pmView=v; renderParMem(r); });
+  const svg=$("p-f-mem");
+  if(!x){ $("p-f-mem-lede").textContent=t("par.mem.noPp"); svg.innerHTML=""; svg.setAttribute("viewBox","0 0 680 1"); $("p-f-mem-legend").innerHTML=""; $("p-f-mem-tbl").innerHTML=""; return; }
+  /* 说明 */
+  const pkS=x.peakSeg, pkWhere=pkS ? pmName(pkS)+(pkS.mb?" · MB"+pkS.mb:"") : "—";
+  $("p-f-mem-lede").textContent=t("par.mem.lede", { peak: fB(x.peak), where: pkWhere, est: fB(r.mem.used), cap: hw.mem })+
+    (r.mem.states>0 ? (x.nM>1 ? t("par.mem.ledeGsh", { nM: x.nM }) : t("par.mem.ledeGsh1")) : "")+t("par.mem.ledeAct")+
+    (x.nM>2 ? t("par.mem.ledeSkip", { a: 2, b: x.nM-1, n: x.nM }) : "")+
+    (both ? t(x.shared?"par.mem.ledeAgShared":"par.mem.ledeAgSplit", { busy: fT(x.agBusy), wait: fT(x.waitT), mb: fT(x.mbT) }) : "");
+  /* 视窗 */
+  const W=680, M={l:58,r:14,t:24}, AH=210, laneH=11, lanes=["comp"].concat(x.shared?["ag"]:["agD","agE"],["rs","ep","cp","tp"]).filter(k=>x.segs.some(s=>s.lane===k));
+  let t0=0, t1=x.tEnd;
+  if(pmView==="peak"){ const span=3*x.mbT/m.L; t0=Math.max(0,x.peakT-span); t1=Math.min(x.tEnd,x.peakT+span); }
+  const out=x.out, nc=x.cats.length;
+  let j0=0; while(j0+1<out.length && out[j0+1].t<=t0) j0++;
+  let j1=out.length-1; while(j1>0 && out[j1-1].t>=t1) j1--;
+  const pts=out.slice(j0,j1+1), cap=hw.mem*1e9, vMax=Math.max(...pts.map(p=>p.tot)), showCap=cap<vMax*1.6, yMax=Math.max(vMax, showCap?cap:0)*1.06;
+  const yL=M.t+AH+10, H=yL+lanes.length*(laneH+2)+22, X=axis(t0,t1,M.l,W-M.r), Y=axis(0,yMax,M.t+AH,M.t);
+  svg.setAttribute("viewBox","0 0 "+W+" "+H);
+  const hatchCols=["c-lm","c-fsdp","c-cp","c-dp","c-ar"];
+  let s='<defs><clipPath id="pm-clip"><rect x="'+M.l+'" y="0" width="'+(W-M.l-M.r)+'" height="'+H+'"/></clipPath>'+
+    hatchCols.map(c=>'<pattern id="'+pmHatchId(c)+'" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" style="fill:'+css(c)+';opacity:.3"/><rect width="2.2" height="5" style="fill:'+css(c)+'"/></pattern>').join("")+'</defs>';
+  for(const v of niceTicks(0,yMax/1e9,4)) s+='<line class="gr" x1="'+M.l+'" x2="'+(W-M.r)+'" y1="'+Y(v*1e9)+'" y2="'+Y(v*1e9)+'"/><text x="'+(M.l-6)+'" y="'+(Y(v*1e9)+4)+'" text-anchor="end">'+v+' GB</text>';
+  for(const v of niceTicks(t0,t1,6)) s+='<line class="gr" x1="'+X(v)+'" x2="'+X(v)+'" y1="'+M.t+'" y2="'+(H-22)+'"/><text x="'+X(v)+'" y="'+(H-8)+'" text-anchor="middle">'+esc(fT(v))+'</text>';
+  /* 堆叠面积：static 在下，从下往上按 CATS 的顺序 */
+  const cum=pts.map(p=>{ const c=new Float64Array(nc+1); for(let i=0;i<nc;i++) c[i+1]=c[i]+Math.max(0,p.v[i]); return c; }), used=[];
+  s+='<g clip-path="url(#pm-clip)">';
+  for(let i=0;i<nc;i++){ const k=x.cats[i]; if(!out.some(p=>p.v[i]>1e6)) continue; used.push(k);
+    let d=""; pts.forEach((p,j)=>{ d+=(j?"L":"M")+X(p.t).toFixed(1)+","+Y(cum[j][i+1]).toFixed(1); });
+    for(let j=pts.length-1;j>=0;j--) d+="L"+X(pts[j].t).toFixed(1)+","+Y(cum[j][i]).toFixed(1);
+    s+='<path d="'+d+'Z" style="fill:'+pmFill(k)+'"/>'; }
+  if(showCap) s+='<line x1="'+M.l+'" x2="'+(W-M.r)+'" y1="'+Y(cap)+'" y2="'+Y(cap)+'" style="stroke:var(--warn)" stroke-dasharray="5 3"/><text x="'+(W-M.r-4)+'" y="'+(Y(cap)-4)+'" text-anchor="end" style="fill:var(--warn)">'+esc(t("par.mem.cap", { cap: hw.mem }))+'</text>';
+  /* 阶段标记和峰值 */
+  for(const mk of x.marks){ if(mk.t<t0||mk.t>t1) continue;
+    const lb=mk.kind==="opt" ? t("par.mem.mark.opt") : t("par.mem.mark."+mk.kind, { mb: mk.mb });
+    s+='<line x1="'+X(mk.t)+'" x2="'+X(mk.t)+'" y1="'+(M.t-14)+'" y2="'+(H-22)+'" style="stroke:var(--muted)" stroke-dasharray="2 3"/><text x="'+(X(mk.t)+3)+'" y="'+(M.t-6)+'" class="lbl">'+esc(lb)+'</text>'; }
+  if(x.peakT>=t0 && x.peakT<=t1){ const px=X(x.peakT), py=Y(x.peak), right=px>W-150;
+    s+='<line x1="'+px+'" x2="'+px+'" y1="'+py+'" y2="'+(M.t+AH)+'" style="stroke:var(--ink)" stroke-width="1"/><circle cx="'+px+'" cy="'+py+'" r="3" style="fill:var(--ink)"/>'+
+      '<text x="'+(right?px-6:px+6)+'" y="'+(py+12)+'" text-anchor="'+(right?"end":"start")+'" class="lbl" style="font-weight:600">'+esc(t("par.mem.peak", { v: fB(x.peak) }))+'</text>'; }
+  /* 下面的流：计算、AG、RS、TP / CP / EP */
+  const ly={}; lanes.forEach((k,i)=>{ ly[k]=yL+i*(laneH+2); s+='<text x="'+(M.l-6)+'" y="'+(ly[k]+laneH-2)+'" text-anchor="end" style="font-size:10px">'+esc(t("par.mem.lane."+k))+'</text><rect x="'+M.l+'" y="'+ly[k]+'" width="'+(W-M.l-M.r)+'" height="'+laneH+'" style="fill:var(--soft)"/>'; });
+  x.segs.forEach((sg,i)=>{ if(!(sg.lane in ly) || sg.t1<t0 || sg.t0>t1) return;
+    const xa=X(sg.t0), w=Math.max(0.6,X(sg.t1)-xa);
+    s+='<rect data-k="'+i+'" x="'+xa.toFixed(2)+'" y="'+(ly[sg.lane]+1)+'" width="'+w.toFixed(2)+'" height="'+(laneH-2)+'" style="fill:'+pmSegFill(sg)+(sg.kind==="b"?";opacity:.6":"")+'"/>'; });
+  s+='</g><line data-hair y1="'+M.t+'" y2="'+(M.t+AH)+'" style="stroke:var(--ink);opacity:.4" hidden/>';
+  svg.innerHTML=s;
+  const hair=svg.querySelector("[data-hair]");
+  svg.onpointermove = ev => {
+    const el=ev.target.closest("[data-k]");
+    if(el){ hair.setAttribute("hidden",""); const sg=x.segs[+el.dataset.k], rows=[{v:fT(sg.t1-sg.t0),l:t("par.mem.tip.dur")}];
+      if(sg.bytes) rows.push({v:fB(sg.bytes),l:t("par.mem.tip.bytes")});
+      if(sg.F>1) rows.push({v:String(sg.F),l:t("par.mem.tip.group")});
+      if(sg.mb) rows.push({v:"MB"+sg.mb,l:""});
+      showTip(ev,pmName(sg),rows); return; }
+    const pt=svg.createSVGPoint(); pt.x=ev.clientX; pt.y=ev.clientY; const loc=pt.matrixTransform(svg.getScreenCTM().inverse());
+    if(loc.x<M.l || loc.x>W-M.r || loc.y>M.t+AH){ hair.setAttribute("hidden",""); hideTip(); return; }
+    const T=t0+(loc.x-M.l)/(W-M.l-M.r)*(t1-t0);
+    let lo=0, hi=out.length-1; while(hi-lo>1){ const mid=(lo+hi)>>1; if(out[mid].t<=T) lo=mid; else hi=mid; }
+    const a=out[lo], b=out[hi], f=b.t>a.t ? Math.min(1,Math.max(0,(T-a.t)/(b.t-a.t))) : 0;
+    const v=x.cats.map((k,i)=>[k,a.v[i]+(b.v[i]-a.v[i])*f]), tot=v.reduce((q,[,y])=>q+y,0), cs=x.segs.find(q=>q.lane==="comp"&&q.t0<=T&&T<=q.t1);
+    hair.setAttribute("x1",loc.x); hair.setAttribute("x2",loc.x); hair.removeAttribute("hidden");
+    showTip(ev, fT(T)+(cs?" · "+pmName(cs)+(cs.mb?" · MB"+cs.mb:""):""),
+      [{v:fB(tot),l:t("par.mem.tip.total")}].concat(v.filter(([,y])=>y>5e7).sort((p,q)=>q[1]-p[1]).map(([k,y])=>({v:fB(y),l:t("par.mem.cat."+k),c:PM_COL[k]}))));
+  };
+  svg.onpointerleave = () => { hair.setAttribute("hidden",""); hideTip(); };
+  legendInto("p-f-mem-legend", used.map(k=>({name:t("par.mem.cat."+k),col:PM_COL[k],hatch:PM_HATCH.has(k)})));
+  /* 和左侧估计对照 */
+  const sumOf=(v,ks)=>ks.reduce((q,k)=>q+v[x.cats.indexOf(k)],0);
+  const rows=PM_GROUP.map(([key,ks,est])=>{ const pk=sumOf(x.peakV,ks), mx=Math.max(...out.map(p=>sumOf(p.v,ks))), e=est(r.mem);
+    return (e>1e6||mx>1e6) ? '<tr><td>'+esc(t("par.mem.tbl."+key))+'</td><td class="num">'+fB(e)+'</td><td class="num">'+fB(pk)+'</td><td class="num">'+fB(mx)+'</td></tr>' : ""; }).join("");
+  $("p-f-mem-tbl").innerHTML='<thead><tr><th>'+t("par.mem.tbl.th.item")+'</th><th>'+t("par.mem.tbl.th.est")+'</th><th>'+t("par.mem.tbl.th.atPeak")+'</th><th>'+t("par.mem.tbl.th.max")+'</th></tr></thead><tbody>'+rows+
+    '<tr><td><b>'+t("par.mem.tbl.total")+'</b></td><td class="num"><b>'+fB(r.mem.used)+'</b></td><td class="num"><b>'+fB(x.peak)+'</b></td><td class="num">—</td></tr></tbody>';
 }
 
 /* ---------- CP ---------- */

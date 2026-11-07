@@ -75,7 +75,8 @@ function lineChart(svgId, o){
   svg.onpointerleave = () => { hair.setAttribute("hidden",""); hideTip(); };
 }
 function legendInto(id, items){ const el=$(id); if(!el) return;
-  el.innerHTML=items.map(it=>it.line ? '<span><i style="border-color:'+css(it.col)+'"></i>'+esc(it.name)+'</span>' : '<span><span class="sw" style="background:'+css(it.col)+'"></span>'+esc(it.name)+'</span>').join(""); }
+  el.innerHTML=items.map(it=>it.line ? '<span><i style="border-color:'+css(it.col)+'"></i>'+esc(it.name)+'</span>'
+    : '<span><span class="sw" style="'+(it.hatch ? 'background:repeating-linear-gradient(135deg,'+css(it.col)+' 0 2px,transparent 2px 4.5px);box-shadow:inset 0 0 0 1px '+css(it.col) : 'background:'+css(it.col))+'"></span>'+esc(it.name)+'</span>').join(""); }
 
 /* 甘特图：groups [{label, lanes, segs:[{lane,t0,t1,cat,label}]}] */
 const LANE_NAME = { cpu:"CPU", sm:t("common.gantt.sm"), nvl:"NVLink", ib:"IB" };

@@ -51,17 +51,20 @@ function xSections(rows){
    后台流从这一行开头起跑，后面不等它。这里只决定画在哪，字节和时间都是引擎给的 */
 function xPlace(sec){
   const bars=[], free={}; let t=0;
-  const most=a=>{ const m={}; for(const x of a) m[x.dim]=(m[x.dim]||0)+x.t; return Math.max(0,...Object.values(m)); };
-  const put=(x,s)=>{ bars.push({it:x,lane:x.dim,t0:s,t1:s+x.t}); return free[x.dim]=s+x.t; };
+  // 每条道下面的 CUDA 流：FSDP2 的所有 FSDPState 共用 FSDPCommContext 的一条 all_gather_stream 和一条 reduce_scatter_stream，
+  // 所以 dense（fsdp）和 expert（efsdp）的 AG 排在同一条流上、RS 排在另一条；其余维度一条道一条流
+  const sk=x=>x.dim==="fsdp"||x.dim==="efsdp"?"fsdp:"+x.op:x.dim;
+  const most=a=>{ const m={}; for(const x of a) m[sk(x)]=(m[sk(x)]||0)+x.t; return Math.max(0,...Object.values(m)); };
+  const put=(x,s)=>{ bars.push({it:x,lane:x.dim,t0:s,t1:s+x.t}); return free[sk(x)]=s+x.t; };
   for(const r of sec.rows){
     const r0=t, c=r.comp, by=m=>r.chips.filter(x=>x.mode===m), tied=by("part").concat(by("fused")), pre=tied.filter(x=>!x.after), post=tied.filter(x=>x.after), left={};
-    by("bg").forEach(x=>put(x,Math.max(r0,free[x.dim]||0)));
-    by("block").forEach(x=>{ t=put(x,Math.max(t,free[x.dim]||0)); });
+    by("bg").forEach(x=>put(x,Math.max(r0,free[sk(x)]||0)));
+    by("block").forEach(x=>{ t=put(x,Math.max(t,free[sk(x)]||0)); });
     const a=most(pre), b=most(post), T=c?(c.ghost?Math.max(most(by("bg")),a,2e-5):c.t):0; let end=t+Math.max(a+b,T);
     const c0=a&&b?Math.min(Math.max(t+a-T/2,t),end-T):t;
-    pre.forEach(x=>{ end=Math.max(end,put(x,Math.max(t,free[x.dim]||0))); });
-    post.forEach(x=>left[x.dim]=(left[x.dim]||0)+x.t);
-    post.forEach(x=>{ const s=Math.max(end-left[x.dim],free[x.dim]||0); left[x.dim]-=x.t; end=Math.max(end,put(x,s)); });
+    pre.forEach(x=>{ end=Math.max(end,put(x,Math.max(t,free[sk(x)]||0))); });
+    post.forEach(x=>left[sk(x)]=(left[sk(x)]||0)+x.t);
+    post.forEach(x=>{ const s=Math.max(end-left[sk(x)],free[sk(x)]||0); left[sk(x)]-=x.t; end=Math.max(end,put(x,s)); });
     if(c) bars.push({it:c,lane:"sm",t0:c0,t1:c0+T,ghost:!!c.ghost});
     t=end;
   }

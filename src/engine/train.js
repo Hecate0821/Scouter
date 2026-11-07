@@ -402,17 +402,22 @@ function run(m, hw, topo, c, g){
   /* ---- 显存 ---- */
   const actTok = {};      // 每 token 每层保存的激活字节（本 rank）
   const sp=tp;
-  // CSA：输入、q_a / 滑窗 latent、q、attention 输出、wo_a 输出、softmax 统计、top-k 下标（indexer 的 q 只在 index 层，摊到每层）
-  const attnAct = f.n>0 && f.kind==="csa" ? (2*D*2 + (f.qLora+f.dh)*2 + f.H*f.dh*2*2 + f.oG*f.oLora*2 + 4*f.H + (f.topk*4 + f.idxH*f.idxD*2*d.nIdx/f.n)*sp)/sp
-    : f.n>0 ? (f.kind==="gqa" ? (2*D*2 + (2*f.Hq+2*f.Hkv)*f.dh*2 + 4*f.Hq + (f.gate?2*f.Hq*f.dh*2:0))/sp
-                 : (2*D*2 + (f.qLora+f.kvLora)*2 + (sel.has("mla_up_proj")?0:f.H*((f.nope+f.rope)*3+f.nope+f.vh)*2) + f.H*f.vh*2 + 4*f.H + (f.kind==="dsa"?f.topk*4*sp + (f.idxH*f.idxD+f.idxD)*2*sp:0))/sp) : 0;
-  const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650)*(l.dk+l.dv)/256 + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
-  // routed expert 的行和上面 moe1 / moe2 的 R 一致：每个 TP rank 只路由自己那 Tl = Tc/TP 个 token（torchtitan 在 EP 下按 TP 切 token，
-  // Megatron 在 SP 下也一样），所以每个 Tc token 摊到 k·imb/TP 行。ETP > 1 时 Megatron 先在 ETP 组内 all-gather 行：
-  // 每卡的行数 ×ETP，dispatch 进来的输入跟着 ×ETP，F 方向按 ETP 切，中间结果的总字节不变
-  const rowAct = e.k*imb/sp*(De*2*etp + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4*etp);
-  const moeAct = (2*D*2 + e.E*4*3)/sp + (sel.has("moe")?0:rowAct) + (e.Dlat?(D+e.Dlat)*2:0) + (e.Fs>0&&!sel.has("shared_experts")?3*e.Fs*2/tp:0);
-  const denseAct = 2*D*2+3*m.dense.F*2/tp;
+  // 每层每 token 的保存激活按 (sel, ttDef) 算一次；sel 为空、ttDef = false 就是不重算时的整份（重算工作集和时间线 MemTL 用）
+  const actOf = (sel, ttDef) => {
+    // CSA：输入、q_a / 滑窗 latent、q、attention 输出、wo_a 输出、softmax 统计、top-k 下标（indexer 的 q 只在 index 层，摊到每层）
+    const attnAct = f.n>0 && f.kind==="csa" ? (2*D*2 + (f.qLora+f.dh)*2 + f.H*f.dh*2*2 + f.oG*f.oLora*2 + 4*f.H + (f.topk*4 + f.idxH*f.idxD*2*d.nIdx/f.n)*sp)/sp
+      : f.n>0 ? (f.kind==="gqa" ? (2*D*2 + (2*f.Hq+2*f.Hkv)*f.dh*2 + 4*f.Hq + (f.gate?2*f.Hq*f.dh*2:0))/sp
+                   : (2*D*2 + (f.qLora+f.kvLora)*2 + (sel.has("mla_up_proj")?0:f.H*((f.nope+f.rope)*3+f.nope+f.vh)*2) + f.H*f.vh*2 + 4*f.H + (f.kind==="dsa"?f.topk*4*sp + (f.idxH*f.idxD+f.idxD)*2*sp:0))/sp) : 0;
+    const linAct = l.n>0 ? (2*D*2 + d.linIn*2 + d.linConvDim*2 + l.Hv*(l.kind==="KDA"?1300:650)*(l.dk+l.dv)/256 + l.Hv*l.dv*4*2 + l.Hv*l.dv*2)/sp : 0;
+    // routed expert 的行和上面 moe1 / moe2 的 R 一致：每个 TP rank 只路由自己那 Tl = Tc/TP 个 token（torchtitan 在 EP 下按 TP 切 token，
+    // Megatron 在 SP 下也一样），所以每个 Tc token 摊到 k·imb/TP 行。ETP > 1 时 Megatron 先在 ETP 组内 all-gather 行：
+    // 每卡的行数 ×ETP，dispatch 进来的输入跟着 ×ETP，F 方向按 ETP 切，中间结果的总字节不变
+    const rowAct = e.k*imb/sp*(De*2*etp + 2*e.F*2*(ttDef?0:1) + e.F*2*(sel.has("moe_act")?0:1) + 4*etp);
+    const moeAct = (2*D*2 + e.E*4*3)/sp + (sel.has("moe")?0:rowAct) + (e.Dlat?(D+e.Dlat)*2:0) + (e.Fs>0&&!sel.has("shared_experts")?3*e.Fs*2/tp:0);
+    const denseAct = 2*D*2+3*m.dense.F*2/tp;
+    return { attnAct, linAct, moeAct, denseAct }; };
+  const { attnAct, linAct, moeAct, denseAct } = actOf(sel, ttDef), A0 = actOf(new Set(), false);
+  const layerAct = { full:attnAct, swa:attnAct, lin:sel.has("gdn")?D*2/sp:linAct, moe:moeAct, dense:denseAct }, layerAct0 = { full:A0.attnAct, swa:A0.attnAct, lin:A0.linAct, moe:A0.moeAct, dense:A0.denseAct };
   let perTokLayers;
   if(rcFull){ perTokLayers = (m.L/pp)*D*2/sp; }
   else perTokLayers = (f.n*attnAct + l.n*(sel.has("gdn")?D*2/sp:linAct) + d.nMoe*moeAct + m.dense.n*denseAct)/pp;
@@ -439,7 +444,7 @@ function run(m, hw, topo, c, g){
   // 低精度权重缓存：前向一份；反向也低精度且权重是 1D 块时再从 BF16 量化一份列方向（2D 块共用一份）
   const qW = fq ? (mg ? PlD+PlE : Pdense/(tp*pp)+Pexp/(ep*pp))*(wbF + (bq&&(!PR.w2d||hw.sm<100)?wbB:0)) : 0;
   const used = paramsGPU + states + gathered + act + logits + a2aBuf + cpBuf + work + qW;
-  const mem = { paramsGPU, states, gathered, act, logits, a2aBuf, cpBuf, work, qW, used, total:hw.mem*1e9, perTokLayers, inflight };
+  const mem = { paramsGPU, states, gathered, act, logits, a2aBuf, cpBuf, work, qW, used, total:hw.mem*1e9, perTokLayers, inflight, layerAct, layerAct0, rcFull };
 
   return { ops, comm, tF, tD, tW, tR, compMB, exposed, hidden, tMB, tMBstage, fsdpMB, fsdpExposedMB, microsPerStep, bubble, tPipe, tDP, tDPexp, dpNote, tOpt, optNote, tSmallAR, stepT,
     tokens, tokPerGpu: tokens/(N*stepT), mfu, dp, edp, tp, cp, pp, vpp, ep, etp, T, Tc, Tl, R, kEff, Pshard, PlD, PlE, mem, warn, flF, flB, moeT, a2aPerLayer, nM, stepX,
