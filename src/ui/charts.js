@@ -27,6 +27,10 @@ const tipAttr = (t, r) => 'data-tip="'+esc(JSON.stringify({t, r}))+'"';
 function axis(lo, hi, a, b, log){ if(log){ const L0=Math.log(lo), L1=Math.log(hi); return v => a + (Math.log(v)-L0)/(L1-L0)*(b-a); } return v => a + (v-lo)/(hi-lo)*(b-a); }
 function niceTicks(lo, hi, n){ const span=hi-lo, s0=span/(n||5), p=Math.pow(10,Math.floor(Math.log10(s0))), s=[1,2,2.5,5,10].map(k=>k*p).find(k=>k>=s0)||p*10; const out=[]; for(let v=Math.ceil(lo/s)*s; v<=hi+1e-9*s; v+=s) out.push(+v.toPrecision(12)); return out; }
 function logTicks(lo, hi, base){ const out=[], b=base||10; for(let v=Math.pow(b, Math.floor(Math.log(lo)/Math.log(b))); v<=hi*1.0001; v*=b) if(v>=lo*0.9999) out.push(v); return out; }
+/* 对数轴跨不到几个数量级时：先取每个数量级的 1 / 2 / 5，还不够就退回线性刻度（只留轴范围内的正数） */
+function logTicksDense(lo, hi, need){
+  const out=[]; for(let v=Math.pow(10, Math.floor(Math.log10(lo))); v<=hi*1.0001; v*=10) for(const k of [1,2,5]) if(v*k>=lo*0.9999 && v*k<=hi*1.0001) out.push(v*k);
+  return out.length>=need ? out : niceTicks(lo,hi,4).filter(v=>v>0 && v>=lo*0.9999 && v<=hi*1.0001); }
 
 /* 折线图：series [{name, short, col, dash, pts:[[x,y,{hollow,note}]]}]。默认十字准线吸附最近的 x；nearest 时吸附屏幕上最近的点（各线 x 不对齐的 Pareto） */
 function lineChart(svgId, o){
@@ -38,8 +42,8 @@ function lineChart(svgId, o){
   let y0=o.yMin ?? (o.yLog ? Math.min(...all.map(p=>p[1]))/1.3 : 0), y1=o.yMax ?? Math.max(...all.map(p=>p[1]))*1.08;
   if(x0===x1){ x0*=0.5; x1*=2; } if(y0===y1) y1=y0*2||1;
   const X=axis(x0,x1,m.l,W-m.r,o.xLog), Y=axis(y0,y1,H-m.b,m.t,o.yLog), fx=o.xFmt||fN, fy=o.yFmt||fN;
-  const xt = o.xLog ? logTicks(x0,x1,o.xBase||10) : niceTicks(x0,x1,6);
-  let yt = o.yLog ? logTicks(y0,y1,10) : niceTicks(y0,y1,5); if(o.yLog && yt.length<3) yt=niceTicks(y0,y1,4).filter(v=>v>0);   // 不到一个数量级时改用线性刻度
+  let xt = o.xLog ? logTicks(x0,x1,o.xBase||10) : niceTicks(x0,x1,6); if(o.xLog && (o.xBase||10)===10 && xt.length<2) xt=logTicksDense(x0,x1,2);
+  let yt = o.yLog ? logTicks(y0,y1,10) : niceTicks(y0,y1,5); if(o.yLog && yt.length<3) yt=logTicksDense(y0,y1,3);
   let s="";
   for(const v of yt) s+='<line class="gr" x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text x="'+(m.l-6)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+esc(fy(v))+'</text>';
   for(const v of xt) s+='<text x="'+X(v)+'" y="'+(H-m.b+16)+'" text-anchor="middle">'+esc(fx(v))+'</text>';

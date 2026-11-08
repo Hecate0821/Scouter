@@ -61,6 +61,14 @@ function serve(q){
   q = q || {}; const c = ctxOf(q), cfg = Object.assign({}, Infer.BASE, rest(q));
   return select(Object.assign({ query: Object.assign(echo(q, c), { cfg }) }, Infer.serve(c.m, c.hw, c.topo, cfg, c.g)), q.pick);
 }
+/* 部署页：同样 G 张卡（默认拓扑的卡数）的各种切法在每卡并发 b（默认 32）下的一步（Infer.layouts + layoutPoint），
+   当前配置只改 DCP 的扫描（Infer.dcpSweep，attention 不切 TP 时是 null），和 chunked prefill 两种调度的停顿、TTFT、TPOT（Infer.chunked）；覆盖 Infer.BASE */
+function deploy(q){
+  q = q || {}; const c = ctxOf(q), o = rest(q), G = o.G || c.topo.gpus, b = o.b || 32; delete o.G; delete o.b;
+  const cfg = Object.assign({}, Infer.BASE, o);
+  const layouts = Infer.layouts(c.m, cfg, c.topo, G).map(l => Object.assign({}, l, Infer.layoutPoint(c.m, c.hw, c.topo, Object.assign({}, cfg, l.cfg), c.g, b)));
+  return select({ query: Object.assign(echo(q, c), { cfg, G, b }), layouts, dcp: Infer.dcpSweep(c.m, c.hw, c.topo, cfg, c.g, 256), chunked: Infer.chunked(c.m, c.hw, c.topo, cfg, c.g) }, q.pick);
+}
 /* KV cache（KV.plan）：每种层每个 token / 每个请求存多少、agent 多轮会话在 HBM / 主机内存 / 远端池里的驻留比例、命中率和每轮 TTFT；
    覆盖 Infer.BASE 和 KV.BASE（会话形状、缓存层级、路由） */
 function kv(q){
@@ -86,7 +94,7 @@ function profile(q){
   return select({ query: Object.assign(echo(q, c), { cfg, dpSkew }), total: sp.total, stepT: sp.stepT, nKern: sp.nKern, graph: sp.graph, kern: sp.kern, cats: sp.cats,
     dpLoss: sp.dpLoss, eplbLoss: sp.eplbLoss, observer, warn: sp.r.warn }, q.pick);
 }
-const RUN = { roofline, infer, train, module, serve, kv, cluster, profile };
+const RUN = { roofline, infer, train, module, serve, deploy, kv, cluster, profile };
 /* 扫参：run 是上面的一个函数名，over 的每个字段给一组值（多个字段取笛卡儿积），pick 选出每一行要的字段 */
 function sweep(q){
   q = q || {}; const f = pick(RUN, q.run || "infer", "run"), over = q.over || {}, keys = Object.keys(over);
@@ -166,5 +174,5 @@ function catalog(){
     runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
 }
 
-return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, kv, cluster, profile, sweep, sets, points, kernels, eff, calib, trace });
+return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, deploy, kv, cluster, profile, sweep, sets, points, kernels, eff, calib, trace });
 })();

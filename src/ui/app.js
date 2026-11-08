@@ -1,13 +1,13 @@
 /* ---------- 页面与渲染：hash = 页 / 子页 / 锚点 ---------- */
 I18N.apply(document);
-const NAV = { overview:[], arch:["overview","module","compare"], train:["step","par","quant","calib"], infer:["step","deploy","widep","quant","spec","kv","calib"], rl:["mismatch","determinism","lowprec","qat"], other:["network","profile"], appendix:["data","quant","method"] };
+const NAV = { overview:[], arch:["overview","module","compare"], train:["step","par","quant","calib"], infer:["step","deploy","quant","spec","kv","calib"], rl:["mismatch","determinism","lowprec","qat"], other:["network","profile"], appendix:["data","quant","method"] };
 const OLD = { models:"arch/overview", "appendix/models":"arch/overview", par:"train/par", "par/calib":"train/calib", quant:"infer/quant", public:"appendix/data", method:"appendix/method",   // 旧的七个 tab
-  cluster:"other/network", "cluster/fabric":"other/network", "cluster/impact":"other/network" };   // 集群的两页合进了 其他 · 网络
+  cluster:"other/network", "cluster/fabric":"other/network", "cluster/impact":"other/network", "infer/widep":"infer/deploy/widep", "other/widep":"infer/deploy/widep" };   // 集群的两页合进了 其他 · 网络；宽 EP 的笔记页合进了 部署与并行的一块
 const VIEW = {
   "overview": renderOverview,
   "arch/overview": renderArchOverview, "arch/module": renderArchModule, "arch/compare": renderArchCompare,
   "train/step": renderTrain, "train/par": ()=>{ syncTrnRack(); renderTrnComm(); renderMesh(trnRun()); renderPar(); }, "train/quant": renderQuantTrain, "train/calib": renderCalib,
-  "infer/step": renderInfer, "infer/deploy": ()=>{ syncInfRack(); renderInfComm(); renderInferTbo(); renderInferTO(); }, "infer/widep": ()=>{}, "infer/quant": renderQuantInfer, "infer/spec": ()=>{ syncInfRack(); renderSpec(); }, "infer/kv": ()=>{ syncInfRack(); renderKV(); }, "infer/calib": renderInfCalib,
+  "infer/step": renderInfer, "infer/deploy": ()=>{ syncInfRack(); renderDeployPage(); renderInfComm(); renderInferTbo(); renderInferTO(); }, "infer/quant": renderQuantInfer, "infer/spec": ()=>{ syncInfRack(); renderSpec(); }, "infer/kv": ()=>{ syncInfRack(); renderKV(); }, "infer/calib": renderInfCalib,
   "rl/mismatch": renderMismatch, "rl/determinism": renderDeterminism, "rl/lowprec": renderLowprec, "rl/qat": renderQat,
   "other/network": ()=>{ syncInfRack(); renderClusterFabric(); renderClusterImpact(); renderClusterBench(); }, "other/profile": ()=>{ syncInfRack(); renderProfile(); },
   "appendix/data": ()=>{ renderKernels(); renderEff(); renderPublic(); renderReleases(); renderDB(); }, "appendix/quant": renderFormats, "appendix/method": ()=>{} };

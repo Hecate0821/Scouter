@@ -12,6 +12,7 @@
 //   node tools/scouter.js eff                                       per-kernel-class efficiency table and the data point behind each cell
 //   node tools/scouter.js calib    --set h200_kernels --basis ideal  model against measured points (also cookbook_tpot, cookbook_ttft)
 //   node tools/scouter.js serve    --model kimik3 --hw B300 --N 8 --conc 16 --isl 8192 --osl 1024   closed-loop benchmark estimate
+//   node tools/scouter.js deploy   --model glm53f --hw GB200 --b 32 --N 8 --dcp 8 --P 8192 --pick layouts   layouts on G GPUs, DCP sweep, chunked prefill
 //   node tools/scouter.js kv       --model qwen35 --hw H200 --N 8 --sessions 128 --hostGB 200   KV cache: bytes, hit rate, TTFT per turn
 //   node tools/scouter.js trace    --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   measured kernels by category
 //   node tools/scouter.js cluster  --model kimik3 --hw H200 --net.scale 16 --net.over 4 --pick train,decode   network fabric: bandwidth per level, time split

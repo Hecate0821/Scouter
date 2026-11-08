@@ -232,6 +232,76 @@ for (const hk of Object.keys(HW)) {
   if (wk(Infer.step(d, HW.B200, TOPO.hgx8, dc, G)).includes("engine_infer.warn.csaKvHopper")) bad("rtxp6000", "B200 has the V4.1 NVFP4 KV layout kernel");
 }
 
+// --- deployment page: DCP sweep, mixed chunked-prefill step, chunked prefill, layouts on G GPUs ---
+{
+  const { Common } = E, hw = HW.B300, topo = TOPO.hgx8, bads = r => r.warn.filter(w => w.bad).map(w => w.key).join(", ");
+  const base = Object.assign({}, Infer.BASE, { N: 8, dpA: 1, moePar: "tp", B: 32, n: 32768, kvDt: "fp8" });
+  // DCP: per-token KV and the concurrency cap move the right way, the collectives appear only above dcp 1, the ideal stays a lower bound
+  for (const mk of ["glm53f", "kimik3", "dsv41f"]) run(`dcp ${mk}`, () => {
+    const m = MODELS[mk], c = Object.assign({}, base, { wDt: m.wDefault }), sw = Infer.dcpSweep(m, hw, topo, c, G0, 256);
+    if (sw.why || sw.rows.length < 2) { bad(`dcp ${mk}`, "no sweep: " + sw.why); return null; }
+    for (let i = 1; i < sw.rows.length; i++) { const a = sw.rows[i - 1], b = sw.rows[i];
+      if (!(b.kvTok < a.kvTok && b.Bmax >= a.Bmax)) bad(`dcp ${mk}`, `dcp ${b.dcp}: KV / token ${b.kvTok} vs ${a.kvTok}, cap ${b.Bmax} vs ${a.Bmax}`);
+      if (!(b.dcpT > 0)) bad(`dcp ${mk}`, `dcp ${b.dcp} has no DCP communication`); }
+    if (sw.rows[0].dcpT !== 0) bad(`dcp ${mk}`, "DCP communication at dcp 1");
+    for (const ph of ["decode", "prefill"]) { const cc = Object.assign({}, c, { dcp: 8, phase: ph, p: ph === "prefill" ? 16384 : 0, C: 4096, P: 32768 }), f = ph === "decode" ? Infer.decode : Infer.prefill;
+      const mo = f(m, hw, topo, cc, Common.G0), id = f(m, hw, topo, cc, Common.IDEAL);
+      if (bads(mo)) bad(`dcp ${mk} ${ph}`, "dcp 8 at TP 8 is invalid: " + bads(mo));
+      if (!(id.stepT <= mo.stepT * (1 + 1e-9))) bad(`dcp ${mk} ${ph}`, `ideal ${id.stepT} slower than modeled ${mo.stepT}`); }
+    return sw.rows.map(r => [r.dcp, r.Bmax]);
+  });
+  run("dcp checks", () => {
+    const q = MODELS.qwen38_27b, c = Object.assign({}, base, { wDt: "bf16" });
+    if (Infer.decode(q, hw, topo, c, G0).stepT !== Infer.decode(q, hw, topo, Object.assign({}, c, { dcp: 2 }), G0).stepT) bad("dcp gqa", "SGLang must ignore dcp for GQA (inert dcpGqa)");
+    if (Infer.dcpSweep(q, hw, topo, c, G0, 256).why !== "dcpGqa") bad("dcp gqa", "sweep must say dcpGqa under SGLang");
+    if (Infer.dcpSweep(MODELS.glm53f, hw, topo, Object.assign({}, base, { dpA: 8, moePar: "deepep" }), G0, 256).why !== "dcpNoTp") bad("dcp", "DP attention has no DCP group");
+    if (!bads(Infer.decode(MODELS.glm53f, hw, topo, Object.assign({}, base, { wDt: "fp8", dpA: 2, moePar: "deepep", dcp: 8 }), G0))) bad("dcp", "dcp 8 with attention TP 4 must be invalid");
+    return true;
+  });
+  // the mixed step is not faster than its larger part, and not slower than the sum of its decode-only and prefill-only parts unless the
+  // combined rows lose a row-count fusion the parts had (SGLang fuses AR + RMSNorm only up to 2048 rows); the ideal is not slower
+  for (const mk of Object.keys(MODELS)) for (const [N, dpA, moePar] of [[8, 1, "tp"], [8, 8, "deepep"]]) run(`mixStep ${mk} N${N} dp${dpA}`, () => {
+    const m = MODELS[mk], c = Object.assign({}, base, { N, dpA, moePar, n: 8192, wDt: m.wDefault }), out = {};
+    for (const [b, gg] of [["modeled", Common.G0], ["ideal", Common.IDEAL]]) {
+      const r = Infer.mixStep(m, hw, topo, c, gg, 2048, 4096), pre = Infer.step(m, hw, topo, Object.assign({}, c, { phase: "prefill", C: 2048, p: 4096, reqPerChunk: 0, graph: false }), gg);
+      if (!(r.stepT >= Math.max(r.mix.dec, r.mix.pre) * (1 - 1e-9))) bad(`mixStep ${mk} N${N} dp${dpA} ${b}`, `${r.stepT} below max(${r.mix.dec}, ${r.mix.pre})`);
+      if (r.fused === pre.fused && !(r.stepT <= (r.mix.dec + r.mix.pre) * (1 + 1e-9))) bad(`mixStep ${mk} N${N} dp${dpA} ${b}`, `${r.stepT} above ${r.mix.dec} + ${r.mix.pre}`);
+      out[b] = r.stepT; }
+    if (!(out.ideal <= out.modeled * (1 + 1e-9))) bad(`mixStep ${mk} N${N} dp${dpA}`, `ideal ${out.ideal} slower than modeled ${out.modeled}`);
+    return out;
+  });
+  // chunked prefill: the engine picks the schedule; SGLang's switches work and only SGLang has them; the ideal is not slower
+  for (const mk of ["glm53f", "kimik3", "qwen35"]) for (const engine of ["sglang", "vllm"]) run(`chunked ${mk} ${engine}`, () => {
+    const m = MODELS[mk], c = Object.assign({}, base, { engine, n: 8192, P: 16384, C: 8192, osl: 1024, wDt: m.wDefault });
+    const r = Infer.chunked(m, hw, topo, c, Common.G0), ri = Infer.chunked(m, hw, topo, c, Common.IDEAL), w = `chunked ${mk} ${engine}`;
+    if (r.mixed !== (engine === "vllm")) bad(w, "mixed = " + r.mixed);
+    r.rows.forEach((x, i) => { const y = ri.rows[i];
+      if (!(x.sep.stall > 0 && x.sep.ttft >= x.ttftAlone * (1 - 1e-9) && x.sep.tpot >= r.tDec * (1 - 1e-9))) bad(w, `separate C ${x.C}`);
+      if (x.mix && !(x.mix.stall >= r.tDec * (1 - 1e-9) && x.mix.tpot >= r.tDec * (1 - 1e-9) && x.mix.ttft > 0)) bad(w, `mixed C ${x.C}`);
+      if (!(y.sep.ttft <= x.sep.ttft * (1 + 1e-9) && (!x.mix || y.mix.stall <= x.mix.stall * (1 + 1e-9)))) bad(w, `ideal slower than modeled at C ${x.C}`); });
+    const k = Infer.chunked(m, hw, topo, Object.assign({}, c, { pdInterval: 4 }), Common.G0), mx = Infer.chunked(m, hw, topo, Object.assign({}, c, { mixChunk: true }), Common.G0);
+    if (engine === "sglang") {
+      if (k.k !== 4 || !mx.mixed) bad(w, "SGLang switches not applied");
+      k.rows.forEach((x, i) => { if (x.nChunks > 1 && !(x.sep.stall < r.rows[i].sep.stall && x.sep.ttft > r.rows[i].sep.ttft)) bad(w, `interval at C ${x.C}`); });
+    } else if (k.k !== 0) bad(w, "pdInterval must be inert outside SGLang");
+    return r.rows.length;
+  });
+  // layouts on 64 GPUs: GPUs divide, dense models have no EP layouts, the ideal is not slower. A layout may be invalid for a reason
+  // outside the layout itself (DeepSeek-V4.1's Engram columns under vLLM's all-to-all lookup); the page marks those, so only the
+  // DCP / TP group checks are asserted here
+  for (const mk of Object.keys(MODELS)) for (const engine of ["sglang", "vllm"]) run(`layouts ${mk} ${engine}`, () => {
+    const m = MODELS[mk], c = Object.assign({}, Infer.BASE, { engine, wDt: m.wDefault, kvDt: "fp8" }), L = Infer.layouts(m, c, TOPO.nvl64, 64), moe = Common.derive(m).nMoe > 0;
+    if (!moe && L.some(l => l.fam !== "tp" && l.fam !== "dcp")) bad(`layouts ${mk}`, "EP layouts for a dense model");
+    for (const l of L) { const w = `layouts ${mk} ${engine} ${l.id}`;
+      if (64 % l.N || l.N % l.a || l.a % l.dcp) bad(w, "group sizes do not divide");
+      const cc = Object.assign({}, c, l.cfg), mo = Infer.layoutPoint(m, HW.GB300, TOPO.nvl64, cc, Common.G0, 32), id = Infer.layoutPoint(m, HW.GB300, TOPO.nvl64, cc, Common.IDEAL, 32);
+      const inv = mo.warn.filter(x => x.bad && /^engine_infer\.warn\.(dcp|dpDivides)/.test(x.key)).map(x => x.key);
+      if (inv.length) bad(w, "invalid: " + inv.join(", "));
+      if (!(id.stepT <= mo.stepT * (1 + 1e-9))) bad(w, `ideal ${id.stepT} slower than modeled ${mo.stepT}`); }
+    return L.length;
+  });
+}
+
 // --- calibration: each set's prediction for every measured point it claims to reproduce ---
 const DBJ = JSON.parse(fs.readFileSync(path.join(ROOT, "data", "db.json"), "utf8"));
 const where = (p, f) => Object.keys(f).every(k => Array.isArray(f[k]) ? f[k].includes(p[k]) : p[k] === f[k]);

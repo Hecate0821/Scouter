@@ -37,6 +37,8 @@ PUBLIC = {
    "并发固定的闭环压测；TTFT / TPOT 是均值，tok/s/GPU 含输入 token。接受长度由 SGLANG_SIMULATE_ACC_LEN 定死的行只说明吞吐机制。"),
  "kv_public": dict(file="kv.json", stage="infer", title="KV cache：前缀缓存、分层存储与缓存感知路由的公开数字",
    conditions="各家公布的数字，模型、负载和测法各不相同，只看量级和方向。"),
+ "deploy_public": dict(file="deploy.json", stage="infer", title="部署与并行：宽 EP、混合布局、DCP 和 chunked prefill 的公开数字",
+   conditions="各家的模型、硬件、负载和基线都不同；kind = code / doc 的行是代码和文档里的默认值与约束，simulated 是模拟结果。"),
  "cluster_public": dict(file="cluster.json", stage="cluster", title="集群网络：公开的规格、文档、论文和测量",
    conditions="规格来自 NVIDIA 产品页和文档；论文是公布方自己的集群和负载；kind = measured 的行是第三方测量，看 caveat。"),
  "profile_public": dict(file="profile.json", stage="profile", title="线上 profile：工具、开销和公开的拆解",

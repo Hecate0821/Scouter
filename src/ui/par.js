@@ -398,12 +398,12 @@ function renderParCp(r){
   let s='<text x="'+x0+'" y="14" class="lbl">'+t("par.cp.contSplit")+'</text><text x="'+(x0+size+60)+'" y="14" class="lbl">'+(uly?t("par.cp.mat.uly"):t("par.cp.mat.zig"))+'</text>';
   const work={cont:new Array(Cv).fill(0),zig:new Array(Cv).fill(0)}, rk=(i,zig)=>zig?(i<Cv?i:2*Cv-1-i):Math.floor(i/2);
   for(const [ox,zig] of [[x0,false],[x0+size+60,true]]) for(let i=0;i<2*Cv;i++) for(let j=0;j<=i;j++){ const k=rk(i,zig), diag=i===j; work[zig?"zig":"cont"][k]+=diag?0.5:1;
-    s+='<rect x="'+(ox+j*cell)+'" y="'+(y0+i*cell)+'" width="'+(cell-1)+'" height="'+(cell-1)+'" style="fill:'+css(uly&&zig?"c-attn":"s"+(k%6+1))+';opacity:'+(diag?0.55:0.9)+'" '+tipAttr(t("par.cp.mat.tip", { i, j }),[{v:"rank "+k,l:zig?t("par.cp.zigzag"):t("par.cp.cont")}])+'/>'; }
+    s+='<rect x="'+(ox+j*cell)+'" y="'+(y0+i*cell)+'" width="'+(cell-1)+'" height="'+(cell-1)+'" style="fill:'+css(uly&&zig?"c-attn":"s"+(k%6+1))+';opacity:'+(diag?0.55:0.9)+'" '+tipAttr(t("par.cp.mat.tip", { i, j }),[{v:t("par.cp.rank",{k}),l:zig?t("par.cp.zigzag"):t("par.cp.cont")}])+'/>'; }
   $("p-c-mat").innerHTML=s; bindTips($("p-c-mat"));
   const mx=Math.max(...work.cont), avg=a=>a.reduce((x,y)=>x+y,0)/Cv, bh=Math.min(16,270/Cv-3);
   let s2='<text x="20" y="14" class="lbl">'+t("par.cp.work.title")+'</text>';
   for(let k=0;k<Cv;k++){ const y=28+k*(bh+3);
-    s2+='<text x="54" y="'+(y+bh-3)+'" text-anchor="end">rank '+k+'</text><rect x="60" y="'+y+'" width="'+(work.cont[k]/mx*260)+'" height="'+(bh/2-1)+'" rx="2" style="fill:var(--s2)" '+tipAttr("rank "+k,[{v:work.cont[k].toFixed(1),l:t("par.cp.contSplit"),c:"s2"},{v:work.zig[k].toFixed(1),l:t("par.cp.zigzag"),c:"s1"}])+'/><rect x="60" y="'+(y+bh/2)+'" width="'+(work.zig[k]/mx*260)+'" height="'+(bh/2-1)+'" rx="2" style="fill:var(--s1)"/>'; }
+    s2+='<text x="54" y="'+(y+bh-3)+'" text-anchor="end">'+t("par.cp.rank",{k})+'</text><rect x="60" y="'+y+'" width="'+(work.cont[k]/mx*260)+'" height="'+(bh/2-1)+'" rx="2" style="fill:var(--s2)" '+tipAttr(t("par.cp.rank",{k}),[{v:work.cont[k].toFixed(1),l:t("par.cp.contSplit"),c:"s2"},{v:work.zig[k].toFixed(1),l:t("par.cp.zigzag"),c:"s1"}])+'/><rect x="60" y="'+(y+bh/2)+'" width="'+(work.zig[k]/mx*260)+'" height="'+(bh/2-1)+'" rx="2" style="fill:var(--s1)"/>'; }
   s2+='<text x="340" y="40" class="lbl">'+t("par.cp.work.ratio")+'</text><text x="340" y="58">'+t("par.cp.work.cont", { v: (mx/avg(work.cont)).toFixed(3), f: (2-1/Cv).toFixed(3) })+'</text><text x="340" y="76">'+t("par.cp.work.zig", { v: (Math.max(...work.zig)/avg(work.zig)).toFixed(3) })+'</text><text x="340" y="94">'+t("par.cp.work.uly")+'</text>';
   s2+='<rect x="340" y="110" width="12" height="8" style="fill:var(--s2)"/><text x="358" y="118">'+t("par.cp.contSplit")+'</text><rect x="340" y="126" width="12" height="8" style="fill:var(--s1)"/><text x="358" y="134">'+t("par.cp.zigzag")+'</text>';
   $("p-c-work").innerHTML=s2; bindTips($("p-c-work"));

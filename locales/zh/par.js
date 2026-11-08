@@ -332,6 +332,7 @@ I18N.add("zh", "par", {
   "fsdp.tbl.groupLink": "{F}（{link}）",
   "cp.contSplit": "连续切分",
   "cp.zigzag": "首尾配对",
+  "cp.rank": "rank {k}",
   "cp.cont": "连续",
   "cp.mat.uly": "Ulysses：按头切，每张卡算全部块",
   "cp.mat.zig": "首尾配对：2C 段",

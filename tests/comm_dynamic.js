@@ -74,8 +74,9 @@ function checkTrain(w, d, where) {
 
 /* Inference, the same way: the engine's records for whichever config the chart says it is showing */
 const INF_TRUTH = `(()=>{ const pick=infCommCfg(), r=infRun(pick.over), {m}=ctx(), {kind}=xKinds(m), L=xSample(m,XV.inf.n), c=Object.assign({},S.inf,pick.over);
-  const OP={ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG",epag:"AG"}, ag=r.moePar==="ag", dim={ar:"tp",latar:"tp",lmg:"tp",epag:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:ag?"ep":"dpa",dps:ag?"ep":"dpa"};
-  const cards={tp:Math.round(r.tpA),dpa:r.dpA,ep:r.N}, calls=r.comm.filter(e=>dim[e.key]).map(e=>({key:e.key,dim:dim[e.key],op:OP[e.key],b:fB(e.bytes/e.layers),t:e.t/e.layers,ov:e.overlap||""}));
+  const a2a=(c.dcpComm||r.P.dcpComm)==="a2a", OP={ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG",epag:"AG",dcpq:"AG",dcplse:"AG",dcpo:a2a?"A2A":"RS",dcpkv:"AG"}, ag=r.moePar==="ag",
+    dim={ar:"tp",latar:"tp",lmg:"tp",epag:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:ag?"ep":"dpa",dps:ag?"ep":"dpa",dcpq:"cp",dcplse:"cp",dcpo:"cp",dcpkv:"cp"};
+  const cards={tp:Math.round(r.tpA),dpa:r.dpA,ep:r.N,cp:Math.max(1,Math.round(c.dcp||1))}, calls=r.comm.filter(e=>dim[e.key]).map(e=>({key:e.key,dim:dim[e.key],op:OP[e.key],b:fB(e.bytes/e.layers),t:e.t/e.layers,ov:e.overlap||""}));
   const per=f=>sum(r.ops.filter(f),o=>o.t/o.layers), cores=r.ops.filter(o=>o.key==="acore");
   const moeK=["router","latd","moeq","moe","latu","shared"], compOf=k=>(k.a==="lin"?per(o=>o.group==="lin"):per(o=>o.group==="attn"&&o.key!=="acore")+(cores[k.a==="swa"?1:0]?cores[k.a==="swa"?1:0].t/cores[k.a==="swa"?1:0].layers:0))+(k.f==="moe"?per(o=>moeK.includes(o.key)):per(o=>o.key==="dense"));
   const map={}; for(const [k,v] of xSigned(infPlan(r,L)).map) map[k]=v.t;

@@ -362,7 +362,8 @@ function infPlan(r, L){
   const PI = { pre:per(o=>o.group==="attn"&&o.key!=="acore"&&!POST.includes(o.key)), full:cF?cF.t/cF.layers:0, swa:cS?cS.t/cS.layers:0, post:per(o=>POST.includes(o.key)),
     lin:per(o=>o.group==="lin"), router:per(o=>["router","latd","moeq"].includes(o.key)), exp:per(o=>o.key==="moe"), latu:per(o=>o.key==="latu"), shared:per(o=>o.key==="shared"), dense:per(o=>o.key==="dense"),
     lm:per(o=>o.key==="lm"), samp:per(o=>o.key==="samp") };
-  const one = key => { const e=r.comm.find(x=>x.key===key); return e ? { op:{ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG",epag:"AG"}[key], bytes:e.bytes/e.layers, t:e.t/e.layers, ov:e.overlap } : null; };
+  const dcpA2a = (c.dcpComm||r.P.dcpComm)==="a2a";   // DCP 合并部分输出：a2a 一次打包，ag_rs 是 LSE 的 all-gather + 输出的 reduce-scatter
+  const one = key => { const e=r.comm.find(x=>x.key===key); return e ? { op:{ar:"AR",latar:"AR",dpg:"AG",dps:"RS",disp:"A2A",comb:"A2A",cnt:"sync",lmg:"AG",epag:"AG",dcpq:"AG",dcplse:"AG",dcpo:dcpA2a?"A2A":"RS",dcpkv:"AG"}[key], bytes:e.bytes/e.layers, t:e.t/e.layers, ov:e.overlap } : null; };
   const ev=[], C=(label,t,cat,o)=>ev.push(Object.assign({k:"c",label,t,cat},o||{})), sec=(label,o)=>ev.push(Object.assign({k:"s",label},o||{}));
   const X=(dim,key,what,lay,o)=>{ const x=one(key); if(!x) return; const mode=x.ov==="moe"?"fused":x.ov==="tbo"?"part":"block";
     ev.push(Object.assign({k:"x",dim,mode,lay,pass:"fwd",ek:key,what,note:x.ov==="tbo"?t("comm.inf.noteTbo"):x.ov==="moe"?t("comm.inf.noteFused"):""},x,o||{})); };
@@ -371,7 +372,11 @@ function infPlan(r, L){
   for(const i of L){ const k=kind(i);
     sec(t("comm.sec.head",{i,name:esc(name(k)),pass:"<span>"+(dec?t("comm.sec.dec"):t("comm.sec.pre"))+"</span>"}));
     if(k.a==="lin") C(t("comm.inf.lin",{kind:m.lin.kind}),PI.lin,"lin");
-    else { C(t("comm.inf.qkv",{mla:m.full.kind==="csa"?t("comm.inf.qkvCsa"):m.full.kind!=="gqa"?t("comm.inf.qkvMla"):""}),PI.pre,"proj"); C(k.a==="swa"?t("comm.attn.coreSwa"):t("comm.attn.core"),k.a==="swa"?PI.swa:PI.full,"attn"); C(t("comm.attn.post",{gate:m.full.gate?t("comm.attn.gate"):""}),PI.post,"proj"); }
+    else { C(t("comm.inf.qkv",{mla:m.full.kind==="csa"?t("comm.inf.qkvCsa"):m.full.kind!=="gqa"?t("comm.inf.qkvMla"):""}),PI.pre,"proj");
+      X("cp","dcpq",t("comm.inf.dcpQ"),i); X("cp","dcpkv",t("comm.inf.dcpKv"),i);
+      C(k.a==="swa"?t("comm.attn.coreSwa"):t("comm.attn.core"),k.a==="swa"?PI.swa:PI.full,"attn");
+      X("cp","dcplse",t("comm.inf.dcpLse"),i); X("cp","dcpo",dcpA2a?t("comm.inf.dcpA2a"):t("comm.inf.dcpRs"),i);
+      C(t("comm.attn.post",{gate:m.full.gate?t("comm.attn.gate"):""}),PI.post,"proj"); }
     X("tp","ar",t("comm.inf.arAttn",{fused:arF}),i);
     if(k.f==="moe"){
       X(epDim,"dpg",ag?t("comm.inf.dpgEp"):t("comm.inf.dpgDpa"),i);
@@ -406,7 +411,8 @@ function infCommCfg(){
 function renderInfComm(){
   const {m,hw,topo}=ctx(), pick=infCommCfg(), c=Object.assign({},S.inf,pick.over), r=infRun(pick.over), {kind,name}=xKinds(m), dec=c.phase==="decode";
   const L=xSample(m,XV.inf.n), ev=infPlan(r,L), tpA=Math.round(r.tpA), lk=n=>n>1?"NVLink":"";
-  const groups={ tp:{n:tpA,lk:lk(tpA),mem:tpA>1?xMembers(tpA,1):""}, dpa:{n:r.dpA,lk:lk(r.dpA),mem:r.dpA>1?xMembers(r.dpA,tpA):""}, ep:{n:r.N,lk:lk(r.N),mem:r.N>1?xMembers(r.N,1):""} };
+  const dcp=Math.max(1,Math.round(c.dcp||1));
+  const groups={ tp:{n:tpA,lk:lk(tpA),mem:tpA>1?xMembers(tpA,1):""}, cp:{n:dcp,lk:lk(dcp),mem:dcp>1?xMembers(dcp,1):""}, dpa:{n:r.dpA,lk:lk(r.dpA),mem:r.dpA>1?xMembers(r.dpA,tpA):""}, ep:{n:r.N,lk:lk(r.N),mem:r.N>1?xMembers(r.N,1):""} };
   xSeg("x-i-n",[[1,t("comm.seg.layers",{n:1})],[2,t("comm.seg.layers",{n:2})],[3,t("comm.seg.layers",{n:3})]],XV.inf.n,v=>{ XV.inf.n=+v; renderInfComm(); });
   const lad=(v0,key)=>xLadder(v0,xK,v=>({[key]:v}),null,1,Infinity);
   const plan={ st:XV.inf, gain:dec?{over:{B:c.B*2},key:"comm.gain.B"}:{over:{C:c.C*2},key:"comm.gain.C"},
@@ -414,13 +420,13 @@ function renderInfComm(){
     knobs:()=>dec ? [{title:t("comm.knob.B"),vals:lad(c.B,"B")},{title:t("comm.knob.n"),vals:lad(c.n,"n")}]
       : [{title:t("comm.knob.C"),vals:lad(c.C,"C")},{title:t("comm.knob.p"),vals:[0,c.C,4*c.C,16*c.C].map(v=>({label:xK(v),cur:v===(c.p||0),over:v===(c.p||0)?{}:{p:v}}))}],
     why:it=>it.sig[0]==="c" ? t({attn:"comm.why.c.attnInf",lin:"comm.why.c.lin",moe:"comm.why.c.moe",proj:"comm.why.c.proj",lm:"comm.why.c.lm"}[it.cat]||"comm.why.c.oth")
-      : t({ar:"comm.why.ar",latar:"comm.why.ar",epag:"comm.why.ar",lmg:"comm.why.lmg",disp:"comm.why.a2a",comb:"comm.why.a2a",cnt:"comm.why.cnt",dpg:"comm.why.dpg",dps:"comm.why.dpg"}[it.ek]||"comm.why.tp") };
+      : t({ar:"comm.why.ar",latar:"comm.why.ar",epag:"comm.why.ar",lmg:"comm.why.lmg",disp:"comm.why.a2a",comb:"comm.why.a2a",cnt:"comm.why.cnt",dpg:"comm.why.dpg",dps:"comm.why.dpg",dcpq:"comm.why.dcp",dcplse:"comm.why.dcp",dcpo:"comm.why.dcp",dcpkv:"comm.why.dcpKv"}[it.ek]||"comm.why.tp") };
   const lanes=xTrace("x-i-grid",ev,groups,plan);
   $("x-i-lede").innerHTML=t("comm.inf.lede",{auto:pick.auto?t("comm.inf.ledeAuto"):"",eng:ENGN[c.engine],model:esc(m.short),hw:hw.name,n:c.N,tp:tpA,dp:r.dpA,moe:esc(MOENAME[r.moePar]||r.moePar),
     work:dec?t("comm.inf.ledeDec",{b:r.Breq,rows:fN(r.rowsG),spec:r.specK?t("comm.inf.ledeSpec",{k:r.specK+1}):""}):t("comm.inf.ledePre",{c:fN(c.C)}),src:t(pick.auto?"comm.inf.srcAuto":pick.cf?"comm.inf.srcPreset":"comm.inf.srcCur")});
   const lay = i => ev.filter(e=>e.k==="x"&&e.lay===i);
   xVolume("x-i-vol",L.map(i=>({label:t("comm.vol.label",{i,name:"<span>"+esc(name(kind(i)))+"</span>"}),parts:lanes.map(dim=>({dim,v:sum(lay(i).filter(e=>e.dim===dim),e=>e.bytes)}))})));
-  const dimOf = key => ({ar:"tp",latar:"tp",lmg:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:r.moePar==="ag"?"ep":"dpa",dps:r.moePar==="ag"?"ep":"dpa"})[key];
+  const dimOf = key => ({ar:"tp",latar:"tp",lmg:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:r.moePar==="ag"?"ep":"dpa",dps:r.moePar==="ag"?"ep":"dpa",dcpq:"cp",dcplse:"cp",dcpo:"cp",dcpkv:"cp"})[key];
   const bySt={}; for(const x of r.comm){ const k=dimOf(x.key); if(!k) continue; bySt[k]=bySt[k]||{b:0,t:0}; bySt[k].b+=x.bytes; bySt[k].t+=x.t; }
   const dims=XORDER.filter(k=>bySt[k]), tot=sum(dims,k=>bySt[k].b), toks = dec ? r.Breq*(1+(r.specK?c.accept:0)) : c.C;
   $("x-i-tbl").innerHTML='<thead><tr><th>'+t("comm.tbl.dim")+'</th><th>'+t("comm.tbl.group")+'</th>'+L.map(i=>'<th>'+t("comm.tbl.layer",{i})+'</th>').join("")+'<th>'+t("comm.tbl.step",{n:m.L})+'</th><th>'+t("comm.tbl.stepWireInf")+'</th><th>'+(dec?t("comm.tbl.perTokOut"):t("comm.tbl.perTokIn"))+'</th></tr></thead><tbody>'+

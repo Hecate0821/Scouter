@@ -11,7 +11,7 @@
 | `msg.js` | `Msg` | 消息：`Msg.of(key, 参数)`；`.invalid()` 标出“这个配置跑不起来”；`Msg.id` 比较两条消息 |
 | `common.js` | `Common` | 数据类型与峰值（`dtB`、`peakOf`）、带上限的因果 key 数 `capKeys`（滑窗、DSA top-k）、roofline 公式（`compT`、`memT`、`ridge`、`attainable`、`linkRidge`、`roof`）、默认效率 `G0`、理想屋顶 `IDEAL`（效率 1、固定开销 0）和口径表 `BASIS`、模型 / GPU / 拓扑表（`MODELS`、`HW`、`TOPO`）、参数量 `derive`、层排布 `layerPlan`、链路与集合通信时间；按 kernel 类别的效率表 `KEFF`、`etaK`、`gK` |
 | `par.js` | `Par` | CP / EP / FSDP 一层的通信与时间（`cpLayer`、`epLayer`、`fsdpDet`），一次集合通信的记录 `xc` |
-| `infer.js` | `Infer` | 推理引擎画像 `ENGINES`、默认配置 `BASE`、`step` / `decode` / `prefill` / `memory`，闭环压测 `serve` |
+| `infer.js` | `Infer` | 推理引擎画像 `ENGINES`、默认配置 `BASE`、`step` / `decode` / `prefill` / `memory`，闭环压测 `serve`；部署页用的 `mixStep`（decode 和一块 prefill 拼成一步）、`chunked`（两种调度下每个块大小的停顿、TTFT、TPOT）、`dcpSweep`、`layouts` / `layoutPoint`（G 张卡上的 TP / 混合 / DEP / DCP 切法和每卡并发 b 下的拆解）、`tboSweep`、`pdXfer` |
 | `train.js` | `Train` | 训练一步 `run`、默认配置 `BASE`、精度配方 `PREC` |
 | `quant.js` | `Quant` | 低精度 GEMM、一层 MoE、训练的三个 GEMM、理想加速比 |
 | `arch.js` | `Arch` | 架构页：模块划分 `present`、每个模块一层的 `measure`、`facts`、示意图和读数用的机制量 `explain` |

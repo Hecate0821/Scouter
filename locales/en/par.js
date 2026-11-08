@@ -332,6 +332,7 @@ I18N.add("en", "par", {
   "fsdp.tbl.groupLink": "{F} ({link})",
   "cp.contSplit": "Contiguous split",
   "cp.zigzag": "Head-tail pairing",
+  "cp.rank": "rank {k}",
   "cp.cont": "Contiguous",
   "cp.mat.uly": "Ulysses: split by head, each GPU computes all blocks",
   "cp.mat.zig": "Head-tail pairing: 2C segments",
