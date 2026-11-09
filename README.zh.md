@@ -37,7 +37,7 @@ cd tests && npm install && npm test
 | 总览 | 同一个模型的推理一步和后训练一步并排。 |
 | 模型架构 | 层排布、单个模块的 roofline 和旋钮、机制示意图、所有模型对比。 |
 | 后训练 | 一个 step（fwd / dgrad / wgrad、重算、通信、优化器、显存）、并行、低精度配方。 |
-| 推理 | decode / prefill、部署与并行（DP-attention + 宽 EP 为什么快，同样多的卡切成 TP 实例、attention TP × DP + EP 的混合、DEP 和 DCP，DCP 扫描，分开和混合两种调度下的 chunked prefill）、低精度、投机解码、KV cache（每种层存多少、多轮 agent 会话在 HBM / 主机 / 远端三层里的前缀命中率、SGLang / vLLM / TRT-LLM / TokenSpeed 各怎么管），以及和 SGLang cookbook、自己的 profiler trace 对照。 |
+| 推理 | decode / prefill、部署与并行（attention TP × DP + 宽 EP、DCP、mixed chunked prefill 这几类配方做成预设，用算出来的吞吐、并发上限和 decode 停顿对比）、低精度、投机解码、KV cache（每种层存多少、多轮 agent 会话在 HBM / 主机 / 远端三层里的前缀命中率、SGLang / vLLM / TRT-LLM / TokenSpeed 各怎么管），以及和 SGLang cookbook、自己的 profiler trace 对照。 |
 | RL | 训推不一致、确定性 rollout、低精度 rollout 与 QAT。 |
 | 其他 | **网络**：每张卡从 HBM 到 spine 每一层的带宽，NVSwitch 和 NVLS，机内 PCIe 和 GPUDirect，只有 PCIe 的机器，rail、收敛比和 ECMP；在一套组网上训练和推理的时间花在哪、怕带宽还是怕延迟、NVLink 域多大合适、PD 分离和权重同步的传输，以及模型对公开的 nccl-tests 结果。**Profile**：推理一步按线上 trace 的分法拆开（kern 的 compute / comm / idle 和 CUPTI HES 那篇文章的几类）、DP 和 EP 负载不均、常开 trace 的开销，以及各个工具。 |
 | 附录 | 实测 kernel 对照屋顶、效率表、公开数据点、建模方法。 |

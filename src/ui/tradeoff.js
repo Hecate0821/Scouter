@@ -25,15 +25,16 @@ function toCurve(cf, isl, osl, hwKey, topoKey){
   const probe=Infer.decode(m,hw,topo,Object.assign({},base,{B:1,n:isl+osl}),g), E=Infer.ENGINES[base.engine];
   const lim=base.specK>0?E.specCap:256, cap=Math.min(probe.mem.Bmax, lim), capBy=probe.mem.Bmax<=lim?"mem":base.specK>0?"spec":"sweep", pts=[];   // 256：这张图只扫到每 rank 256 并发
   if(probe.mem.avail<=0 || cap<1) return { pts, fit:false, wt:probe.mem.weights, cap:Math.max(0,cap), mem:probe.mem };
-  const preC=Object.assign({},base,{phase:"prefill",specK:0,C:Math.min(isl,8192),P:isl,p:0});
+  const preC=Object.assign({},base,{phase:"prefill",specK:0,C:Math.min(isl,base.C||8192),P:isl,p:0});
   const pre=cf.pd ? Infer.prefill(m,hw,topo,Object.assign({},preC,{N:cf.pd.N,dpA:cf.pd.N}),g) : Infer.prefill(m,hw,topo,preC,g);
   const ladder=[1,2,3,4,6,8,12,16,24,32,48,64,96,128,192,256].filter(b=>b<cap).concat([cap]);
   for(const b of ladder){
-    const r=Infer.decode(m,hw,topo,Object.assign({},base,{B:b,n:isl+osl/2}),g), out=r.tokPerStep*r.dpA;
-    /* 聚合部署：每步完成 out/osl 个请求，要顺带 prefill 同样多个新请求（摊到 DP rank 上）；PD 分离：prefill 卡按卡秒摊进分母 */
-    const preT = cf.pd ? 0 : out/osl*pre.ttft/Math.max(1,r.dpA), t=r.stepT+preT;
+    const dc=Object.assign({},base,{B:b,n:isl+osl/2}), r=Infer.decode(m,hw,topo,dc,g), out=r.tokPerStep*r.dpA;
+    /* 聚合部署：每步完成 out/osl 个请求，要顺带 prefill 同样多个新请求，按引擎的调度算（Infer.coloc：SGLang 默认分开跑，vLLM / mixed chunk 混进 decode 步）；
+       PD 分离：prefill 卡按卡秒摊进分母 */
+    const co = cf.pd ? null : Infer.coloc(m,hw,topo,dc,g,r,pre,isl,osl), preT = co ? co.preT : 0, t=r.stepT+preT;
     const gpus = cf.pd ? base.N + out/(t*osl)*pre.ttft : base.N;   // prefill 实例 DEP：每张卡一条 prompt，一条占 ttft 卡秒
-    pts.push({ b, B:b*r.dpA, u:r.tokPerStep/r.Breq/t, thr:out/t/gpus*(TO.total?(isl+osl)/osl:1), t, preT, r });
+    pts.push({ b, B:b*r.dpA, u:r.tokPerStep/r.Breq/t, thr:out/t/gpus*(TO.total?(isl+osl)/osl:1), t, preT, stall:co?co.stall:null, mixed:co?co.mixed:false, r });
   }
   /* 空载 TTFT：prefill 一条 isl 的 prompt；PD 分离时再加上把这条请求的 KV 搬到 decode 实例（Infer.pdXfer） */
   const xfer = cf.pd ? Infer.pdXfer(m,hw,topo,base,g,isl,cf.pd.N).t : 0;
@@ -44,16 +45,19 @@ function isoThr(pts, u){ let best=null;
     if(p.u>=u) best=Math.max(best??0,p.thr);
     if(q && p.u>=u && q.u<u){ const a=(p.u-u)/(p.u-q.u); best=Math.max(best??0,p.thr+a*(q.thr-p.thr)); } }
   return best; }
+/* 横轴取到目标单用户速度的那个点（扫到的最后一个还够快的并发），够不到就取并发 1 */
+const atTarget = (pts, u) => { let k=0; pts.forEach((p,i)=>{ if(p.u>=u) k=i; }); return pts[k]; };
 function renderInferTO(){
   const {m,hw,topo,g}=ctx(), [isl,osl,seqName]=SEQS[TO.seq];
   fillOpts($("i-to-seq"),Object.entries(SEQS).map(([k,v])=>[k,v[2]]),TO.seq);
   fillOpts($("i-to-target"),[10,20,50,100,200,400].map(v=>[String(v),v+" tok/s/user"]),String(TO.target));
   $("i-to-total").checked=TO.total;
-  const cfgs=toConfigs(S.topo), curves=cfgs.map((cf,i)=>Object.assign({cf,col:cf.eng==="DeepInfer"?"c-lin":"s"+Math.min(i+1,6)},toCurve(cf,isl,osl)));
-  const ser=curves.filter(cu=>cu.fit).map(cu=>({name:cu.cf.eng+" · "+cu.cf.label,short:toShort(cu.cf),col:cu.col,pts:cu.pts.map(p=>[p.u,p.thr,{note:t("tradeoff.pareto.note",{b:p.b})}])}));
+  const cfgs=toConfigs(S.topo), nth={}, curves=cfgs.map(cf=>{ const k=nth[cf.engine||cf.eng]=(nth[cf.engine||cf.eng]||0)+1;   // 颜色按引擎内的序号，vLLM 用虚线
+    return Object.assign({cf,col:cf.eng==="DeepInfer"?"c-lin":"s"+Math.min(k,6),dash:cf.engine==="vllm"?"6 4":""},toCurve(cf,isl,osl)); });
+  const ser=curves.filter(cu=>cu.fit).map(cu=>({name:cu.cf.eng+" · "+cu.cf.label,short:toShort(cu.cf),col:cu.col,dash:cu.dash,pts:cu.pts.map(p=>[p.u,p.thr,{note:t("tradeoff.pareto.note",{b:p.b})}])}));
   const yl=TO.total?t("tradeoff.pareto.ylTotal"):t("tradeoff.pareto.ylOut");
   lineChart("i-to-pareto",{series:ser,xLab:t("tradeoff.pareto.xl"),yLab:yl,vlines:[{x:TO.target,label:t("tradeoff.pareto.target",{v:TO.target})}],nearest:true,empty:t("tradeoff.pareto.empty")});
-  legendInto("i-to-pareto-legend",ser.map(se=>({name:se.name,col:se.col,line:true})));
+  legendInto("i-to-pareto-legend",ser.map(se=>({name:se.name,col:se.col,line:true,dash:!!se.dash})));
   const iso=cu=>cu.fit?isoThr(cu.pts,TO.target):null, cur=curves.find(cu=>cu.cf.engine===S.inf.engine&&cu.cf.preset===S.infPreset), best=curves.map(cu=>({cu,v:iso(cu)})).filter(z=>z.v!=null).sort((a,b)=>b.v-a.v)[0];
   const fast=curves.filter(cu=>cu.fit&&cu.pts.length).sort((a,b)=>b.pts[0].u-a.pts[0].u)[0];
   kpis($("i-to-kpis"),[
@@ -61,14 +65,14 @@ function renderInferTO(){
     [t("tradeoff.kpi.fastest"),fast?fN(fast.pts[0].u)+" tok/s":"—",fast?t("tradeoff.kpi.fastestSub",{cfg:toShort(fast.cf)}):""],
     [t("tradeoff.kpi.maxThr"),(()=>{ const z=curves.filter(cu=>cu.fit).map(cu=>({cu,v:Math.max(...cu.pts.map(p=>p.thr))})).sort((a,b)=>b.v-a.v)[0]; return z?fN(z.v)+" tok/s/GPU":"—"; })(),t("tradeoff.kpi.maxThrSub")],
     [t("tradeoff.kpi.current"),cur?(iso(cur)!=null?fN(iso(cur))+" tok/s/GPU":t("tradeoff.kpi.unreachable")):t("tradeoff.kpi.notListed"),cur?toShort(cur.cf)+" @"+TO.target:t("tradeoff.kpi.custom",{engine:ENGN[S.inf.engine]})]]);
-  $("i-to-cfg").innerHTML='<thead><tr><th></th><th>'+t("tradeoff.cfg.head.cfg")+'</th><th>'+t("tradeoff.cfg.head.gpus")+'</th><th>attention</th><th>MoE</th><th>'+t("tradeoff.cfg.head.wt")+'</th><th>'+t("tradeoff.cfg.head.cap")+'</th><th>'+t("tradeoff.cfg.head.ttft",{isl:fK(isl)})+'</th><th>@'+TO.target+'</th><th>'+t("tradeoff.cfg.head.src")+'</th><th></th></tr></thead><tbody>'+
+  $("i-to-cfg").innerHTML='<thead><tr><th></th><th>'+t("tradeoff.cfg.head.cfg")+'</th><th>'+t("tradeoff.cfg.head.gpus")+'</th><th>attention</th><th>MoE</th><th>'+t("tradeoff.cfg.head.wt")+'</th><th>'+t("tradeoff.cfg.head.cap")+'</th><th>'+t("tradeoff.cfg.head.ttft",{isl:fK(isl)})+'</th><th>'+t("tradeoff.cfg.head.stall",{target:TO.target})+'</th><th>@'+TO.target+'</th><th>'+t("tradeoff.cfg.head.src")+'</th><th></th></tr></thead><tbody>'+
     curves.map(cu=>{ const c=cu.cf.cfg, tp=c.N/c.dpA, on=cu===cur;
-      return '<tr'+(on?' class="hl"':'')+'><td><span class="sw" style="display:inline-block;width:12px;height:3px;background:'+css(cu.col)+'"></span></td><td style="min-width:12em">'+esc(cu.cf.eng+" · "+cu.cf.label)+'</td><td class="num">'+(cu.cf.pd?t("tradeoff.cfg.gpusPd",{n:c.N,pd:cu.cf.pd.N}):c.N)+'</td><td>'+(tp>1?"TP"+tp:"")+(c.dpA>1?(tp>1?" × ":"")+"DP"+c.dpA:"")+(tp===1&&c.dpA===1?t("tradeoff.cfg.single"):"")+(c.dcp>1?" + DCP"+c.dcp:"")+(c.specK?t("tradeoff.cfg.spec",{k:c.specK}):"")+'</td><td>'+(m.moe.E?esc(MOENAME[c.moePar]):"—")+'</td><td class="num">'+fB(cu.wt)+'</td><td class="num">'+(cu.fit?cu.cap+(cu.capBy!=="mem"?'<br><span class="tag">'+t("tradeoff.cfg.capBy."+cu.capBy,{mem:fInt(cu.mem.Bmax)})+'</span>':""):t("tradeoff.cfg.noFit"))+'</td><td class="num">'+(cu.fit?fT(cu.ttft)+(cu.xfer>0?'<br><span class="tag">'+t("tradeoff.cfg.xfer",{t:fT(cu.xfer)})+'</span>':""):"—")+'</td><td class="num">'+(iso(cu)!=null?fN(iso(cu)):"—")+'</td><td style="min-width:20em;font-size:12.5px">'+esc(cu.cf.src)+'</td><td>'+(on?t("tradeoff.cfg.current"):'<button type="button" class="mini" data-to-apply="'+esc(cu.cf.id)+'">'+t("tradeoff.cfg.open")+'</button>')+'</td></tr>'; }).join("")+'</tbody>';
+      return '<tr'+(on?' class="hl"':'')+'><td><span class="sw" style="display:inline-block;width:14px;height:0;border-top:3px '+(cu.dash?'dashed':'solid')+' '+css(cu.col)+'"></span></td><td style="min-width:12em">'+esc(cu.cf.eng+" · "+cu.cf.label)+'</td><td class="num">'+(cu.cf.pd?t("tradeoff.cfg.gpusPd",{n:c.N,pd:cu.cf.pd.N}):c.N)+'</td><td>'+(tp>1?"TP"+tp:"")+(c.dpA>1?(tp>1?" × ":"")+"DP"+c.dpA:"")+(tp===1&&c.dpA===1?t("tradeoff.cfg.single"):"")+(c.dcp>1?" + DCP"+c.dcp:"")+(c.specK?t("tradeoff.cfg.spec",{k:c.specK}):"")+'</td><td>'+(m.moe.E?esc(MOENAME[c.moePar]):"—")+'</td><td class="num">'+fB(cu.wt)+'</td><td class="num">'+(cu.fit?cu.cap+(cu.capBy!=="mem"?'<br><span class="tag">'+t("tradeoff.cfg.capBy."+cu.capBy,{mem:fInt(cu.mem.Bmax)})+'</span>':""):t("tradeoff.cfg.noFit"))+'</td><td class="num">'+(cu.fit?fT(cu.ttft)+(cu.xfer>0?'<br><span class="tag">'+t("tradeoff.cfg.xfer",{t:fT(cu.xfer)})+'</span>':""):"—")+'</td><td class="num">'+(()=>{ const p=cu.fit&&cu.pts.length?atTarget(cu.pts,TO.target):null; return !p||p.stall==null?(cu.cf.pd?t("tradeoff.cfg.stallPd"):"—"):fT(p.stall)+'<br><span class="tag">'+t(p.mixed?"tradeoff.cfg.stallMix":"tradeoff.cfg.stallSep",{b:p.b})+'</span>'; })()+'</td><td class="num">'+(iso(cu)!=null?fN(iso(cu)):"—")+'</td><td style="min-width:20em;font-size:12.5px">'+esc(cu.cf.src)+'</td><td>'+(on?t("tradeoff.cfg.current"):'<button type="button" class="mini" data-to-apply="'+esc(cu.cf.id)+'">'+t("tradeoff.cfg.open")+'</button>')+'</td></tr>'; }).join("")+'</tbody>';
   /* 随上下文 */
   const isls=[1024,2048,4096,8192,16384,32768,65536,131072];
-  const serC=curves.map(cu=>({name:cu.cf.eng+" · "+cu.cf.label,short:toShort(cu.cf),col:cu.col,pts:isls.map(L=>{ const c2=toCurve(cu.cf,L,osl); return [L,c2.fit?isoThr(c2.pts,TO.target):null]; })}));
+  const serC=curves.map(cu=>({name:cu.cf.eng+" · "+cu.cf.label,short:toShort(cu.cf),col:cu.col,dash:cu.dash,pts:isls.map(L=>{ const c2=toCurve(cu.cf,L,osl); return [L,c2.fit?isoThr(c2.pts,TO.target):null]; })}));
   lineChart("i-to-ctx",{series:serC,xLog:true,xBase:2,xFmt:fK,xLab:t("tradeoff.ctx.xl",{osl:fK(osl)}),yLab:t("tradeoff.ctx.yl",{target:TO.target}),labelEnds:false,empty:t("tradeoff.ctx.empty")});
-  legendInto("i-to-ctx-legend",serC.map(se=>({name:se.name,col:se.col,line:true})));
+  legendInto("i-to-ctx-legend",serC.map(se=>({name:se.name,col:se.col,line:true,dash:!!se.dash})));
   $("i-to-ctx-lede").textContent=t("tradeoff.ctx.lede",{target:TO.target});
   /* 怎么选 */
   const di=curves.find(cu=>cu.cf.eng==="DeepInfer"), b1=di&&di.fit?di.pts[0].r:null;

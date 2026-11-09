@@ -655,9 +655,11 @@ function prefill(m, hw, topo, c, g){
    混合步的 prefill 块按 prompt 中点那块的前缀算（attention 随前缀线性增长，平均就是中点）；分开跑的块按 prefill 逐块累加。
    稳态（闭环压测，每条请求 P 个输入、c.osl 个输出）：每步完成 B / osl 条请求、换进同样多条新请求，即每步要 demand = B·P/osl 个 prefill token。
    分开跑平均每步多 demand / P 条 prompt 的 prefill；混合时带块的步占 f = demand / (C − B)，f > 1 时预算跟不上新请求 */
+/* prefill 和 decode 是否混在一步里：vLLM / TitanRL 总是混；SGLang 看 --enable-mixed-chunk，且没被 inert 关掉 */
+const mixedOf = (m, c, g) => !!(ENGINES[c.engine].mixed || (c.engine==="sglang" && c.mixChunk && !inert(m,c,g).mixChunk));
 const CHUNKS = Common.freeze([512, 1024, 2048, 4096, 8192, 16384]);
 function chunked(m, hw, topo, c, g, Cs){
-  const E=ENGINES[c.engine], sg=c.engine==="sglang", mixed=!!(E.mixed || (sg && c.mixChunk)), k=mixed || !sg ? 0 : Math.max(0, Math.round(c.pdInterval||0));   // 两个开关只有 SGLang 有（见 inert）
+  const mixed=mixedOf(m,c,g), k=mixed || c.engine!=="sglang" ? 0 : Math.max(0, Math.round(c.pdInterval||0));   // 两个开关只有 SGLang 有（见 inert）
   const base=Object.assign({}, c, { phase:"decode", specK:0, tbo:false });
   const dec=decode(m,hw,topo,base,g), B=dec.Breq, Pl=Math.max(1, c.P||1), demand=B*Pl/Math.max(1,c.osl||1);
   const list=[...new Set((Cs||CHUNKS).concat(c.C>0 ? [c.C] : []))].sort((a,b)=>a-b);
@@ -674,6 +676,20 @@ function chunked(m, hw, topo, c, g, Cs){
   const tok = tp => B*dec.dpA/dec.N/tp;   // 输出 tok/s/GPU
   for(const r of rows){ r.sep.tokPerGpu=tok(r.sep.tpot); if(r.mix) r.mix.tokPerGpu=tok(r.mix.tpot); }
   return { mixed, k, B, n:c.n, P:Pl, demand, tDec:dec.stepT, dpA:dec.dpA, N:dec.N, rows, warn:dec.warn };
+}
+
+/* 合部署时 decode 每步顺带的 prefill（闭环：每步完成 out / osl 条请求，换进同样多条 isl 的新请求，摊到 DP rank 上）。
+   c 是这一步 decode 的配置（B 是每个 DP rank 的并发），dec 是它的 decode 结果，pre 是一条 isl 的 prefill（块大小 c.C）。
+   · 分开跑（SGLang 默认，可加 --prefill-decode-interval）：每步多出 新请求数 × 整条 prompt 的 prefill 时间；decode 最长等完整条 prompt，有间隔时等一块
+   · 混合（vLLM V1、SGLang --enable-mixed-chunk）：prefill token 跟着 decode 一起跑，按混合步里每个 prefill token 的边际时间算
+     （mixStep：C − B 个 prefill 行的混合步减去其中纯 decode 的部分）；decode 最长等一个满预算的混合步 */
+function coloc(m, hw, topo, c, g, dec, pre, isl, osl){
+  const mixed=mixedOf(m,c,g), k=mixed || c.engine!=="sglang" ? 0 : Math.max(0, Math.round(c.pdInterval||0));
+  const req=dec.tokPerStep/Math.max(1,osl), demand=req*isl;   // 每个 DP rank 每步换进的请求数和 prefill token 数
+  if(!mixed) return { mixed, k, demand, preT:req*pre.ttft, stall: k>0 ? pre.ttft/Math.max(1,pre.nChunks) : pre.ttft };
+  const C=Math.max(1, c.C||BASE.C), Cp=Math.max(1, Math.min(C-dec.Breq, isl));
+  const mx=mixStep(m,hw,topo,c,g,Cp,Math.max(0,Math.floor((isl-Cp)/2))), per=Math.max(0, mx.stepT-mx.mix.dec)/Cp;
+  return { mixed, k, demand, Cp, preT:demand*per, stall:mx.stepT, f:demand/Cp };
 }
 
 /* PD 分离：一条 isl 的请求的 KV 从 prefill 实例搬到 decode 实例（c 是 decode 实例的配置，pdN 是 prefill 实例的卡数）。
@@ -754,7 +770,9 @@ function inert(m, c, g){
   put(!((c.dcp||1)>1),"noDcp","dcpComm");
   put(P.mixed,"engineMixed","mixChunk");
   put(c.engine!=="sglang","mixSglang","mixChunk","pdInterval");
-  put(!!c.mixChunk,"mixNoInterval","pdInterval");
+  put(m.full.kind==="csa","mixCsa","mixChunk");        // SGLang 的 DeepSeek-V4 系列不支持 mixed prefill / decode（arg_groups/deepseek_v4_hook.py）
+  put(c.specK>0,"mixSpec","mixChunk");                  // 投机算法要自己支持 mixed chunk，否则报错或自动关掉（validation_hook.py、speculative_hook.py），这里按关掉算
+  put(!!c.mixChunk&&!o.mixChunk,"mixNoInterval","pdInterval");
   put(m.full.kind!=="csa","noReplay","replay");
   put(m.full.kind==="csa"&&!P.replay,"engineNoReplay","replay");
   put(m.full.kind==="csa"&&dec,"decodeNoReplay","replay");
@@ -773,5 +791,5 @@ function inert(m, c, g){
   return o;
 }
 
-return { ENGINES, SPEC, BASE, TBO_B, inert, fitShards, step, mixStep, decode, prefill, chunked, CHUNKS, dcpSweep, layouts, layoutPoint, serve, pdXfer, memory, cover, eActOf, specCapWarn, tboSweep };
+return { ENGINES, SPEC, BASE, TBO_B, inert, fitShards, step, mixStep, decode, prefill, chunked, CHUNKS, coloc, dcpSweep, layouts, layoutPoint, serve, pdXfer, memory, cover, eActOf, specCapWarn, tboSweep };
 })();

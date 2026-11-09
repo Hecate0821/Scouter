@@ -115,6 +115,8 @@ I18N.add("en", "shell", {
   "inert.engineMixed": "This engine already puts prefill chunks and decode in the same step",
   "inert.mixSglang": "This is an SGLang scheduler option",
   "inert.mixNoInterval": "With mixed chunk, decode runs every step; no extra decode rounds needed",
+  "inert.mixCsa": "SGLang does not support mixed chunk for the DeepSeek-V4 family",
+  "inert.mixSpec": "SGLang's mixed chunk needs support from the speculative algorithm, otherwise it errors or turns itself off; treated as off here",
   "inert.moeTp": "MoE is TP-split: every card holds a slice of every expert, so this does nothing",
   "inert.noA2a": "This MoE parallelism has no separate all-to-all, so this does nothing",
   "inert.notDeepep": "Only DeepEP uses this",

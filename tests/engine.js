@@ -286,6 +286,23 @@ for (const hk of Object.keys(HW)) {
     } else if (k.k !== 0) bad(w, "pdInterval must be inert outside SGLang");
     return r.rows.length;
   });
+  // colocated prefill (recommended-config comparison): positive cost; a long prompt stalls decode less when mixed; SGLang's mixed chunk
+  // is off for the DeepSeek-V4 family and with speculative decoding; the ideal basis is not slower
+  for (const mk of ["glm53f", "kimik3", "dsv41f"]) run(`coloc ${mk}`, () => {
+    const m = MODELS[mk], w = `coloc ${mk}`, isl = 32768, osl = 2048;
+    const one = (o, g) => { const c = Object.assign({}, base, { engine: "sglang", N: 8, B: 16, n: isl + osl / 2, wDt: m.wDefault }, o);
+      const d = Infer.decode(m, hw, topo, c, g), pre = Infer.prefill(m, hw, topo, Object.assign({}, c, { phase: "prefill", specK: 0, C: 8192, P: isl, p: 0 }), g);
+      return Infer.coloc(m, hw, topo, c, g, d, pre, isl, osl); };
+    const sep = one({}, Common.G0), mix = one({ mixChunk: true }, Common.G0), mixI = one({ mixChunk: true }, Common.IDEAL), vl = one({ engine: "vllm" }, Common.G0), sp = one({ mixChunk: true, specK: 3, accept: 1.5 }, Common.G0);
+    if (sep.mixed || !vl.mixed || !(sep.preT > 0 && sep.stall > 0)) bad(w, "separate / vLLM schedule");
+    if (m.full.kind === "csa") { if (mix.mixed) bad(w, "SGLang mixed chunk must be off for CSA"); }
+    else {
+      if (!mix.mixed || !(mix.preT > 0 && mix.stall < sep.stall)) bad(w, `mixed stall ${mix.stall} vs separate ${sep.stall}`);
+      if (!(mixI.preT <= mix.preT * (1 + 1e-9) && mixI.stall <= mix.stall * (1 + 1e-9))) bad(w, "ideal slower than modeled");
+    }
+    if (sp.mixed) bad(w, "SGLang mixed chunk must be off with speculative decoding");
+    return { sep: sep.stall, mix: mix.stall };
+  });
   // layouts on 64 GPUs: GPUs divide, dense models have no EP layouts, the ideal is not slower. A layout may be invalid for a reason
   // outside the layout itself (DeepSeek-V4.1's Engram columns under vLLM's all-to-all lookup); the page marks those, so only the
   // DCP / TP group checks are asserted here

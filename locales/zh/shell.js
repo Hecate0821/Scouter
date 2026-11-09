@@ -115,6 +115,8 @@ I18N.add("zh", "shell", {
   "inert.engineMixed": "这个引擎本来就把 prefill 块和 decode 放进同一步",
   "inert.mixSglang": "这是 SGLang 的调度选项",
   "inert.mixNoInterval": "开了 mixed chunk，decode 每步都在，不用再插 decode",
+  "inert.mixCsa": "SGLang 的 DeepSeek-V4 系列不支持 mixed chunk",
+  "inert.mixSpec": "SGLang 的 mixed chunk 要投机算法自己支持，否则报错或自动关掉；这里按关掉算",
   "inert.moeTp": "MoE 按 TP 切：每卡都有全部 expert 的切片，这项不起作用",
   "inert.noA2a": "这种 MoE 并行没有单独的 all-to-all，这项不起作用",
   "inert.notDeepep": "只有 DeepEP 用这项",

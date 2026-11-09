@@ -23,37 +23,50 @@ function infPresets(eng, mk, topoKey){
   /* 模型配置里写了 dense / KV 的默认精度（dDefault / kvDefault）就用它，否则按权重是不是 FP8 推 */
   const X = o => Object.assign({ wDt:m.wDefault, dDt:m.dDefault||(f8?"fp8":"bf16"), kvDt:m.kvDefault||(f8?"fp8":"bf16"), stateDt:"fp32" }, o);
   const hk=S.hw, bw=blackwell();
+  /* 三类配方：attention TP × DP + 宽 EP（hyb）、DCP（dcp）、mixed chunked prefill（mix，只有 SGLang 要开，vLLM V1 本来就混） */
+  const hyb=(n,d,mp,o)=>add("hyb",t("config.inf.hyb.label",{a:n/d,d,n}),t("config.inf."+eng+".hyb.src",{a:n/d,d,n}),X(Object.assign({N:n,dpA:d,moePar:mp},o)));
+  const dcpOf=(n,d,c,mp,o)=>add("dcp",d>1?t("config.inf.dcpHyb.label",{a:n/d,c,d,n}):t("config.inf.dcp.label",{a:n,c}),t("config.inf."+eng+".dcp.src",{c}),X(Object.assign({N:n,dpA:d,dcp:c,moePar:mp},o)));
+  const mixOf=b=>add("mix",t("config.inf.mix.label",{base:b.label}),t("config.inf.sglang.mix.src",{base:b.label}),Object.assign({},b.cfg,{mixChunk:true}));
   if(eng==="sglang"){
     if(mk==="qwen35"){
       add("rec",t("config.inf.sglang.qwen35.rec.label",{n:G}),t("config.inf.sglang.qwen35.rec.src"),X({N:1,dpA:1,moePar:"tp",B:128}));
       add("mtp",t("config.inf.sglang.qwen35.mtp.label"),t("config.inf.sglang.qwen35.mtp.src"),X({N:1,dpA:1,moePar:"tp",B:48,specK:3,accept:1.8}));
       add("dep",t("config.inf.sglang.qwen35.dep.label"),t("config.inf.sglang.qwen35.dep.src"),X({N:8,dpA:8,moePar:"deepep",B:64}));
+      mixOf(P[0]);
     } else if(mk==="kimik3"){
       if(!big){
         add("rec",t("config.inf.sglang.kimik3.hgx.rec.label"),t("config.inf.sglang.kimik3.hgx.rec.src"),X({N:8,dpA:1,moePar:"tp",B:32}));
         add("dcp",t("config.inf.sglang.kimik3.hgx.dcp.label"),t("config.inf.sglang.kimik3.hgx.dcp.src"),X({N:8,dpA:1,moePar:"tp",B:96,dcp:8}));
         add("spec",t("config.inf.sglang.kimik3.hgx.spec.label"),t("config.inf.sglang.kimik3.hgx.spec.src"),X({N:8,dpA:1,moePar:"tp",B:32,specK:7,specMethod:"dspark",accept:1.7}));
+        hyb(8,2,"deepep",{B:32}); mixOf(P[0]);
       } else {
         add("rec",t("config.inf.sglang.kimik3.nvl.rec.label"),t("config.inf.sglang.kimik3.nvl.rec.src"),X({N:64,dpA:8,moePar:"fused",B:64,kvDt:"fp8",stateDt:"bf16"}));
         add("dp64",t("config.inf.sglang.kimik3.nvl.dp64.label"),t("config.inf.sglang.kimik3.nvl.dp64.src"),X({N:64,dpA:64,moePar:"fused",B:32,kvDt:"fp8",stateDt:"bf16"}));
         add("tp8",t("config.inf.sglang.kimik3.nvl.tp8.label"),t("config.inf.sglang.kimik3.nvl.tp8.src"),X({N:8,dpA:1,moePar:"tp",B:32}));
+        /* cookbook GB200 PD decode 的 high-throughput 档：--tp-size 16 --dcp-size 8 --attn-dp-size 2 --ep-size 16，配 MegaMoE（这里的 fused） */
+        add("dcp",t("config.inf.sglang.kimik3.nvl.dcp.label"),t("config.inf.sglang.kimik3.nvl.dcp.src"),X({N:16,dpA:2,dcp:8,moePar:"fused",B:128}));
+        mixOf(P.find(x=>x.id==="tp8"));
       }
     } else if(mk==="glm53f"){
       if(!big){
         add("rec",t("config.inf.sglang.glm53f.hgx.rec.label"),t("config.inf.sglang.glm53f.hgx.rec.src"),X({N:8,dpA:1,moePar:"tp",B:64}));
         add("mtp",t("config.inf.sglang.glm53f.hgx.mtp.label"),t("config.inf.sglang.glm53f.hgx.mtp.src"),X({N:8,dpA:1,moePar:"tp",B:48,specK:5,accept:1.6}));
         add("dep",t("config.inf.sglang.glm53f.hgx.dep.label"),t("config.inf.sglang.glm53f.hgx.dep.src"),X({N:8,dpA:8,moePar:"deepep",B:64}));
+        hyb(8,2,"deepep",{B:64}); dcpOf(8,1,8,"tp",{B:128}); mixOf(P[0]);
       } else {
         add("rec",t("config.inf.sglang.glm53f.nvl.rec.label"),t("config.inf.sglang.glm53f.nvl.rec.src"),X({N:4,dpA:1,moePar:"tp",B:64}));
         add("dep",t("config.inf.sglang.glm53f.nvl.dep.label"),t("config.inf.sglang.glm53f.nvl.dep.src"),X({N:64,dpA:64,moePar:"deepep",B:32}));
+        hyb(64,16,"deepep",{B:64}); dcpOf(64,16,4,"deepep",{B:128}); mixOf(P[0]);
       }
     } else if(mk==="musespark"){
       if(!big){
         add("rec",t("config.inf.sglang.musespark.hgx.rec.label"),t("config.inf.sglang.musespark.hgx.rec.src"),X({N:4,dpA:1,moePar:"replicated",B:64}));
         add("bf16",t("config.inf.sglang.musespark.hgx.bf16.label"),t("config.inf.sglang.musespark.hgx.bf16.src"),X({N:8,dpA:1,moePar:"replicated",B:32,wDt:"bf16"}));
+        mixOf(P[0]);
       } else {
         add("rec",t("config.inf.sglang.musespark.nvl.rec.label"),t("config.inf.sglang.musespark.nvl.rec.src"),X({N:8,dpA:1,moePar:"replicated",B:32,kvDt:"fp8"}));
         add("tp4",t("config.inf.sglang.musespark.nvl.tp4.label"),t("config.inf.sglang.musespark.nvl.tp4.src"),X({N:4,dpA:1,moePar:"replicated",B:64}));
+        mixOf(P[0]);
       }
     } else if(mk==="dsv41f"){
       /* cookbook 单节点：B200 / B300 / GB300 是 TP4 + EP4，H200 是 TP8 + EP8；KV 布局按 SGLang 的默认（Blackwell NVFP4 压缩 KV，Hopper 回落 V4 的 FP8 布局） */
@@ -65,6 +78,7 @@ function infPresets(eng, mk, topoKey){
       add("rec",t("config.inf.sglang.qwen38_27b.rec.label"),t("config.inf.sglang.qwen38_27b.rec.src"),X({N:1,dpA:1,moePar:"tp",B:96,kvDt:"fp8"}));
       add("mtp",t("config.inf.sglang.qwen38_27b.mtp.label"),t("config.inf.sglang.qwen38_27b.mtp.src"),X({N:1,dpA:1,moePar:"tp",B:48,kvDt:"fp8",specK:3,accept:1.8}));
       add("tp2",t("config.inf.sglang.qwen38_27b.tp2.label"),t("config.inf.sglang.qwen38_27b.tp2.src"),X({N:2,dpA:1,moePar:"tp",B:128,kvDt:"fp8"}));
+      mixOf(P[0]);
     }
   } else if(eng==="vllm"){
     if(mk==="qwen35"){
@@ -75,14 +89,17 @@ function infPresets(eng, mk, topoKey){
       if(!big){
         add("rec",t("config.inf.vllm.kimik3.hgx.rec.label"),t("config.inf.vllm.kimik3.hgx.rec.src"),X({N:8,dpA:1,moePar:"tp",B:32,kvDt:"fp8"}));
         add("dep",t("config.inf.vllm.kimik3.hgx.dep.label"),t("config.inf.vllm.kimik3.hgx.dep.src"),X({N:8,dpA:8,moePar:"ag",B:32,kvDt:"fp8"}));
+        hyb(8,2,"ag",{B:32,kvDt:"fp8"}); dcpOf(8,1,8,"tp",{B:96,kvDt:"fp8"});
       } else {
         add("rec",t("config.inf.vllm.kimik3.nvl.rec.label"),t("config.inf.vllm.kimik3.nvl.rec.src"),X({N:64,dpA:64,moePar:"deepep",B:32,kvDt:"fp8"}));
         add("tp8",t("config.inf.vllm.kimik3.nvl.tp8.label"),t("config.inf.vllm.kimik3.nvl.tp8.src"),X({N:8,dpA:1,moePar:"tp",B:32,kvDt:"fp8"}));
+        hyb(64,8,"deepep",{B:32,kvDt:"fp8"}); dcpOf(8,1,8,"tp",{B:96,kvDt:"fp8"});
       }
     } else if(mk==="glm53f"){
       if(!big) add("rec",t("config.inf.vllm.glm53f.hgx.rec.label"),t("config.inf.vllm.glm53f.hgx.rec.src"),X({N:8,dpA:1,moePar:"tp",B:64}));
       else add("rec",t("config.inf.vllm.glm53f.nvl.rec.label"),t("config.inf.vllm.glm53f.nvl.rec.src"),X({N:4,dpA:1,moePar:"tp",B:64}));
       add("dep",t("config.inf.vllm.glm53f.dep.label",{n:big?64:8}),t("config.inf.vllm.glm53f.dep.src"),X({N:big?64:8,dpA:big?64:8,moePar:"ag",B:64}));
+      if(!big){ hyb(8,2,"ag",{B:64}); dcpOf(8,1,8,"tp",{B:128}); } else { hyb(64,16,"ag",{B:64}); dcpOf(4,1,4,"tp",{B:128}); }
     } else if(mk==="musespark"){
       add("rec",t("config.inf.vllm.musespark.rec.label"),t("config.inf.vllm.musespark.rec.src"),X({N:8,dpA:1,moePar:"ag",B:64}));
       add("dep",t("config.inf.vllm.musespark.dep.label"),t("config.inf.vllm.musespark.dep.src"),X({N:8,dpA:8,moePar:"ag",B:32}));

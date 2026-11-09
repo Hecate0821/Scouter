@@ -151,6 +151,8 @@
       <label class="check"><input type="checkbox" data-bind="inf.prefixCache"><span data-i18n="infer.rack.ctl.inf.prefixCache"></span></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dcp"></span><input type="number" step="1" min="1" data-bind="inf.dcp"></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.dcpComm"></span><select data-bind="inf.dcpComm" data-i18n-attr="aria-label=infer.rack.attr.inf.dcpComm.aria-label"><option value="" data-i18n="infer.rack.opt.inf.dcpComm.auto"></option><option value="ag_rs">ag_rs</option><option value="a2a">a2a</option></select></label>
+      <label class="check"><input type="checkbox" data-bind="inf.mixChunk"><span data-i18n-html="infer.rack.ctl.inf.mixChunk"></span></label>
+      <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.pdInterval"></span><input type="number" min="0" max="64" step="1" data-bind="inf.pdInterval"></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramAt"></span><select data-bind="inf.engramAt" data-i18n-attr="aria-label=infer.rack.attr.inf.engramAt.aria-label"><option value="gpu" data-i18n="infer.rack.opt.inf.engramAt.gpu"></option><option value="host" data-i18n="infer.rack.opt.inf.engramAt.host"></option></select></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramRepl"></span><select data-bind="inf.engramRepl" data-i18n-attr="aria-label=infer.rack.attr.inf.engramRepl.aria-label"><option value="none" data-i18n="infer.rack.opt.inf.engramRepl.none"></option><option value="per_node" data-i18n="infer.rack.opt.inf.engramRepl.per_node"></option></select></label>
       <label class="ctl"><span data-i18n="infer.rack.ctl.inf.engramLookup"></span><select data-bind="inf.engramLookup" data-i18n-attr="aria-label=infer.rack.attr.inf.engramLookup.aria-label"><option value="auto" data-i18n="infer.rack.opt.inf.engramLookup.auto"></option><option value="peer_read">peer_read</option><option value="all_reduce">all_reduce</option><option value="reduce_scatter">reduce_scatter</option><option value="all_to_all">all_to_all</option></select></label>
@@ -165,16 +167,6 @@
   </div>
 
   <!-- 推理 · 部署与并行：chunked prefill 怎么和 decode 排 -->
-  <div data-rack="infer/deploy">
-    <h3 data-i18n="deploy.rack.h3"></h3>
-    <label class="ctl"><span data-i18n="infer.rack.ctl.inf.P"></span><output data-out="inf.P"></output><input type="range" min="1024" max="262144" step="1024" data-bind="inf.P"></label>
-    <label class="ctl"><span data-i18n-html="infer.rack.ctl.inf.C"></span><input type="number" min="256" step="256" data-bind="inf.C"></label>
-    <label class="ctl"><span data-i18n="deploy.rack.osl"></span><input type="number" min="1" step="64" data-bind="inf.osl"></label>
-    <label class="check"><input type="checkbox" data-bind="inf.mixChunk"><span data-i18n-html="deploy.rack.mixChunk"></span></label>
-    <label class="ctl"><span data-i18n-html="deploy.rack.pdInterval"></span><input type="number" min="0" max="64" step="1" data-bind="inf.pdInterval"></label>
-    <p class="hint" data-i18n="deploy.rack.hint"></p>
-  </div>
-
   <!-- 推理 · KV cache：agent 会话和缓存层级 -->
   <div data-rack="infer/kv">
     <h3 data-i18n="kv.rack.h3"></h3>
@@ -694,101 +686,6 @@
         <tr><td data-i18n="infer.deploy.b1.tbl.row7.c1"></td><td data-i18n="infer.deploy.b1.tbl.row7.c2"></td><td data-i18n="infer.deploy.b1.tbl.row7.c3"></td></tr>
       </tbody></table></div>
   </div>
-  <div class="block" id="deploy-widep"><h2 data-i18n="deploy.widep.h2"></h2>
-    <p class="lede" data-i18n-html="deploy.widep.lede"></p>
-    <div class="tbl"><table>
-      <thead><tr><th></th><th data-i18n="deploy.widep.tbl.head.tp"></th><th data-i18n="deploy.widep.tbl.head.hy"></th><th data-i18n="deploy.widep.tbl.head.dep"></th></tr></thead>
-      <tbody>
-        <tr><td data-i18n="deploy.widep.tbl.r1.c1"></td><td data-i18n-html="deploy.widep.tbl.r1.tp"></td><td data-i18n-html="deploy.widep.tbl.r1.hy"></td><td data-i18n-html="deploy.widep.tbl.r1.dep"></td></tr>
-        <tr><td data-i18n="deploy.widep.tbl.r2.c1"></td><td data-i18n-html="deploy.widep.tbl.r2.tp"></td><td data-i18n-html="deploy.widep.tbl.r2.hy"></td><td data-i18n-html="deploy.widep.tbl.r2.dep"></td></tr>
-        <tr><td data-i18n="deploy.widep.tbl.r3.c1"></td><td data-i18n-html="deploy.widep.tbl.r3.tp"></td><td data-i18n-html="deploy.widep.tbl.r3.hy"></td><td data-i18n-html="deploy.widep.tbl.r3.dep"></td></tr>
-        <tr><td data-i18n="deploy.widep.tbl.r4.c1"></td><td data-i18n-html="deploy.widep.tbl.r4.tp"></td><td data-i18n-html="deploy.widep.tbl.r4.hy"></td><td data-i18n-html="deploy.widep.tbl.r4.dep"></td></tr>
-        <tr><td data-i18n="deploy.widep.tbl.r5.c1"></td><td data-i18n-html="deploy.widep.tbl.r5.tp"></td><td data-i18n-html="deploy.widep.tbl.r5.hy"></td><td data-i18n-html="deploy.widep.tbl.r5.dep"></td></tr>
-      </tbody></table></div>
-    <pre data-i18n="deploy.widep.flow"></pre>
-    <h3 data-i18n="deploy.widep.mech.h3"></h3>
-    <p class="lede" data-i18n-html="deploy.widep.mech.lede"></p>
-    <div class="tbl"><table>
-      <thead><tr><th data-i18n="deploy.widep.mech.head.c1"></th><th data-i18n="deploy.widep.mech.head.c2"></th><th data-i18n="deploy.widep.mech.head.c3"></th><th data-i18n="deploy.widep.mech.head.c4"></th></tr></thead>
-      <tbody>
-        <tr><td data-i18n-html="deploy.widep.mech.r1.c1"></td><td data-i18n-html="deploy.widep.mech.r1.c2"></td><td id="dw-r1"></td><td data-i18n-html="deploy.widep.mech.r1.c4"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.mech.r2.c1"></td><td data-i18n-html="deploy.widep.mech.r2.c2"></td><td id="dw-r2"></td><td data-i18n-html="deploy.widep.mech.r2.c4"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.mech.r3.c1"></td><td data-i18n-html="deploy.widep.mech.r3.c2"></td><td id="dw-r3"></td><td data-i18n-html="deploy.widep.mech.r3.c4"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.mech.r4.c1"></td><td data-i18n-html="deploy.widep.mech.r4.c2"></td><td data-i18n-html="deploy.widep.mech.r4.c3"></td><td data-i18n-html="deploy.widep.mech.r4.c4"></td></tr>
-      </tbody></table></div>
-    <p class="note" data-i18n-html="deploy.widep.amp"></p>
-    <h3 data-i18n="deploy.widep.cost.h3"></h3>
-    <div class="tbl"><table>
-      <thead><tr><th data-i18n="deploy.widep.cost.head.c1"></th><th data-i18n="deploy.widep.cost.head.c2"></th><th data-i18n="deploy.widep.cost.head.c3"></th></tr></thead>
-      <tbody>
-        <tr><td data-i18n-html="deploy.widep.cost.r1.c1"></td><td data-i18n-html="deploy.widep.cost.r1.c2"></td><td data-i18n-html="deploy.widep.cost.r1.c3"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.cost.r2.c1"></td><td data-i18n-html="deploy.widep.cost.r2.c2"></td><td data-i18n-html="deploy.widep.cost.r2.c3"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.cost.r3.c1"></td><td data-i18n-html="deploy.widep.cost.r3.c2"></td><td data-i18n-html="deploy.widep.cost.r3.c3"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.cost.r4.c1"></td><td data-i18n-html="deploy.widep.cost.r4.c2"></td><td data-i18n-html="deploy.widep.cost.r4.c3"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.cost.r5.c1"></td><td data-i18n-html="deploy.widep.cost.r5.c2"></td><td data-i18n-html="deploy.widep.cost.r5.c3"></td></tr>
-        <tr><td data-i18n-html="deploy.widep.cost.r6.c1"></td><td data-i18n-html="deploy.widep.cost.r6.c2"></td><td data-i18n-html="deploy.widep.cost.r6.c3"></td></tr>
-      </tbody></table></div>
-    <h3 data-i18n="deploy.widep.tp.h3"></h3>
-    <ul class="tight">
-      <li data-i18n-html="deploy.widep.tp.li1"></li>
-      <li data-i18n-html="deploy.widep.tp.li2"></li>
-      <li data-i18n-html="deploy.widep.tp.li3"></li>
-      <li data-i18n-html="deploy.widep.tp.li4"></li>
-      <li data-i18n-html="deploy.widep.tp.li5"></li>
-      <li data-i18n-html="deploy.widep.tp.li6"></li>
-    </ul>
-    <p class="note" data-i18n-html="deploy.widep.nvl"></p>
-  </div>
-  <div class="block" id="deploy-layouts"><h2 data-i18n="deploy.ly.h2"></h2>
-    <p class="lede" id="dl-lede"></p>
-    <div class="inline">
-      <label><span data-i18n="infer.deploy.b3.label.text"></span><select id="dl-seq" data-i18n-attr="aria-label=infer.deploy.attr.i-to-seq.aria-label"></select></label>
-      <label><span data-i18n="infer.deploy.b3.label.text_2"></span><select id="dl-target" data-i18n-attr="aria-label=infer.deploy.attr.i-to-target.aria-label"></select></label>
-      <label class="check"><input type="checkbox" id="dl-all"><span data-i18n="deploy.ly.all"></span></label>
-    </div>
-    <div class="kpis" id="dl-kpis"></div>
-    <div class="fig"><svg id="dl-pareto" viewBox="0 0 680 380" role="img" data-i18n-attr="aria-label=deploy.ly.aria"></svg><div class="legend" id="dl-pareto-legend"></div></div>
-    <div class="tbl"><table id="dl-tbl"></table></div>
-    <p class="hint" id="dl-tbl-note"></p>
-    <h3 data-i18n="deploy.mech.h3"></h3>
-    <p class="lede" id="dl-mech-lede"></p>
-    <div class="inline"><div class="seg" id="dl-b" role="group" data-i18n-attr="aria-label=deploy.mech.bAria"></div></div>
-    <div class="tbl"><table id="dl-mech"></table></div>
-    <p class="hint" data-i18n-html="deploy.mech.hint"></p>
-    <h3 data-i18n="deploy.pub.h3"></h3>
-    <p class="lede" data-i18n-html="deploy.ly.pub"></p>
-    <div class="tbl"><table id="dl-pub"></table></div>
-  </div>
-  <div class="block" id="deploy-dcp"><h2 data-i18n="deploy.dcp.h2"></h2>
-    <p class="lede" data-i18n-html="deploy.dcp.what"></p>
-    <ul class="tight">
-      <li data-i18n-html="deploy.dcp.li1"></li>
-      <li data-i18n-html="deploy.dcp.li2"></li>
-      <li data-i18n-html="deploy.dcp.li3"></li>
-    </ul>
-    <p class="lede" id="dd-lede"></p>
-    <div class="tbl"><table id="dd-tbl"></table></div>
-    <p class="hint" id="dd-read"></p>
-    <h3 data-i18n="deploy.pub.h3"></h3>
-    <div class="tbl"><table id="dd-pub"></table></div>
-  </div>
-  <div class="block" id="deploy-chunk"><h2 data-i18n="deploy.chunk.h2"></h2>
-    <p class="lede" data-i18n-html="deploy.chunk.what"></p>
-    <div class="tbl"><table>
-      <thead><tr><th></th><th data-i18n="deploy.chunk.eng.head.on"></th><th data-i18n="deploy.chunk.eng.head.mix"></th><th data-i18n="deploy.chunk.eng.head.size"></th></tr></thead>
-      <tbody>
-        <tr><td>vLLM V1</td><td data-i18n-html="deploy.chunk.eng.vllm.on"></td><td data-i18n-html="deploy.chunk.eng.vllm.mix"></td><td data-i18n-html="deploy.chunk.eng.vllm.size"></td></tr>
-        <tr><td>SGLang</td><td data-i18n-html="deploy.chunk.eng.sglang.on"></td><td data-i18n-html="deploy.chunk.eng.sglang.mix"></td><td data-i18n-html="deploy.chunk.eng.sglang.size"></td></tr>
-        <tr><td>TensorRT-LLM</td><td data-i18n-html="deploy.chunk.eng.trtllm.on"></td><td data-i18n-html="deploy.chunk.eng.trtllm.mix"></td><td data-i18n-html="deploy.chunk.eng.trtllm.size"></td></tr>
-      </tbody></table></div>
-    <p class="lede" id="dc-lede"></p>
-    <div class="kpis" id="dc-kpis"></div>
-    <div class="fig"><svg id="dc-fig" viewBox="0 0 680 340" role="img" data-i18n-attr="aria-label=deploy.chunk.aria"></svg><div class="legend" id="dc-fig-legend"></div></div>
-    <div class="tbl"><table id="dc-tbl"></table></div>
-    <p class="hint" data-i18n-html="deploy.chunk.hint"></p>
-    <h3 data-i18n="deploy.pub.h3"></h3>
-    <div class="tbl"><table id="dc-pub"></table></div>
-  </div>
   <div class="block" id="deploy-comm"><h2 data-i18n="infer.deploy.b2.h2"></h2>
     <p class="note" data-i18n-html="infer.deploy.b2.overlap"></p>
     <p class="lede" id="x-i-lede"></p>
@@ -808,6 +705,7 @@
   </div>
   <div class="block" id="infer-tradeoff"><h2 data-i18n="infer.deploy.b3.h2"></h2>
     <p class="lede" data-i18n="infer.deploy.b3.lede"></p>
+    <p class="note" data-i18n="infer.deploy.b3.recipes"></p>
     <div class="inline">
       <label><span data-i18n="infer.deploy.b3.label.text"></span><select id="i-to-seq" data-i18n-attr="aria-label=infer.deploy.attr.i-to-seq.aria-label"></select></label>
       <label><span data-i18n="infer.deploy.b3.label.text_2"></span><select id="i-to-target" data-i18n-attr="aria-label=infer.deploy.attr.i-to-target.aria-label"></select></label>
@@ -1359,7 +1257,6 @@
 <script src="locales/zh/comm.js"></script>
 <script src="locales/zh/infer.js"></script>
 <script src="locales/zh/tradeoff.js"></script>
-<script src="locales/zh/deploy.js"></script>
 <script src="locales/zh/spec.js"></script>
 <script src="locales/zh/kv.js"></script>
 <script src="locales/zh/cluster.js"></script>
@@ -1405,7 +1302,6 @@
 <script src="src/ui/comm.js"></script>
 <script src="src/ui/calib.js"></script>
 <script src="src/ui/tradeoff.js"></script>
-<script src="src/ui/deploy.js"></script>
 <script src="src/ui/public.js"></script>
 <script src="src/ui/dbview.js"></script>
 <script src="src/ui/releases.js"></script>
