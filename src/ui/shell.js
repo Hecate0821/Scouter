@@ -1,15 +1,15 @@
 /* ---------- 外壳：侧栏、顶栏（模型 / GPU / 拓扑 / 口径）、主题、命令行与 JSON、地址里的状态 ---------- */
 /* 口径：ideal = 硬件屋顶，modeled = 默认效率，measured = 只看实测数据点。前两个换的是计算用的效率参数，
-   第三个只换显示：页面里标了 data-src="measured" 的部分只在实测口径显示，data-src="both" 在所有口径都显示（实测和模型对照，以及附录的数据页），其余都是计算。 */
+   第三个只换显示：页面里标了 data-src="measured" 的部分只在实测口径显示，data-src="both" 在所有口径都显示（实测和模型对照，以及附录的数据页），其余都是计算。
+   真实模型的 modeled 是 HuggingArch（state.js 的 hgaOn）：data-src="hga" 的块只在这时显示，其余计算按理想下限算 */
 const SRC = Scouter.SOURCES;
 S.src = "modeled"; S.globModeled = S.glob;
 
 function setSource(src, quiet){
   if(!SRC.includes(src)) src = "modeled";
-  S.src = src; S.glob = src === "ideal" ? clone(Common.IDEAL) : S.globModeled;
+  S.src = src; syncBasis();
   document.body.dataset.src = src;
   qa("#g-src button").forEach(b => b.setAttribute("aria-checked", b.dataset.src === src ? "true" : "false"));
-  qa("#g-adv input").forEach(el => { el.disabled = src === "ideal"; });
   syncInputs();
   if(!quiet){ saveUrl(); render(); applySource(); }
 }
@@ -17,10 +17,12 @@ function setSource(src, quiet){
 const paneOf = key => document.querySelector('section[data-pane="' + key + '"]');
 const hasMeasured = key => { const p = paneOf(key); return !!(p && p.querySelector('[data-src="measured"],[data-src="both"]')); };
 const modelOnly = key => { const p = paneOf(key); return !!p && Array.from(p.querySelectorAll(".block")).every(b => b.dataset.src === "measured"); };
+const MEAS = '[data-src="measured"],[data-src="both"]';
 function applySource(){
-  const meas = S.src === "measured", key = viewKey(), pane = paneOf(key);
-  qa("main [data-src]").forEach(el => el.classList.toggle("src-off", el.dataset.src === "measured" && !meas));
-  qa("main .block").forEach(b => b.classList.toggle("src-off", meas ? !b.dataset.src && !b.querySelector("[data-src]") : b.dataset.src === "measured"));
+  const meas = S.src === "measured", hon = hgaOn(), key = viewKey(), pane = paneOf(key);
+  const off = src => src === "measured" ? !meas : src === "hga" ? !hon : false;
+  qa("main [data-src]").forEach(el => el.classList.toggle("src-off", off(el.dataset.src)));
+  qa("main .block").forEach(b => b.classList.toggle("src-off", meas ? !b.matches(MEAS) && !b.querySelector(MEAS) : off(b.dataset.src)));
   qa("#g-side a[data-route]").forEach(a => a.classList.toggle("dim", meas ? !hasMeasured(a.dataset.route) : modelOnly(a.dataset.route)));
   const empty = $("g-empty"), none = pane && !Array.from(pane.querySelectorAll(".block")).some(b => !b.classList.contains("src-off"));
   empty.hidden = !none;
@@ -32,7 +34,7 @@ function applySource(){
       : '<h2>' + esc(t("shell.empty.onlyMeasured.h")) + '</h2><p>' + esc(t("shell.empty.onlyMeasured.p")) + '</p>' +
         '<p><button class="act" type="button" data-set-src="measured">' + esc(t("shell.empty.toMeasured")) + '</button></p>';
   }
-  $("g-srcnote").textContent = t("shell.src.note." + S.src);
+  $("g-srcnote").textContent = t("shell.src.note." + (hon ? "hga" : S.src));
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-set-src]"); if(b) setSource(b.dataset.setSrc); });
 $("g-src").addEventListener("click", e => { const b = e.target.closest("button[data-src]"); if(b && b.dataset.src !== S.src) setSource(b.dataset.src); });
@@ -87,7 +89,9 @@ const diffOf = (o, base) => Object.fromEntries(Object.keys(o).filter(k => JSON.s
 function planeCall(){
   const key = viewKey(), q = { model: S.modelKey, hw: S.hw, topo: S.topo };
   if(JSON.stringify(S.model) !== JSON.stringify(MODELS[S.modelKey])) q.model = S.model;       // 改过的模型整个带上
-  const basis = S.src === "ideal" ? "ideal" : "modeled", g = diffOf(S.glob, Common.BASIS[basis]);
+  const basis = S.src === "ideal" || hgaOn() ? "ideal" : "modeled", g = diffOf(S.glob, Common.BASIS[basis]);
+  if(hgaOn() && key === "infer/step") return ["hga", hgaInferQuery()];
+  if(hgaOn() && key === "train/step") return ["hgaTrain", hgaTrainQuery()];
   const calc = o => Object.assign(q, basis === "ideal" ? { basis } : {}, Object.keys(g).length ? { g } : {}, o);
   if(key === "train/calib" || key === "infer/calib") return ["calib", Object.assign({ set: CV[S.tab].sel }, basis === "ideal" ? { basis } : {}, Object.keys(g).length ? { g } : {})];
   if(S.src === "measured" || key === "appendix/data") return ["sets", {}];

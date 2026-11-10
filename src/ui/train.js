@@ -18,6 +18,7 @@ function syncTrnRack(){
 function renderTrain(){
   const {m,d,hw,topo}=ctx(), c=S.trn, mg=c.fw==="megatron";
   syncTrnRack();
+  if(hgaOn()) renderHgaTrain();
   const r=trnRun(), M=r.mem;
   const warn=[...r.warn]; if(M.used>M.total) warn.push(t("train.warn.memOver",{used:fB(M.used),cap:hw.mem})); if(r.dp<1) warn.push(t("train.warn.tooManyGpus",{n:topo.gpus}));
   setWarn(warn);

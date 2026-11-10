@@ -302,3 +302,10 @@ ul.src{max-width:none}
 .ac-row .bar{display:flex;height:16px;border-radius:0;overflow:hidden;background:var(--soft)}
 .ac-row .bar span{display:block;height:100%}
 .figs.one{grid-template-columns:minmax(0,1fr)}
+/* HuggingArch 对照块（推理 · 一步、训练 · 一步的第一块） */
+.hga-ctl{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 18px;align-items:end;margin:4px 0 2px}
+.hga-ctl .ctl select{width:100%;max-width:260px}
+.hga-ctl .ctl.ctl-col{grid-template-columns:1fr}   /* 签名名字长：标签在上、下拉框占满一列（不用 .stack，那是层堆叠图的类） */
+.hga-ctl .ctl.ctl-col select{max-width:none}
+.hga h3{margin-top:16px}
+code.hga-why{display:block;white-space:pre-wrap;font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:4px 8px;margin:4px 0;overflow-wrap:anywhere}

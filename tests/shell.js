@@ -19,29 +19,43 @@ const problems = [];
   const shown = el => { for (let x = el; x && x !== d.body; x = x.parentElement) if (x.hidden || x.classList.contains("src-off")) return false; return true; };
   const VIEWS = Array.from(d.querySelectorAll("section[data-pane]")).map(s => s.dataset.pane);
 
-  // --- every view under every source ---
-  for (const s of ["ideal", "measured", "modeled"]) {
-    src(s);
-    if (w.eval("S.src") !== s || d.body.dataset.src !== s) problems.push(`source ${s} not applied`);
-    if (d.querySelector(`#g-src button[data-src="${s}"]`).getAttribute("aria-checked") !== "true") problems.push(`source ${s}: button not checked`);
+  // --- every view under every source; "modeled" twice: on a real model it is HuggingArch, on a custom one Scouter's own model ---
+  const views = (s, who) => {
+    src(s); const hga = w.eval("hgaOn()");
+    if (w.eval("S.src") !== s || d.body.dataset.src !== s) problems.push(`${who}: source ${s} not applied`);
+    if (d.querySelector(`#g-src button[data-src="${s}"]`).getAttribute("aria-checked") !== "true") problems.push(`${who}: button not checked`);
     for (const v of VIEWS) {
       go(v);
       const pane = d.querySelector(`section[data-pane="${v}"]`), blocks = Array.from(pane.querySelectorAll(".block")).filter(shown);
       const empty = shown(d.getElementById("g-empty"));
-      if (!blocks.length === !empty) problems.push(`${s} ${v}: ${blocks.length} blocks and ${empty ? "an" : "no"} empty state`);
+      if (!blocks.length === !empty) problems.push(`${who} ${v}: ${blocks.length} blocks and ${empty ? "an" : "no"} empty state`);
       for (const b of blocks) {
         const tag = b.dataset.src || (b.querySelector("[data-src]") ? "mixed" : "");
-        if (s === "measured" && !tag) problems.push(`${s} ${v}: a computed block is shown`);
-        if (s !== "measured" && tag === "measured") problems.push(`${s} ${v}: a measured block is shown`);
+        if (s === "measured" && !tag) problems.push(`${who} ${v}: a computed block is shown`);
+        if (s !== "measured" && tag === "measured") problems.push(`${who} ${v}: a measured block is shown`);
+        if (tag === "hga" && !hga) problems.push(`${who} ${v}: a HuggingArch block is shown off the HuggingArch basis`);
         const bad = (b.textContent.match(/(?<!得到 )NaN|undefined/g) || []).length;
-        if (bad) problems.push(`${s} ${v}: ${bad} NaN / undefined`);
+        if (bad) problems.push(`${who} ${v}: ${bad} NaN / undefined`);
       }
-      if (s !== "measured") for (const el of pane.querySelectorAll('[data-src="measured"]')) if (shown(el)) problems.push(`${s} ${v}: measured content shown`);
+      if (s !== "measured") for (const el of pane.querySelectorAll('[data-src="measured"]')) if (shown(el)) problems.push(`${who} ${v}: measured content shown`);
+      if (hga && (v === "infer/step" || v === "train/step") && !shown(pane.querySelector('[data-src="hga"]'))) problems.push(`${who} ${v}: the HuggingArch block is hidden`);
     }
-  }
-  const adv = d.querySelector("#g-adv input");
+  };
+  const adv = d.querySelector("#g-adv input"), srcBtn = () => d.querySelector('#g-src button[data-src="modeled"]').textContent;
+  if (!w.eval("realModel()")) problems.push(`default model ${w.eval("S.modelKey")} should be a real model`);
+  for (const s of ["ideal", "measured", "modeled"]) views(s, `${w.eval("S.modelKey")} ${s}`);
   src("ideal"); if (!adv.disabled || w.eval("S.glob.etaC") !== 1) problems.push("ideal: efficiency inputs should be locked at the hardware roofline");
-  src("modeled"); if (adv.disabled || w.eval("S.glob.etaC") !== w.eval("Common.G0.etaC")) problems.push("modeled: efficiencies should be back to the defaults");
+  // A real model's middle button is HuggingArch: the page computes on the ideal basis beside it, never on Scouter's modeled one
+  src("modeled"); if (!adv.disabled || w.eval("S.glob.etaC") !== 1 || !w.eval("S.glob.lb")) problems.push("real model under HuggingArch: efficiencies should stay locked at the ideal basis");
+  if (srcBtn() !== w.eval('t("shell.src.hga")')) problems.push(`real model: middle button reads "${srcBtn()}"`);
+  // An edited model is no longer the one HuggingArch simulated
+  w.eval("S.model.L += 1; syncBasis(); render(); applySource()");
+  if (w.eval("hgaOn()") || adv.disabled || w.eval("S.glob.etaC") !== w.eval("Common.G0.etaC")) problems.push("edited real model: should be back on the modeled basis");
+  if (srcBtn() !== w.eval('t("shell.src.modeled")')) problems.push(`edited model: middle button reads "${srcBtn()}"`);
+  setSel("#g-model", "musespark");
+  if (adv.disabled || w.eval("S.glob.etaC") !== w.eval("Common.G0.etaC")) problems.push("custom model: modeled efficiencies should be back to the defaults");
+  if (srcBtn() !== w.eval('t("shell.src.modeled")')) problems.push(`custom model: middle button reads "${srcBtn()}"`);
+  views("modeled", "musespark modeled");
 
   // --- page, data plane and command line agree ---
   const CASES = [
@@ -51,7 +65,7 @@ const problems = [];
     ["infer/kv", "KV.plan(S.model,HW[S.hw],TOPO[S.topo],Object.assign({},S.inf,S.kv),S.glob).ttft", () => setSel("[data-bind='kv.routing']", "random")],
   ];
   const PICK = { infer: "stepT", train: "stepT", module: "measure.mods.full.t", kv: "ttft" };
-  setSel("#g-model", "kimik3"); setSel("#g-hw", "B200");
+  setSel("#g-model", "musespark"); setSel("#g-hw", "B200");   // the modeled basis lives on custom models now
   for (const [view, expr, tweak] of CASES) for (const s of ["modeled", "ideal"]) {
     go(view); tweak(); src(s);
     const page = w.eval(expr), [cmd, q] = w.eval("planeCall()"), get = (o, p) => p.split(".").reduce((x, k) => x[k], o);
@@ -68,6 +82,30 @@ const problems = [];
     d.getElementById("g-json").click();
     try { JSON.parse(d.getElementById("g-dlg-pre").textContent); } catch (e) { problems.push(`${view} ${s}: JSON view does not parse`); }
     if (d.getElementById("g-dlg").hidden) problems.push(`${view} ${s}: dialog did not open`);
+    d.getElementById("g-dlg-x").click();
+  }
+  // --- a real model's step pages: the HuggingArch block, the data plane and the CLI read the same cell ---
+  setSel("#g-model", "qwen35"); setSel("#g-hw", "H200"); src("modeled");
+  const HGA_CASES = [
+    ["infer/step", "hga", "Scouter.hga(hgaInferQuery()).decode.hga.t", "decode.hga.t", "ih", "vllm"],
+    ["train/step", "hgaTrain", "Scouter.hgaTrain(hgaTrainQuery()).hga.t", "hga.t", "th", "torchtitan"],
+  ];
+  for (const [view, want, expr, at, pre, eng] of HGA_CASES) {
+    go(view);
+    for (let i = 0; i < 100 && w.eval("hgaReady(S.modelKey)") === "loading"; i++) await new Promise(r => setTimeout(r, 50));
+    d.querySelector(`#${pre}-eng button[data-k="${eng}"]`).click();
+    if (d.getElementById(`${pre}-body`).hidden) { problems.push(`${view} HuggingArch: block is empty — ${d.getElementById(`${pre}-lede`).textContent}`); continue; }
+    const page = w.eval(expr), [cmd, q] = w.eval("planeCall()"), get = (o, p) => p.split(".").reduce((x, k) => x[k], o);
+    if (cmd !== want || q.engine !== eng) { problems.push(`${view} HuggingArch: planeCall is ${cmd} ${JSON.stringify(q)}`); continue; }
+    const api = get(w.eval("Scouter")[cmd](q), at);
+    if (!(page > 0) || Math.abs(api - page) > 1e-12 * page) problems.push(`${view} HuggingArch: data plane ${api} != page ${page}`);
+    d.getElementById("g-cli").click();
+    const line = d.getElementById("g-dlg-pre").textContent.split("\n")[0];
+    if (!line.startsWith("node tools/scouter.js " + cmd + " ")) problems.push(`${view} HuggingArch: CLI line is "${line}"`);
+    else {
+      const out = JSON.parse(execSync(line + " --pick " + at, { cwd: ROOT, encoding: "utf8", shell: "/bin/sh" }));
+      if (Math.abs(out[at] - page) > 1e-12 * page) problems.push(`${view} HuggingArch: CLI prints ${out[at]}, page has ${page}\n    ${line}`);
+    }
     d.getElementById("g-dlg-x").click();
   }
   if (errs.length) problems.push(...errs.slice(0, 5));
@@ -104,7 +142,7 @@ const problems = [];
   const tsShow = h => ts.w.eval(`showTab("${h}")`);
   const tsSet = (k, v) => { const el = ts.d.querySelector(`[data-bind="${k}"]`); el.value = v; el.dispatchEvent(new ts.w.Event(el.tagName === "SELECT" ? "change" : "input", { bubbles: true })); };
   const tsPane = ts.d.querySelector('section[data-pane="train/step"]');
-  if (tsPane.querySelectorAll(":scope > .block").length !== 7) problems.push(`train/step: ${tsPane.querySelectorAll(":scope > .block").length} sections, expected 7`);
+  if (tsPane.querySelectorAll(":scope > .block").length !== 8) problems.push(`train/step: ${tsPane.querySelectorAll(":scope > .block").length} sections, expected 8 (HuggingArch first)`);
   for (const id of ["t-comm", "t-gantt", "t-analysis", "t-roof", "t-mesh", "t-groups"]) if (ts.d.getElementById(id)) problems.push(`train/step: ${id} should be gone`);
   // The a2a note follows the config: it shows only while a2a outlasts the expert GEMM
   const epSlow = () => ts.w.eval("(()=>{ const r=trnRun(), n=ctx().d.nMoe; return r.ep>1 && r.a2aPerLayer>r.moeT/n; })()");
@@ -225,7 +263,7 @@ const problems = [];
   if (st !== "glm53f H100 hgx8 ideal 1") problems.push(`URL state: got "${st}"`);
   if (u.errs.length) problems.push(...u.errs.slice(0, 5));
 
-  console.log(`shell: ${VIEWS.length} views × 3 sources, ${CASES.length * 2} page / plane / CLI comparisons`);
+  console.log(`shell: ${VIEWS.length} views × 3 sources, ${CASES.length * 2 + HGA_CASES.length} page / plane / CLI comparisons`);
   if (problems.length) { console.log(problems.join("\n")); process.exit(1); }
   console.log("shell ok");
   process.exit(0);

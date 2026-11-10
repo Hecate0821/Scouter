@@ -46,7 +46,9 @@ const MODELS = {
     moe:{ E:384, k:6, F:2304, Fs:2304, sharedGate:false, Dlat:0 }, dense:{ n:0, F:0 },
     mhc:4, engram:{ layers:[1,14], rows:[384006168,384016682], ngram:4, heads:8, hd:256 },
     drafter:{ kind:"dspark", layers:3, feats:3, block:5, rank:256, moe:{ E:128, k:3, F:2304, Fs:2304 } },
-    wDefault:"mxfp4", dDefault:"fp8", kvDefault:"nvfp4", official:Msg.of("engine_common.model.dsv41f.official"),
+    // eActShipped：checkpoint 自带的 expert 激活格式（quantization_config：quant_method fp8、activation_scheme dynamic、ue8m0 scale，即 W4A8）。
+    // 只给 HuggingArch 对照用（它按 as_shipped 读 checkpoint）；推理页的 eAct 仍按各引擎的 kernel 默认（SGLang H200 的 flashinfer_mxfp4 是 W4A16）
+    wDefault:"mxfp4", dDefault:"fp8", eActShipped:"mxfp8", kvDefault:"nvfp4", official:Msg.of("engine_common.model.dsv41f.official"),
     note:Msg.of("engine_common.model.dsv41f.note") },
   qwen38_27b: { name:Msg.of("engine_common.model.qwen38_27b.name"), short:"Qwen3.8-27B", family:"qwen", D:5120, L:64, V:248320, mtp:1,
     full:{ n:16, kind:"gqa", Hq:24, Hkv:4, dh:256, gate:true },

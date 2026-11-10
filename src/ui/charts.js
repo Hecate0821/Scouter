@@ -82,6 +82,49 @@ function legendInto(id, items){ const el=$(id); if(!el) return;
   el.innerHTML=items.map(it=>it.line ? '<span><i'+(it.dash?' class="d"':'')+' style="border-color:'+css(it.col)+'"></i>'+esc(it.name)+'</span>'
     : '<span><span class="sw" style="'+(it.hatch ? 'background:repeating-linear-gradient(135deg,'+css(it.col)+' 0 2px,transparent 2px 4.5px);box-shadow:inset 0 0 0 1px '+css(it.col) : 'background:'+css(it.col))+'"></span>'+esc(it.name)+'</span>').join(""); }
 
+/* 瀑布：steps [{label, t, col}（从 0 起的总量柱）| {label, d}（接着前一个累计值的增减柱）]。增减柱按正负用 o.up / o.down 两种颜色，
+   柱顶的数值带符号（颜色不是唯一的区分）；相邻两柱之间一条虚线连着累计值，悬停给这一段和累计 */
+function waterfall(svgId, steps, o){
+  const svg=$(svgId), W=680, H=+svg.getAttribute("viewBox").split(" ")[3], m={l:60,r:12,t:22,b:30}, fmt=o.fmt||fN;
+  let acc=0; const bars=steps.map(st=>{ if(st.t!=null){ acc=st.t; return { st, y0:0, y1:st.t, total:true }; } const y0=acc; acc+=st.d; return { st, y0, y1:acc, total:false }; });
+  const hi=Math.max(...bars.map(b=>Math.max(b.y0,b.y1)))*1.14||1, lo=Math.min(0,...bars.map(b=>Math.min(b.y0,b.y1)));
+  const Y=axis(lo,hi,H-m.b,m.t), n=bars.length, bw=(W-m.l-m.r)/n, w=Math.min(60,bw*0.56);
+  let s="";
+  for(const v of niceTicks(lo,hi,4)) s+='<line class="gr" x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(v)+'" y2="'+Y(v)+'"/><text x="'+(m.l-6)+'" y="'+(Y(v)+4)+'" text-anchor="end">'+esc(fmt(v))+'</text>';
+  s+='<line class="ax" x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(0)+'" y2="'+Y(0)+'"/>';
+  bars.forEach((b,i)=>{
+    const x=m.l+i*bw+(bw-w)/2, ya=Y(Math.max(b.y0,b.y1)), yb=Y(Math.min(b.y0,b.y1)), h=Math.max(1.5,yb-ya), up=b.y1>=b.y0;
+    const col=b.total?(b.st.col||"s1"):(up?o.up:o.down), val=b.total?fmt(b.y1):(up?"+":"−")+fmt(Math.abs(b.y1-b.y0));
+    if(i){ const xp=m.l+(i-1)*bw+(bw+w)/2; s+='<line x1="'+xp+'" x2="'+x+'" y1="'+Y(b.y0)+'" y2="'+Y(b.y0)+'" style="stroke:var(--muted)" stroke-dasharray="3 3"/>'; }
+    const tip=[{v:val,l:b.st.label,c:col}].concat(b.total?[]:[{v:fmt(b.y1),l:o.accLabel||""}]).concat(b.st.note?[{v:b.st.note,l:""}]:[]);
+    s+='<rect x="'+x+'" y="'+ya+'" width="'+w+'" height="'+h+'" rx="3" style="fill:'+css(col)+(b.total?'':';opacity:.9')+'" '+tipAttr(b.st.label,tip)+'/>';
+    s+='<text x="'+(x+w/2)+'" y="'+(ya-5)+'" text-anchor="middle" class="lbl">'+esc(val)+'</text>';
+    s+='<text x="'+(x+w/2)+'" y="'+(H-m.b+16)+'" text-anchor="middle">'+esc(fitLabel(String(b.st.label),bw))+'</text>';
+    s+='<rect class="hit" x="'+(m.l+i*bw)+'" y="'+m.t+'" width="'+bw+'" height="'+(H-m.t-m.b)+'" style="fill:transparent" '+tipAttr(b.st.label,tip)+'/>';
+  });
+  svg.innerHTML=s; bindTips(svg);
+}
+/* 成对的横条：rows [{label, v:[a, b]}]，series [{name, col}, {name, col}]；每行两根细条（中间 2px 空隙），条尾写数值，悬停给两边和比值。
+   o.fmt 格式化数值，o.ratio 给悬停里的第二个 ÷ 第一个的标签（没有就不显示） */
+function pairBars(svgId, rows, series, o){
+  const svg=$(svgId), W=680, bh=9, gap=2, rowH=2*bh+gap+12, m={l:150,r:76,t:6,b:6}, fmt=o.fmt||fN;
+  const H=m.t+m.b+rows.length*rowH; svg.setAttribute("viewBox","0 0 "+W+" "+Math.max(H,40));
+  if(!rows.length){ svg.innerHTML='<text x="'+W/2+'" y="24" text-anchor="middle" class="lbl">'+esc(o.empty||t("common.chart.empty"))+'</text>'; return; }
+  const max=Math.max(1e-30,...rows.flatMap(r=>r.v.filter(x=>isFinite(x)))), X=axis(0,max,m.l,W-m.r);
+  let s="";
+  rows.forEach((r,i)=>{ const y=m.t+i*rowH;
+    const tip=series.map((se,k)=>({v:isFinite(r.v[k])?fmt(r.v[k]):"—",l:se.name,c:se.col})).concat(o.ratio&&r.v[0]>0&&isFinite(r.v[1])?[{v:fI(r.v[1]/r.v[0])+"×",l:o.ratio}]:[]);
+    s+='<text x="'+(m.l-8)+'" y="'+(y+bh+gap/2+4)+'" text-anchor="end">'+esc(fitLabel(String(r.label),m.l-10))+'</text>';
+    series.forEach((se,k)=>{ const v=r.v[k], yy=y+k*(bh+gap); if(!isFinite(v)) return;
+      const wv=Math.max(v>0?2:0,X(v)-m.l);
+      s+='<rect x="'+m.l+'" y="'+yy+'" width="'+wv+'" height="'+bh+'" rx="3" style="fill:'+css(se.col)+'"/>';
+      s+='<text x="'+(m.l+wv+5)+'" y="'+(yy+bh-1)+'" class="lbl">'+esc(fmt(v))+'</text>'; });
+    s+='<rect class="hit" x="0" y="'+(y-4)+'" width="'+W+'" height="'+rowH+'" style="fill:transparent" '+tipAttr(r.label,tip)+'/>';
+  });
+  s+='<line class="ax" x1="'+m.l+'" x2="'+m.l+'" y1="'+m.t+'" y2="'+(H-m.b)+'"/>';
+  svg.innerHTML=s; bindTips(svg);
+}
+
 /* 甘特图：groups [{label, lanes, segs:[{lane,t0,t1,cat,label}]}] */
 const LANE_NAME = { cpu:"CPU", sm:t("common.gantt.sm"), nvl:"NVLink", ib:"IB" };
 /* 放不下就截断（按每字 6.4px 估）；标签可能是计算核心的消息，先渲染成文字 */

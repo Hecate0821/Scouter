@@ -4,6 +4,8 @@ How Scouter turns a configuration into kernel times, and how its data points are
 
 ## Where the numbers come from
 
+For the five real models (`Hga.REAL`), the realistic numbers on the page are [HuggingArch](https://github.com/shenh10/HuggingArch)'s simulation, not the model described below; Scouter keeps its ideal lower bound next to it and breaks the gap down ([hga.md](hga.md)). Everything below is Scouter's own model: the ideal lower bound for every model, and the modeled basis for edited and custom models.
+
 The ground truth is the code, PRs and docs of SGLang, vLLM, TensorRT-LLM, Megatron-LM, torchtitan, TorchRL, slime, Miles and AReaL, plus public blogs and papers. The appendix lists the modeling method. Every module page links to the files its assumptions follow.
 
 The architecture explorer has no formulas of its own. It takes the same kernel-by-kernel step model the inference and training pages use, groups the kernels into attention and MLP modules, and divides by the number of layers each kernel covers.

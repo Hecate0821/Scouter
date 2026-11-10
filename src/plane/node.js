@@ -6,11 +6,15 @@
 const fs = require("fs"), path = require("path"), vm = require("vm");
 const loadEngine = require("../engine/node.js");
 
-const FILES = ["../data/db.js", "../data/query.js", "scouter.js"];
+/* HuggingArch 的导出（src/data/hga/<model>.js）：浏览器按需加载，这里全部加载 */
+const HGA_DIR = path.join(__dirname, "../data/hga");
+const hgaFiles = () => fs.readdirSync(HGA_DIR).filter(f => f.endsWith(".js") && f !== "index.js").sort().map(f => "../data/hga/" + f);
+const FILES = ["../data/db.js", "../data/query.js", "../data/hga/index.js", "scouter.js"];
 
 function load(ctx){
   const E = loadEngine(ctx);
-  for(const f of FILES){ const file = path.join(__dirname, f); vm.runInContext(fs.readFileSync(file, "utf8"), E.context, { filename: file }); }
+  const files = FILES.slice(0, 3).concat(hgaFiles(), FILES.slice(3));
+  for(const f of files){ const file = path.join(__dirname, f); vm.runInContext(fs.readFileSync(file, "utf8"), E.context, { filename: file }); }
   return Object.assign(E, { DB: vm.runInContext("DB", E.context), Scouter: vm.runInContext("Scouter", E.context) });
 }
 load.FILES = FILES;

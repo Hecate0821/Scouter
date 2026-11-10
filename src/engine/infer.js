@@ -135,8 +135,11 @@ function step(m, hw, topo, c, g){
   /* ---- 层边界：AR(+add+RMSNorm) ---- */
   const nMoe=d.nMoe, moePar=c.moePar||P.defaultMoe;
   if(nMoe>0 && !MOEPARS.includes(moePar)) warn.push(Msg.of("engine_infer.warn.moePar",{v:String(moePar),opts:MOEPARS.join(" / ")}).invalid());
+  // vLLM 的 ag（naive / allgather_reducescatter）只在 attention DP > 1 时 dispatch；DP = 1 时每卡已有全部 token，FusedMoE 不 dispatch，
+  // routed + shared 的输出一次 TP all-reduce，就是层边界那次，通信和 tp 一样（vLLM fused_moe/config.py：use_all2all_kernels 要 dp_size > 1 或 PCP / SP）
+  const agLocal = moePar==="ag" && dpA<=1;
   // EP 合回来的只有本卡那份 token，TP 组内靠 all-gather 拼齐，不是 AR；shared expert 还是 TP 切的，那一层仍要 AR
-  const epGather = tpA>1 && !e.Fs && moePar!=="tp" && moePar!=="replicated" ? nMoe : 0;
+  const epGather = tpA>1 && !e.Fs && moePar!=="tp" && moePar!=="replicated" && !agLocal ? nMoe : 0;
   const boundaries = m.L*2-epGather;
   // 只有 PCIe 的机器上超过 2 张卡时，vLLM 和 SGLang 都关掉自定义 all-reduce，退回 NCCL 环（topo.pcieOnly：PCIe 8 卡拓扑和集群页的 PCIe 机内互联）；
   // AR + RMSNorm 融合用的是同一套 IPC 缓冲，跟着一起关
@@ -345,7 +348,7 @@ function step(m, hw, topo, c, g){
   // MoE 通信
   const lkE = link(hw,topo,N,1);
   if(N>1){
-    if(moePar==="tp" || moePar==="replicated"){
+    if(moePar==="tp" || moePar==="replicated" || agLocal){
       if(dpA>1){ cm("dpg",Msg.of("engine_infer.comm.dpg"),nMoe,agT(Tg*De*2,dpA,lkE,g),Tg*De*2*(dpA-1)/dpA); cm("dps",Msg.of("engine_infer.comm.dps"),nMoe,agT(Tg*De*2,dpA,lkE,g),Tg*De*2*(dpA-1)/dpA); }
       else if(!e.Dlat) {/* MoE 结果的 AR 并进层边界的 AR（已计入） */}
     } else if(moePar==="ag"){

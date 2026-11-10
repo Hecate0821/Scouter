@@ -24,6 +24,7 @@ node tools/scouter.js kv     --model qwen35 --hw H200 --N 8 --sessions 256 --hos
 node tools/scouter.js sweep  --run infer --model qwen35 --over.B 1,8,64,256 --pick stepT
 node tools/scouter.js calib  --set cookbook_tpot --pick median,n   # model vs. measured points
 node tools/scouter.js trace  --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json
+node tools/scouter.js hga    --model qwen35 --engine sglang --sig tp8 --hw H200 --isl 8192 --b 64 --axis b   # HuggingArch vs ideal
 ```
 
 In Node: `const { Scouter } = require("./src/plane/node.js")();`. Collective traces from real PyTorch (CPU gloo): `cd sim && uv run python -m scouter_sim.run`.
@@ -39,10 +40,14 @@ In Node: `const { Scouter } = require("./src/plane/node.js")();`. Collective tra
 | Calibration against measured sets | `src/engine/calib.js` |
 | Public / anonymized data points | `data/public/*.json`, `data/anon/*.json`, then `uv run --no-project tools/build_db.py` |
 | Text (UI, warnings, op names) | `locales/<lang>/*.js` |
+| Real models' simulation: signatures, grid, comparison | `src/engine/hga.js`; data from `cd tools/hga && uv run python export.py` (needs `git submodule update --init`), see [docs/hga.md](docs/hga.md) |
+| HuggingArch itself (training step, sweep options) | the fork in `vendor/HuggingArch` (its own repo, MIT); commit and push there, then bump the submodule here |
 
 Rules:
 
 - Physics only in `src/engine/`. `src/ui/` renders what `Scouter.*` returns and never recomputes.
+- Real models (`Hga.REAL`) take their realistic numbers from HuggingArch; never tune `Common.G0` to match it. `src/data/hga/*.js` is generated: re-export, do not hand-edit.
+- A signature in `Hga.SIG` is one deployment on both sides (`hga`/`train` for the export, `cfg` for the ideal). If one side cannot express a layout, change the signature, not one side. After a change, walk every cell (`node tests/plane.js`; `HGA_UNDER=1` lists every phase under the ideal with the class HuggingArch counts less for). It fails below 0.85 of the ideal: so far that has meant a mismatch or a bug, not a speedup. A small shortfall can be a per-operator accounting difference (docs/hga.md lists the known ones); name it there before accepting it.
 - Every formula that differs between the two bases checks `g.lb`. The ideal basis must stay a true lower bound: `tests/plane.js` fails if it exceeds any measured calibration point.
 - No display text in code: engine returns `Msg.of(key, params)`; the i18n test fails on hardcoded words.
 - Public data rows carry `src` and `url`; anonymized rows carry neither. Cite only public sources.

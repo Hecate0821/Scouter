@@ -1,7 +1,8 @@
 /* 数据平面的入口：计算核心（src/engine）加数据点库（src/data），给界面、命令行（tools/scouter.js）和 agent 用同一套接口。
    输入是普通对象：模型 / GPU / 拓扑写 key，其余字段覆盖默认配置；输出是能 JSON 序列化的普通对象（文字是 Msg）。
    不碰 DOM、不调 t()、不读界面状态；浏览器里和 Node 里（src/plane/node.js）跑的是同一份代码。
-   口径 basis：ideal = 理想下限（Common.IDEAL：效率 1、没有开销、只算必要的流量、资源守恒），modeled = 尽量贴近现实的建模（Common.G0）。实测不是算出来的，走 points / calib。 */
+   口径 basis：ideal = 理想下限（Common.IDEAL：效率 1、没有开销、只算必要的流量、资源守恒），modeled = 尽量贴近现实的建模（Common.G0）。实测不是算出来的，走 points / calib。
+   真实模型（Hga.REAL）的仿真是 HuggingArch（hga / hgaTrain，和理想下限逐项对照）；modeled 只给自定义模型用，页面上真实模型不再显示它。 */
 const Scouter = (function(){
 const { MODELS, HW, TOPO, BASIS, G0, KEFF } = Common;
 const VERSION = 1;
@@ -94,7 +95,45 @@ function profile(q){
   return select({ query: Object.assign(echo(q, c), { cfg, dpSkew }), total: sp.total, stepT: sp.stepT, nKern: sp.nKern, graph: sp.graph, kern: sp.kern, cats: sp.cats,
     dpLoss: sp.dpLoss, eplbLoss: sp.eplbLoss, observer, warn: sp.r.warn }, q.pick);
 }
-const RUN = { roofline, infer, train, module, serve, deploy, kv, cluster, profile };
+/* ---- HuggingArch：真实模型的仿真后端（src/engine/hga.js）----
+   数据是 tools/hga/export.py 离线导出的网格（src/data/hga/<model>.js，HGA_DATA）；这里只取格子、插值，和同一个签名的理想下限逐项对照。
+   浏览器里模型的数据按需加载（页面注入 <script>），还没加载时返回 { ok:false, reason:"not-loaded" }；Node 里 src/plane/node.js 全部预先加载。
+   签名：q.engine（sglang / vllm；训练 megatron / torchtitan）+ q.sig（Hga.SIG 里的 id），每个引擎 5 个，所有模型共用 */
+const hgaData = mk => (typeof HGA_DATA !== "undefined" && HGA_DATA.models[mk]) || null;
+function hgaModel(q){
+  const mk = q.model || "qwen35";
+  if(typeof mk !== "string" || !Hga.isReal(mk)) throw new Error('model "' + (typeof mk === "string" ? mk : "custom") + '" has no HuggingArch simulation; real models: ' + Object.keys(Hga.REAL).join(", "));
+  return mk;
+}
+const hgaMeta = D => D && D.meta ? { hga: D.meta.hga, upstream: D.meta.upstream, generated: D.meta.generated } : null;
+/* 推理：签名 × GPU × prompt 长度 isl × 每个 DP rank 的 decode batch b；axis = "b" / "isl" 时另给沿这个轴的整条曲线 */
+function hga(q){
+  q = q || {}; const mk = hgaModel(q), D = hgaData(mk);
+  const p = { model: mk, engine: q.engine || "sglang", sig: q.sig || "tp8", hw: q.hw || DEF_HW, isl: +q.isl || 8192, b: +q.b || 64 };
+  if(!(p.hw in Hga.CARD)) throw new Error('GPU "' + p.hw + '" is not in HuggingArch\'s card table; one of: ' + Object.keys(Hga.CARD).join(", "));
+  if(!D) return { query: p, ok: false, reason: "not-loaded" };
+  const out = Object.assign({ query: p, source: hgaMeta(D) }, Hga.compare(D, p));
+  if(q.axis) out.curve = { axis: q.axis, points: Hga.curve(D, Object.assign({}, p, { axis: q.axis })) };
+  return select(out, q.pick);
+}
+/* 训练：签名 × GPU × 序列长度 seq × micro-batch mbs（64 卡、每步 2M token，Hga.GRID）；axis = "seq" 时另给沿序列长度的曲线 */
+function hgaTrain(q){
+  q = q || {}; const mk = hgaModel(q), D = hgaData(mk);
+  const p = { model: mk, engine: q.engine || "megatron", sig: q.sig || "tp8sp", hw: q.hw || DEF_HW, seq: +q.seq || 8192, mbs: +q.mbs || 1 };
+  if(!(p.hw in Hga.CARD)) throw new Error('GPU "' + p.hw + '" is not in HuggingArch\'s card table; one of: ' + Object.keys(Hga.CARD).join(", "));
+  if(!D) return { query: p, ok: false, reason: "not-loaded" };
+  const out = Object.assign({ query: p, source: hgaMeta(D) }, Hga.compareTrain(D, p));
+  if(q.axis) out.curve = { axis: "seq", points: Hga.curveTrain(D, p) };
+  return select(out, q.pick);
+}
+/* 这个模型导出了哪些格子：每个引擎签名在每张卡上是能算（ok）还是 HuggingArch 拒绝了（reason） */
+function hgaCells(q){
+  q = q || {}; const mk = hgaModel(q), D = hgaData(mk);
+  if(!D) return { model: mk, ok: false, reason: "not-loaded" };
+  const cells = kind => Object.fromEntries(Object.entries(D[kind] || {}).map(([k, v]) => [k, Object.fromEntries(Object.entries(v).map(([c, x]) => [c, x.ok ? true : x.reason]))]));
+  return { model: mk, source: hgaMeta(D), grid: D.meta && D.meta.grid, infer: cells("infer"), train: cells("train") };
+}
+const RUN = { roofline, infer, train, module, serve, deploy, kv, cluster, profile, hga, hgaTrain };
 /* 扫参：run 是上面的一个函数名，over 的每个字段给一组值（多个字段取笛卡儿积），pick 选出每一行要的字段 */
 function sweep(q){
   q = q || {}; const f = pick(RUN, q.run || "infer", "run"), over = q.over || {}, keys = Object.keys(over);
@@ -171,8 +210,9 @@ function catalog(){
     models: Object.fromEntries(Object.keys(MODELS).map(k => [k, { name: MODELS[k].name, family: MODELS[k].family }])),
     hw: HW, topo: TOPO, engines: Object.keys(Infer.ENGINES), spec: Object.keys(Infer.SPEC), prec: Object.keys(Train.PREC), epBackends: Object.keys(Par.EP),
     quant: Quant.ORDER, defaults: { infer: Infer.BASE, kv: KV.BASE, train: Train.BASE, trainFw: Train.FW_DEF, module: Arch.defaults(MODELS.qwen35), net: Fabric.DEF },
-    runs: Object.keys(RUN).concat(["sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets() };
+    runs: Object.keys(RUN).concat(["hgaCells", "sweep", "points", "kernels", "eff", "calib", "trace", "sets", "catalog"]), calib: Object.keys(Calib.SETS), sets: sets(),
+    hga: { models: Hga.REAL, cards: Hga.CARD, grid: Hga.GRID, sig: Hga.SIG, roles: Hga.ROLES, loaded: typeof HGA_DATA !== "undefined" ? Object.keys(HGA_DATA.models) : [] } };
 }
 
-return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, deploy, kv, cluster, profile, sweep, sets, points, kernels, eff, calib, trace });
+return Object.freeze({ VERSION, SOURCES, gOf, catalog, roofline, infer, train, module, serve, deploy, kv, cluster, profile, hga, hgaTrain, hgaCells, sweep, sets, points, kernels, eff, calib, trace });
 })();

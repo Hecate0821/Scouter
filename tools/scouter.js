@@ -17,6 +17,10 @@
 //   node tools/scouter.js trace    --model qwen35 --hw H200 --B 64 --steps 20 --file.trace trace.json   measured kernels by category
 //   node tools/scouter.js cluster  --model kimik3 --hw H200 --net.scale 16 --net.over 4 --pick train,decode   network fabric: bandwidth per level, time split
 //   node tools/scouter.js profile  --model dsv41f --hw GB300 --N 8 --dpA 8 --moePar deepep --dpSkew 1.2 --pick kern,dpLoss   a step split the way a live trace splits it
+//   node tools/scouter.js hga      --model kimik3 --engine sglang --sig tp8 --hw B300 --isl 8192 --b 64 --axis b   HuggingArch simulation against the
+//                                  ideal lower bound for a real model: waterfall, resources, per-role time; --axis b|isl adds the curve
+//   node tools/scouter.js hgaTrain --model qwen35 --engine megatron --sig ep8 --hw H200 --seq 8192 --mbs 1 --axis seq   the same for a training step
+//   node tools/scouter.js hgaCells --model glm53f                   which signature × GPU cells HuggingArch priced, and why it refused the rest
 // Options: --model --hw --topo pick the tables; --basis ideal|modeled (default modeled); --g.<key> overrides one efficiency
 // parameter; --pick a,b.c keeps only those fields; --over.<key> v1,v2 and --where.<key> v are lists and filters. Every other
 // --key value overrides the run's default config. Values are parsed as JSON when they can be, otherwise kept as strings.
@@ -56,7 +60,7 @@ if(lang){
   vm.runInContext("Msg.render = m => t(m.key, m.p); Msg.prototype.toJSON = function(){ return String(this); };", P.context);
 }
 const S = P.Scouter;
-if(typeof S[cmd] !== "function" || !/^[a-z]+$/.test(cmd) || cmd === "gOf"){ console.error(`unknown command "${cmd}"\n\n${help()}`); process.exit(2); }
+if(typeof S[cmd] !== "function" || !/^[a-z][A-Za-z]*$/.test(cmd) || cmd === "gOf"){ console.error(`unknown command "${cmd}"\n\n${help()}`); process.exit(2); }
 let out;
 try { out = S[cmd](q); }
 catch(e) { console.error(e.message); process.exit(2); }

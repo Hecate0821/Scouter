@@ -23,6 +23,7 @@ if (!(at("src/data/query.js") < at("src/plane/scouter.js") && at("src/plane/scou
 
 // --- runs ---
 const P = load(), S = P.Scouter;
+const vmHas = model => require("vm").runInContext("HGA_DATA.has(" + JSON.stringify(model) + ")", P.context);
 const nan = (o, seen = new Set()) => typeof o === "number" ? Number.isNaN(o) : o && typeof o === "object" && !seen.has(o) && (seen.add(o), Object.values(o).some(v => nan(v, seen)));
 const bad = (what, r) => { if (nan(r)) problems.push(`${what}: NaN in the result`); JSON.stringify(r); return r; };
 const cat = S.catalog();
@@ -158,6 +159,63 @@ for (const id of Object.keys(P.Calib.SETS)) for (const basis of ["ideal", "model
 for (const [f, q] of [["infer", { model: "nope" }], ["train", { hw: "X1" }], ["points", {}], ["calib", { set: "nope" }], ["sweep", { run: "nope" }], ["infer", { basis: "measured" }]]) {
   let threw = false; try { S[f](q); } catch (e) { threw = true; } if (!threw) problems.push(`${f}(${JSON.stringify(q)}) should throw`);
 }
+
+// --- HuggingArch (real models): every exported cell, on and off the grid; the waterfalls add up exactly ---
+if (!(at("src/data/hga/index.js") > at("src/data/query.js") && at("src/data/hga/index.js") < at("src/plane/scouter.js"))) problems.push("index.html must load src/data/hga/index.js before src/plane/scouter.js");
+const closes = (wf, what) => { const end = wf[wf.length - 1].t, sum = wf[0].t + wf.slice(1, -1).reduce((x, s) => x + s.d, 0);
+  if (!(Math.abs(sum - end) <= 1e-9 * Math.max(1, end))) problems.push(`${what}: waterfall does not close (${sum} vs ${end})`); };
+let nh = 0;
+// HuggingArch under the ideal: allowed where HuggingArch counts less for some operator class (docs/hga.md, "When HuggingArch comes
+// in under the ideal"), but far under means the two sides describe different deployments or one side has a bug: fail below FLOOR
+const FLOOR = 0.85, under = [];
+const ratio = (what, h, i, roles) => { const r = h / i; if (!(r < 1)) return;
+  const by = (roles || []).map(x => [x.role, (x.ideal.t ?? x.ideal) - (x.hga.t ?? x.hga)]).sort((a, b) => b[1] - a[1])[0];
+  under.push({ what, r, by: by ? by[0] : "" }); };
+for (const model of Object.keys(P.Hga.REAL)) {
+  if (!vmHas(model)) { problems.push(`no HuggingArch export for ${model} (tools/hga/export.py --model ${model})`); continue; }
+  const cells = S.hgaCells({ model });
+  for (const [key, cards] of Object.entries(cells.infer)) for (const [hw, ok] of Object.entries(cards)) {
+    if (ok !== true) continue;
+    const [engine, sig] = key.split(".");
+    for (const [isl, b, exact] of [[8192, 64, true], [6000, 48, false], [1024, 1, true]]) {
+      const r = bad(`hga ${model} ${key} ${hw} ${isl}/${b}`, S.hga({ model, engine, sig, hw, isl, b })); nh++;
+      if (!r.ok) { if (r.reason !== "capacity") problems.push(`hga ${model} ${key} ${hw} ${isl}/${b}: ${r.reason}`); continue; }
+      if (r.exact !== exact) problems.push(`hga ${model} ${key} ${hw} ${isl}/${b}: exact should be ${exact}`);
+      closes(r.decode.waterfall, `hga ${model} ${key} ${hw} decode`); closes(r.prefill.waterfall, `hga ${model} ${key} ${hw} prefill`);
+      if (!(r.decode.hga.t > 0 && r.decode.ideal.t > 0 && r.prefill.hga.t > 0)) problems.push(`hga ${model} ${key} ${hw}: a phase has no time`);
+      for (const ph of ["decode", "prefill"]) ratio(`hga ${model} ${key} ${hw} ${isl}/${b} ${ph}`, r[ph].hga.t, r[ph].ideal.t, r[ph].roles);
+    }
+  }
+  for (const [key, cards] of Object.entries(cells.train)) for (const [hw, ok] of Object.entries(cards)) {
+    if (ok !== true) continue;
+    const [engine, sig] = key.split(".");
+    for (const [seq, mbs] of [[8192, 1], [12000, 2]]) {
+      const r = bad(`hgaTrain ${model} ${key} ${hw} ${seq}/${mbs}`, S.hgaTrain({ model, engine, sig, hw, seq, mbs })); nh++;
+      if (!r.ok) { problems.push(`hgaTrain ${model} ${key} ${hw}: ${r.reason}`); continue; }
+      closes(r.waterfall, `hgaTrain ${model} ${key} ${hw} ${seq}/${mbs}`);
+      if (!(r.hga.t > 0 && r.ideal.t > 0 && r.hga.mfu > 0 && r.hga.mfu < 1)) problems.push(`hgaTrain ${model} ${key} ${hw}: step ${r.hga.t}, MFU ${r.hga.mfu}`);
+      // the operator classes add up to each side's micro-batch (HuggingArch's to its three-digit export)
+      for (const [side, tol] of [["ideal", 1e-9], ["hga", 0.02]]) { const sum = r.roles.reduce((a, x) => a + x[side].t, 0), want = r[side].micro;
+        if (Math.abs(sum - want) > tol * want) problems.push(`hgaTrain ${model} ${key} ${hw} ${seq}/${mbs}: ${side} classes add up to ${sum}, micro-batch ${want}`); }
+      ratio(`hgaTrain ${model} ${key} ${hw} ${seq}/${mbs}`, r.hga.t, r.ideal.t, r.roles);
+    }
+  }
+  for (const k of ["sglang", "vllm", "megatron", "torchtitan"]) if (P.Hga.sigsFor(k, model).length < 3) problems.push(`${model}: fewer than 3 ${k} signatures`);
+}
+for (const k of ["sglang", "vllm", "megatron", "torchtitan"]) if (P.Hga.SIG[k].length !== 5) problems.push(`${k} must have 5 signatures`);
+for (const [f, q] of [["hga", { model: "musespark" }], ["hga", { model: "qwen35", hw: "RTXP6000" }], ["hgaTrain", { model: "qwen35", sig: "nope" }]]) {
+  let threw = false; try { S[f](q); } catch (e) { threw = true; } if (!threw) problems.push(`${f}(${JSON.stringify(q)}) should throw`);
+}
+const ha = cli(["hga", "--model", "qwen35", "--engine", "sglang", "--sig", "tp8", "--hw", "H200", "--isl", "6000", "--b", "48", "--pick", "decode.waterfall,throughput"]);
+const hb = S.hga({ model: "qwen35", engine: "sglang", sig: "tp8", hw: "H200", isl: 6000, b: 48, pick: ["decode.waterfall", "throughput"] });
+if (JSON.stringify(ha) !== JSON.stringify(hb)) problems.push("cli hga differs from the API");
+console.log(`hga points: ${nh}`);
+under.sort((a, b) => a.r - b.r);
+const byClass = under.reduce((o, x) => (o[x.by] = (o[x.by] || 0) + 1, o), {});
+console.log(`hga under the ideal: ${under.length} phases, by the class HuggingArch counts less for: ${JSON.stringify(byClass)}` +
+  (under.length ? `; lowest ${under[0].r.toFixed(3)} at ${under[0].what}` : ""));
+if (process.env.HGA_UNDER) for (const x of under) console.log(`  ${x.r.toFixed(3)} ${x.by} ${x.what}`);
+for (const x of under) if (x.r < FLOOR) problems.push(`${x.what}: HuggingArch is ${x.r.toFixed(3)} of the ideal (most in ${x.by}); check that the signature describes one deployment on both sides (docs/hga.md)`);
 
 // --- the command line prints what the API returns ---
 const a = cli(["infer", "--model", "kimik3", "--hw", "B200", "--basis", "ideal", "--B", "128", "--pick", "stepT,tComp"]);

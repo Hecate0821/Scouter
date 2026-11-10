@@ -1,0 +1,15 @@
+[project]
+name = "scouter-hga"
+version = "0.1.0"
+description = "Exports HuggingArch (vendor/HuggingArch) simulations for Scouter's presets"
+requires-python = ">=3.13"
+# HuggingArch's analysis path without torch / transformers: the engine is torch-free
+# when a checked spec and a snapshot exist (vendor/HuggingArch/backend/cli.py).
+dependencies = [
+    "sympy", "pydantic>=2.5", "pyyaml", "fastapi>=0.104", "httpx>=0.25",
+    "huggingface-hub>=0.19", "packaging", "python-dotenv>=1.0", "duckdb>=1.5.6",
+    "numpy", "pyjwt[crypto]>=2.8", "python-multipart>=0.0.9",
+]
+
+[tool.uv]
+package = false

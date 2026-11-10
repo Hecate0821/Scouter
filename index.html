@@ -452,6 +452,42 @@
 
 <!-- ============ 后训练 · 一个 step ============ -->
 <section class="pane" data-pane="train/step" hidden>
+  <div class="block hga" id="t-hga" data-src="hga"><h2 data-i18n="hga.trn.h2"></h2>
+    <div class="hga-ctl">
+      <div class="seg" id="th-eng" role="group" data-i18n-attr="aria-label=hga.ctl.fw"></div>
+      <label class="ctl ctl-col"><span data-i18n="hga.ctl.sig"></span><select id="th-sig" data-i18n-attr="aria-label=hga.ctl.sig"></select></label>
+      <label class="ctl"><span data-i18n="hga.ctl.seq"></span><output id="th-seq-o"></output><input type="range" id="th-seq" min="0" step="1" data-i18n-attr="aria-label=hga.ctl.seq"></label>
+      <div><span class="hint" data-i18n="hga.ctl.mbs"></span><div class="seg" id="th-mbs" role="group" data-i18n-attr="aria-label=hga.ctl.mbs"></div></div>
+    </div>
+    <p class="hint" id="th-flags"></p>
+    <p class="lede" id="th-lede"></p>
+    <div id="th-body">
+      <div class="kpis" id="th-kpis"></div>
+      <h3 data-i18n="hga.twf.h3"></h3>
+      <p class="hint" data-i18n-html="hga.twf.lede"></p>
+      <div class="fig"><svg id="th-wf" viewBox="0 0 680 240" role="img" data-i18n-attr="aria-label=hga.twf.h3"></svg></div>
+      <h3 data-i18n="hga.pass.h3"></h3>
+      <div class="legend" id="th-pass-leg"></div>
+      <div class="fig"><svg id="th-pass" viewBox="0 0 680 120" role="img" data-i18n-attr="aria-label=hga.pass.h3"></svg></div>
+      <h3 data-i18n="hga.troles.h3"></h3>
+      <p class="hint" data-i18n-html="hga.troles.lede"></p>
+      <div class="legend" id="th-roles-leg"></div>
+      <div class="fig"><svg id="th-roles" viewBox="0 0 680 200" role="img" data-i18n-attr="aria-label=hga.troles.h3"></svg></div>
+      <h3 data-i18n="hga.dp.h3"></h3>
+      <div class="tbl"><table id="th-dp"></table></div>
+      <h3 data-i18n="hga.mem.h3"></h3>
+      <div class="tbl"><table id="th-mem"></table></div>
+      <h3 data-i18n="hga.read.h3"></h3>
+      <div id="th-read"></div>
+      <h3 data-i18n="hga.tcurve.h3"></h3>
+      <div class="seg" id="th-metric" role="group" data-i18n-attr="aria-label=hga.ctl.metric"></div>
+      <div class="fig"><svg id="th-curve" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=hga.tcurve.h3"></svg></div>
+      <div class="legend" id="th-curve-leg"></div>
+      <div id="th-warn"></div>
+      <p class="hint" id="th-src"></p>
+    </div>
+    <p class="hint" data-i18n-html="hga.trn.below"></p>
+  </div>
   <div class="block"><h2 data-i18n="train.step.b1.h2"></h2>
     <p class="lede" id="t-lede"></p>
     <div class="kpis" id="t-kpis"></div>
@@ -646,6 +682,38 @@
 
 <!-- ============ 推理 · 一步 ============ -->
 <section class="pane" data-pane="infer/step" hidden>
+  <div class="block hga" id="i-hga" data-src="hga"><h2 data-i18n="hga.inf.h2"></h2>
+    <div class="hga-ctl">
+      <div class="seg" id="ih-eng" role="group" data-i18n-attr="aria-label=hga.ctl.engine"></div>
+      <label class="ctl ctl-col"><span data-i18n="hga.ctl.sig"></span><select id="ih-sig" data-i18n-attr="aria-label=hga.ctl.sig"></select></label>
+      <label class="ctl"><span data-i18n="hga.ctl.isl"></span><output id="ih-isl-o"></output><input type="range" id="ih-isl" min="0" step="1" data-i18n-attr="aria-label=hga.ctl.isl"></label>
+      <label class="ctl"><span data-i18n="hga.ctl.b"></span><output id="ih-b-o"></output><input type="range" id="ih-b" min="0" step="1" data-i18n-attr="aria-label=hga.ctl.b"></label>
+    </div>
+    <p class="hint" id="ih-flags"></p>
+    <p class="lede" id="ih-lede"></p>
+    <div id="ih-body">
+      <div class="kpis" id="ih-kpis"></div>
+      <h3 data-i18n="hga.wf.h3"></h3>
+      <div class="seg" id="ih-phase" role="group" data-i18n-attr="aria-label=hga.ctl.phase"></div>
+      <p class="hint" data-i18n-html="hga.wf.lede"></p>
+      <div class="fig"><svg id="ih-wf" viewBox="0 0 680 240" role="img" data-i18n-attr="aria-label=hga.wf.h3"></svg></div>
+      <h3 data-i18n="hga.roles.h3"></h3>
+      <p class="hint" data-i18n-html="hga.roles.lede"></p>
+      <div class="legend" id="ih-roles-leg"></div>
+      <div class="fig"><svg id="ih-roles" viewBox="0 0 680 200" role="img" data-i18n-attr="aria-label=hga.roles.h3"></svg></div>
+      <h3 data-i18n="hga.res.h3"></h3>
+      <div class="tbl"><table id="ih-res"></table></div>
+      <h3 data-i18n="hga.read.h3"></h3>
+      <div id="ih-read"></div>
+      <h3 data-i18n="hga.curve.h3"></h3>
+      <div class="inline"><div class="seg" id="ih-axis" role="group" data-i18n-attr="aria-label=hga.ctl.axis"></div><div class="seg" id="ih-metric" role="group" data-i18n-attr="aria-label=hga.ctl.metric"></div></div>
+      <div class="fig"><svg id="ih-curve" viewBox="0 0 680 300" role="img" data-i18n-attr="aria-label=hga.curve.h3"></svg></div>
+      <div class="legend" id="ih-curve-leg"></div>
+      <div id="ih-warn"></div>
+      <p class="hint" id="ih-src"></p>
+    </div>
+    <p class="hint" data-i18n-html="hga.inf.below"></p>
+  </div>
   <div class="block"><h2 data-i18n="infer.step.b1.h2"></h2>
     <p class="lede" id="i-lede"></p>
     <div class="kpis" id="i-kpis"></div>
@@ -1272,6 +1340,7 @@
 <script src="locales/zh/engine_par.js"></script>
 <script src="locales/zh/engine_quant.js"></script>
 <script src="locales/zh/engine_kv.js"></script>
+<script src="locales/zh/hga.js"></script>
 <script src="locales/zh/data.js"></script>
 <script src="src/engine/msg.js"></script>
 <script src="src/engine/common.js"></script>
@@ -1286,8 +1355,10 @@
 <script src="src/engine/kv.js"></script>
 <script src="src/engine/fabric.js"></script>
 <script src="src/engine/profile.js"></script>
+<script src="src/engine/hga.js"></script>
 <script src="src/data/db.js"></script>
 <script src="src/data/query.js"></script>
+<script src="src/data/hga/index.js"></script>
 <script src="src/plane/scouter.js"></script>
 <script src="src/ui/base.js"></script>
 <script src="src/ui/config.js"></script>
@@ -1311,6 +1382,7 @@
 <script src="src/ui/cluster.js"></script>
 <script src="src/ui/profile.js"></script>
 <script src="src/ui/rl.js"></script>
+<script src="src/ui/hga.js"></script>
 <script src="src/ui/shell.js"></script>
 <script src="src/ui/app.js"></script>
 </body>

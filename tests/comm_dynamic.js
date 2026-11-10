@@ -78,7 +78,7 @@ const INF_TRUTH = `(()=>{ const pick=infCommCfg(), r=infRun(pick.over), {m}=ctx(
     dim={ar:"tp",latar:"tp",lmg:"tp",epag:"tp",disp:"ep",comb:"ep",cnt:"ep",dpg:ag?"ep":"dpa",dps:ag?"ep":"dpa",dcpq:"cp",dcplse:"cp",dcpo:"cp",dcpkv:"cp"};
   const cards={tp:Math.round(r.tpA),dpa:r.dpA,ep:r.N,cp:Math.max(1,Math.round(c.dcp||1))}, calls=r.comm.filter(e=>dim[e.key]).map(e=>({key:e.key,dim:dim[e.key],op:OP[e.key],b:fB(e.bytes/e.layers),t:e.t/e.layers,ov:e.overlap||""}));
   const per=f=>sum(r.ops.filter(f),o=>o.t/o.layers), cores=r.ops.filter(o=>o.key==="acore");
-  const moeK=["router","latd","moeq","moe","latu","shared"], compOf=k=>(k.a==="lin"?per(o=>o.group==="lin"):per(o=>o.group==="attn"&&o.key!=="acore")+(cores[k.a==="swa"?1:0]?cores[k.a==="swa"?1:0].t/cores[k.a==="swa"?1:0].layers:0))+(k.f==="moe"?per(o=>moeK.includes(o.key)):per(o=>o.key==="dense"));
+  const moeK=["router","latd","moeq","moe","latu","shared"], core=k=>k.a==="swa"?cores.find(o=>o.mod==="swa"):cores.find(o=>o.mod==="full")||cores.find(o=>!o.mod), compOf=k=>(k.a==="lin"?per(o=>o.group==="lin"):per(o=>o.group==="attn"&&o.key!=="acore")+(core(k)?core(k).t/core(k).layers:0))+(k.f==="moe"?per(o=>moeK.includes(o.key)):per(o=>o.key==="dense"));
   const map={}; for(const [k,v] of xSigned(infPlan(r,L)).map) map[k]=v.t;
   return JSON.stringify({ calls, cards, map, comp:Object.fromEntries(L.map(i=>[i,compOf(kind(i))])), auto:pick.auto, preset:pick.cf?pick.cf.id:"", engine:c.engine, N:c.N, B:c.B, names:Object.fromEntries(Object.keys(XD).map(k=>[XD[k][0],k])),
     work:r.ops.filter(o=>o.group!=="misc").map(o=>[o.key,(o.t/o.layers).toPrecision(3)]) }); })()`;
@@ -118,18 +118,25 @@ const SKIP_CONTROLS = ["trn.fw", "inf.engine", "trn.prec"];   // these reset the
 (async () => {
   const { w, d, errs } = await load(page, "#train/par", null, "?lang=zh");
   const set = bind(w, d), sel = pick(w, d), chart = () => print(read(d, "x-t-grid")), others = () => ["x-t-vol", "x-t-lede", "x-t-tbl"].map(id => d.getElementById(id).innerHTML).join();
-  const TIMING_ONLY = ["trn.epOverlap", "trn.tpOverlap"];   // these change when a call runs, not how much it sends
+  // These change when a call runs, not how much it sends. At a fixed token count S changes no bytes either, only the size of each
+  // message; that moves the wire-time column through per-message latency, which the ideal basis (real models) does not have.
+  const timingOnly = () => ["trn.epOverlap", "trn.tpOverlap", ...(w.eval("S.glob.lb") ? ["trn.S"] : [])];
   const moves = (k, v, base, where) => { const a = chart(), o = others(); set(k, v); const b = chart(), T = checkTrain(w, d, `${where} ${k}=${v}`);
     if (a === b) say(`${where}: ${k}=${v} does not move the timeline`);
-    if (o === others() && !TIMING_ONLY.includes(k)) say(`${where}: ${k}=${v} does not move the byte bars, lede or table`);
+    if (o === others() && !timingOnly().includes(k)) say(`${where}: ${k}=${v} does not move the byte bars, lede or table`);
     set(k, base); return T; };
 
   // One knob at a time, from the default and from Megatron's default
   const SWEEP = { torchtitan: { tp: [1, 2, 8], cp: [1, 2, 8], ep: [4, 8, 32, 64], pp: [2, 4], dispatcher: ["ag", "deepep", "distmoe", "mok"], cpType: ["allgather", "ring"], linCP: ["state"], recompute: ["full", "none"], tok: [16384], S: [16384] },
     megatron: { tp: [1, 4], cp: [1, 4], ep: [1, 2, 4, 16], etp: [2], pp: [2, 4], cpType: ["allgather"], linCP: ["headwise"], recompute: ["full", "none"], epOverlap: [true], tpOverlap: [true], overlapGrad: [true], overlapParam: [true], tok: [16384], S: [16384] } };
-  for (const fw of ["torchtitan", "megatron"]) { set("trn.fw", fw); checkTrain(w, d, `${fw} default`);
-    for (const k in SWEEP[fw]) { const base = w.eval(`S.trn.${k}`); for (const v of SWEEP[fw][k]) if (v !== base) moves(`trn.${k}`, v, base, fw); } }
-  set("trn.fw", "torchtitan");
+  // on the real model (ideal basis, HuggingArch beside it), then on the same architecture edited into a custom model (modeled basis)
+  for (const edited of [false, true]) { const tag = edited ? "qwen35 edited" : "qwen35";
+    if (edited) w.eval('S.model.short += " *"; syncBasis(); render(); applySource();');
+    if (!!w.eval("S.glob.lb") === edited) say(`${tag}: the training page should be on the ${edited ? "modeled" : "ideal"} basis`);
+    for (const fw of ["torchtitan", "megatron"]) { set("trn.fw", fw); checkTrain(w, d, `${tag}/${fw} default`);
+      for (const k in SWEEP[fw]) { const base = w.eval(`S.trn.${k}`); for (const v of SWEEP[fw][k]) if (v !== base) moves(`trn.${k}`, v, base, `${tag}/${fw}`); } } }
+  sel("g-model", "qwen35"); set("trn.fw", "torchtitan");
+  if (!w.eval("S.glob.lb")) say("picking qwen35 again should bring back the real model and its ideal basis");
 
   // Overlap follows the method
   const cpBars = () => read(d, "x-t-grid").flatMap(s => s.bars).filter(b => /^x\|cp\|/.test(b.sig) && !b.sig.includes("|rc|"));

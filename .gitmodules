@@ -1,0 +1,3 @@
+[submodule "vendor/HuggingArch"]
+	path = vendor/HuggingArch
+	url = https://github.com/Hecate0821/HuggingArch.git

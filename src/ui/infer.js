@@ -44,6 +44,7 @@ const draftLabel = (c,k) => c.specMethod==="dflash"||c.specMethod==="dspark" ? t
 function renderInfer(){
   const {m,d,hw,topo,g}=ctx(), c=S.inf, dec=c.phase==="decode", E=Infer.ENGINES[c.engine];
   syncInfRack();
+  if(hgaOn()) renderHgaInfer();
   const r=infRun(); const inst=Math.floor(topo.gpus/c.N);
   const warn=[...r.warn];
   if(topo.gpus%c.N) warn.push(t("infer.warn.notDivide",{n:c.N,gpus:topo.gpus}));

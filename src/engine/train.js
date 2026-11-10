@@ -195,9 +195,11 @@ function run(m, hw, topo, c, g){
   op("router",mg?Msg.of("engine_train.op.routerMg"):Msg.of("engine_train.op.routerTt"),"moe",nM,{fl:2*Tl*D*e.E+10*Tl*e.E,by:D*e.E*4+Tl*(D*2+e.E*4*3),pk:pkA/2},{fl:4*Tl*D*e.E,by:D*e.E*8+Tl*e.E*4*3,pk:pkA/2},null);
   if(e.Dlat) op("latd",Msg.of("engine_train.op.latd",{n:e.Dlat}),"moe",nM,...gemm(Tl,D,e.Dlat,1));
   op("permute",c.dispatcher==="distmoe"?Msg.of("engine_train.op.permuteDist"):Msg.of("engine_train.op.permute"),"moe",nM,{fl:0,by:Tl*De*2+R*De*2,pk:pkA},{fl:0,by:Tl*De*2+R*De*2,pk:pkA},null);
-  op("moe1",Msg.of("engine_train.op.moe1"),"moe",nM,...gemm(R,De,2*e.F*etp,etp,perRankExp));
+  // ETP（Megatron）：all-gather 之后每个 rank 处理 R×ETP 行，每个 expert 只有 1/ETP 的宽度。moe1 按列切（2F/ETP 的输出），
+  // moe2 按行切（F/ETP 的输入、整宽 De 的部分和输出）；权重字节和显存账（PlE）一致都是 1/ETP
+  op("moe1",Msg.of("engine_train.op.moe1"),"moe",nM,...gemm(R*etp,De,2*e.F,etp,perRankExp));
   op("act",Msg.of("engine_train.op.act",{fn:m.family==="kimi"?"SiTU-GLU":"SwiGLU"}),"moe",nM,...elem(6*e.F,(2*e.F+e.F)*2,R,2));
-  op("moe2",Msg.of("engine_train.op.moe2"),"moe",nM,...gemm(R,e.F*etp,De,etp,perRankExp));
+  op("moe2",Msg.of("engine_train.op.moe2"),"moe",nM,...gemm(R*etp,e.F/etp,De,1,perRankExp));
   op("unperm",Msg.of("engine_train.op.unperm"),"moe",nM,{fl:R*De,by:R*De*2+Tl*De*2,pk:pkA},{fl:0,by:R*De*2+Tl*De*2,pk:pkA},null);
   if(e.Dlat) op("latu",Msg.of("engine_train.op.latu",{n:e.Dlat}),"moe",nM,...gemm(Tl,e.Dlat,D,1));
   if(e.Fs>0){ op("shared",Msg.of("engine_train.op.shared"),"moe",nM,...[0,1,2].map(i=>{ const a=gemm(Tc,D,3*e.Fs,tp)[i]; return a; }), {ovl: mg&&c.sharedOverlap}); tpBlocks.push({name:Msg.of("engine_train.blk.shared"),blk:"moe",layers:nM,inW:D}); }

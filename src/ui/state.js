@@ -4,6 +4,18 @@ const S = { modelKey:"qwen35", model:clone(MODELS.qwen35), hw:"GB300", topo:"nvl
   infPreset:"rec", trnPreset:"slime", tab:"overview", sub:"", anchor:"",
   arch:Object.assign({ mod:"full" }, Arch.defaults(MODELS.qwen35)),
   q:{ scheme:"nvfp4", fuse:"fused", shape:"up", N:1024, K:2048, M:64, T:512, ep:8, align:"auto", recipe:"mxfp8", Mt:8192, nMicro:4, tokFused:false, roll:0.7, deqRate:40, BM:128, flip:0.1 } };
+/* 真实模型（HuggingArch 有它的 spec：Hga.REAL，且模型没改过）：中间那个口径是 HuggingArch 的仿真，Scouter 自己的建模（Common.G0）不再用——
+   推理 · 一步、训练 · 一步的第一块是 HuggingArch 对照（src/ui/hga.js），页面上其余的计算按理想下限算（口径说明里写明）。
+   自定义模型（改过的模型、没有 HuggingArch spec 的模型）照旧：理想下限和 Scouter 的建模 */
+const realModel = () => Hga.isReal(S.modelKey) && JSON.stringify(S.model) === JSON.stringify(MODELS[S.modelKey]);
+const hgaOn = () => S.src === "modeled" && realModel();
+function syncBasis(){
+  const real = realModel(), ideal = S.src === "ideal" || (S.src === "modeled" && real);
+  S.glob = ideal ? clone(Common.IDEAL) : S.globModeled;
+  qa("#g-adv input").forEach(el => { el.disabled = ideal; });
+  const b = document.querySelector('#g-src button[data-src="modeled"]');
+  if(b){ b.textContent = t(real ? "shell.src.hga" : "shell.src.modeled"); b.title = t(real ? "shell.src.hga.tip" : "shell.src.modeled.tip"); }
+}
 function getP(path){ return path.split(".").reduce((o,k)=>o==null?o:o[k], S); }
 function setP(path,v){ const ks=path.split("."); let o=S; for(let i=0;i<ks.length-1;i++) o=o[ks[i]]; o[ks[ks.length-1]]=v; }
 
@@ -31,7 +43,7 @@ function fillOpts(sel, list, val){ sel.innerHTML=list.map(x=>'<option value="'+x
 fillSel($("g-model"),MODELS,S.modelKey); fillSel($("g-hw"),HW,S.hw,h=>h.name+" · "+h.mem+" GB"); fillSel($("g-topo"),TOPO,S.topo);
 $("g-model").addEventListener("change",e=>{ S.modelKey=e.target.value; S.model=clone(MODELS[S.modelKey]);
   const ad=Arch.defaults(S.model); S.arch.wDt=ad.wDt; S.arch.eDt=ad.eDt; S.arch.kvDt=ad.kvDt;      // 架构页的权重 / KV 精度跟着新模型的官方默认
-  setTopo(S.topo, prefHW(S.modelKey,S.topo)); applyAll(); qShape(); buildEditor(); syncInputs(); render(); });
+  setTopo(S.topo, prefHW(S.modelKey,S.topo)); applyAll(); qShape(); buildEditor(); syncBasis(); syncInputs(); render(); });
 /* 拓扑变了（换拓扑，或者换的卡只能放在另一种拓扑里）：推理和训练的预设按新拓扑重新套 */
 function presetsForTopo(){
   applyInf(S.infPreset==="custom"?"rec":S.infPreset);
@@ -41,7 +53,7 @@ $("g-hw").addEventListener("change",e=>{ const t0=S.topo; if(!hwOK(e.target.valu
 $("g-topo").addEventListener("change",e=>{ setTopo(e.target.value); presetsForTopo(); syncInputs(); render(); });
 $("i-preset").addEventListener("change",e=>{ applyInf(e.target.value); syncInputs(); render(); });
 $("t-preset").addEventListener("change",e=>{ applyTrn(e.target.value); syncInputs(); render(); });
-$("model-reset").addEventListener("click",()=>{ S.model=clone(MODELS[S.modelKey]); buildEditor(); render(); });
+$("model-reset").addEventListener("click",()=>{ S.model=clone(MODELS[S.modelKey]); buildEditor(); syncBasis(); render(); applySource(); });
 
 /* ---------- 双向绑定 ---------- */
 const LIVE_INF = /^inf\.(phase|B|n|P|C|bi|biFactor|implEff)$/, LIVE_TRN=/^trn\.(tok|S|Gtok)$/;
@@ -60,7 +72,7 @@ function onBind(el){
   else if(path.startsWith("trn.") && !LIVE_TRN.test(path)) S.trnPreset="custom";
   if(path==="model.full.kind"||path==="model.lin.kind") buildEditor();
   if(path==="q.shape"){ qShape(); syncInputs(); } else if(path==="q.N"||path==="q.K"){ S.q.shape="custom"; syncInputs(); }
-  if(path.startsWith("model.")) qShape();
+  if(path.startsWith("model.")){ qShape(); const was=S.glob; syncBasis(); if(S.glob!==was) applySource(); }      // 改了模型就是自定义模型：口径从 HuggingArch 回到建模
   qa('[data-out="'+path+'"]').forEach(o=>o.textContent=fInt(v));
   render();
 }
